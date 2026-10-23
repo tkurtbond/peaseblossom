@@ -194,6 +194,75 @@ characters; interned, each use is one pointer.
    pointer comparison are plain `Oberon2.pdf`, so `make check-strict`
    and `make check-o2` hold, and voc builds it.
 
+## Step 6's design: each procedure encoded as it is written (decided, 2026-10-23)
+
+After step 4 the largest holders while `VaxCodeGenerator` writes a module
+are its lines: `VaxInstructions.Specifier` (7.2 MB) and `Line` (6.2 MB) at
+the census after `VaxCodeGenerator` itself on cymoril. Almost all of them
+are the procedures' code (`code`), which `GenerateModule` keeps until the
+end of the module, puts in `out` after the constants and descriptors, and
+hands to `VaxEncoder.Encode` with the rest.
+
+1. **The one-pass rule allows it.** `VaxEncoder` gives a relative operand
+   the shortest displacement only when its label is already defined earlier
+   in the same section (`vax-object-language.md`, section 14.3), and gives
+   an operand in another section a longword and a relocation either way.
+   - The procedures are all in `POC_CODE`, and nothing is put in
+     `POC_CODE` before them: the header names the three sections and puts
+     only `L_INITIALISED`, the variables, the constants' debug symbols and
+     the root table in `POC_DATA`.
+   - The constants, descriptors and module descriptor written between the
+     header and the procedures go in `POC_CONST`, `POC_ADDR` and
+     `POC_DATA`, which the procedures can reach only as another section.
+   - The only `==` symbol is the module's key, after the initializer.
+
+   So each procedure encodes to the same bytes, at the same offsets, with
+   the same relocations, if it is encoded as soon as `Body` or
+   `InitProcedure` finishes it, once the header has been encoded.
+2. **What changes order, and how it is kept.** The image's relocations and
+   references are sorted before they are written, its routines are in
+   encoding order (the procedures and then the initializer, as now), and
+   the module's own variables are all in the header. One list is not
+   sorted: the global symbols, kept in the order they are defined for a
+   library's `UNIVERSAL=` (`VaxImage.LastDefinedSymbol`, the
+   `vax-library` fixture). The procedures' entries would now be defined
+   before the descriptors' symbols, so the encoder holds the symbols a
+   procedure defines aside and adds them where `PutLines(code)` is now,
+   in the order they were defined.
+3. **`VaxEncoder` encodes in parts.**
+   - `Begin` starts a module, `EncodeLines(first)` encodes lines,
+     `EncodeAside(first, section)` encodes lines in the named section and
+     holds their symbols aside, `PlaceAside` adds them, and `Finish`
+     resolves the fixups and the transfer address and returns the image,
+     or NIL after an error.
+   - `PlaceAside` reports an error if `POC_CODE` grew between the last
+     `EncodeAside` and itself, which would mean the rule in 1 no longer
+     holds.
+   - `Encode(first)` stays, as `Begin`, `EncodeLines` and `Finish`, for
+     the `vax-encoder-forms` fixture.
+4. **`VaxCodeGenerator` feeds the encoder** when the driver asks for an
+   object or an image (`SetEncoding`, from `VaxToolchainDriver.EmitModule`):
+   - the header's lines after the header; each procedure's lines when it
+     is finished; the rest of `out`, with `PlaceAside` at the place of the
+     procedures, at the end;
+   - the lines are dropped once encoded, unless MACRO-32 is wanted too
+     (`-vax-macro32`, `-emit-mar`), when `code` and `out` are kept and
+     printed as now. There is one encoding path either way.
+   - `WriteEncoded` takes the image from `VaxEncoder.Finish`.
+   - An error in the encoder is now reported while the module is being
+     written, not after, and `GenerateModule` returns FALSE on it, as it
+     does on its own errors. The encoder's errors are poc's bugs, not the
+     program's.
+5. **What is left.** The module's body (`first`) is still kept until the
+   initializer is written, and the encoder's label table and fixups until
+   the module is finished. The image of the module, bytes, relocations and
+   line marks, is much smaller than its lines.
+6. **It changes no output.** As in step 4: the objects of all of poc byte
+   for byte the same (`make check`'s fixtures compare the objects with
+   MACRO's and run both ways), Stage 2's fixed point, and no expected
+   `.mar` changed. Measured on cymoril and atla as before, and on the guest
+   with `vax-stages -to v2`.
+
 ## Results
 
 ### Step 1: measured (2026-10-22)

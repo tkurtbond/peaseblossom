@@ -77,6 +77,8 @@ MODULE VaxEncoder;
     errors: INTEGER;
     line, column: INTEGER; (* the source position of the line being encoded *)
     routine: VaxImage.Routine; (* the routine being encoded, NIL outside one *)
+    asideSection: VaxImage.Section; (* the section EncodeAside wrote last, NIL before *)
+    asideSize: LONGINT; (* its size then *)
 
   PROCEDURE Error(message, detail: ARRAY OF CHAR);
   BEGIN
@@ -612,14 +614,21 @@ MODULE VaxEncoder;
     END
   END AddDataSymbol;
 
-  (* The object module the lines from first on make; NIL, with an error
-     reported, if they cannot be encoded *)
-  PROCEDURE Encode*(first: VaxInstructions.Line): VaxImage.Module;
-    VAR l: VaxInstructions.Line; b: INTEGER; f: Fixup; s: VaxImage.Section;
+  (* A new object module begun, for EncodeLines, EncodeAside, PlaceAside
+     and Finish to make *)
+  PROCEDURE Begin*;
+    VAR b: INTEGER; s: VaxImage.Section;
   BEGIN
     module := VaxImage.NewModule(); current := NIL; fixups := NIL; transfer := NIL; errors := 0; routine := NIL;
+    asideSection := NIL; asideSize := 0;
     FOR b := 0 TO buckets - 1 DO labels[b] := NIL END;
-    s := VaxImage.AddSection(module, absoluteSection, 0, {}); (* MACRO's, for the symbols of "==" *)
+    s := VaxImage.AddSection(module, absoluteSection, 0, {}) (* MACRO's, for the symbols of "==" *)
+  END Begin;
+
+  (* The lines from first on, encoded into the module begun *)
+  PROCEDURE EncodeLines*(first: VaxInstructions.Line);
+    VAR l: VaxInstructions.Line;
+  BEGIN
     l := first;
     WHILE l # NIL DO
       line := l.line; column := l.column;
@@ -650,7 +659,51 @@ MODULE VaxEncoder;
       | VaxInstructions.dataSymbol: AddDataSymbol(l)
       END;
       l := l.next
+    END
+  END EncodeLines;
+
+  (* The lines from first on encoded ahead of their place, at the end of
+     the program section called section, which the module has begun, and
+     the symbols they define held aside until PlaceAside, so that the
+     module's symbols stay in the order of its MACRO-32 (VaxImage.
+     LastDefinedSymbol). The program section in use is unchanged.
+     VaxCodeGenerator encodes each procedure so as soon as it is written
+     (doc/developer/vms-memory.md, step 6): the bytes are the same as at
+     their place as long as nothing is put in section in between, which
+     PlaceAside checks. *)
+  PROCEDURE EncodeAside*(first: VaxInstructions.Line; section: ARRAY OF CHAR);
+    VAR resumed: VaxImage.Section;
+  BEGIN
+    resumed := current;
+    current := VaxImage.FindSection(module, section);
+    IF current = NIL THEN
+      line := first.line; column := first.column;
+      Error("the VAX encoder found lines for a program section not yet begun", section)
+    ELSE
+      VaxImage.BeginAside(module);
+      EncodeLines(first);
+      VaxImage.EndAside(module);
+      asideSection := current; asideSize := current.size
     END;
+    current := resumed
+  END EncodeAside;
+
+  (* The symbols EncodeAside held, defined here, in the order they were
+     defined; an error if their section grew after them *)
+  PROCEDURE PlaceAside*;
+  BEGIN
+    IF (asideSection # NIL) & (asideSection.size # asideSize) THEN
+      line := 0; column := 0;
+      Error("the VAX encoder found lines encoded ahead of others before them in", asideSection.name)
+    END;
+    VaxImage.PlaceAside(module)
+  END PlaceAside;
+
+  (* The object module begun, its references resolved; NIL, with an error
+     reported, if its lines could not be encoded *)
+  PROCEDURE Finish*(): VaxImage.Module;
+    VAR f: Fixup; b: INTEGER;
+  BEGIN
     f := fixups;
     WHILE f # NIL DO Resolve(f); f := f.next END;
     IF transfer # NIL THEN
@@ -658,8 +711,18 @@ MODULE VaxEncoder;
       ELSE Error("the VAX encoder found a transfer address that is not a label", transfer.name)
       END
     END;
+    fixups := NIL; transfer := NIL;
+    FOR b := 0 TO buckets - 1 DO labels[b] := NIL END;
     IF errors > 0 THEN RETURN NIL END;
     RETURN module
+  END Finish;
+
+  (* The object module the lines from first on make; NIL, with an error
+     reported, if they cannot be encoded *)
+  PROCEDURE Encode*(first: VaxInstructions.Line): VaxImage.Module;
+  BEGIN
+    Begin; EncodeLines(first);
+    RETURN Finish()
   END Encode;
 
 END VaxEncoder.

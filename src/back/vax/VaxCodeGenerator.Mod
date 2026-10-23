@@ -125,7 +125,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Names, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    ModuleInterface, DecimalToDouble, MethodSlots, VaxTypes, VaxImage, VaxInstructions, NestedProcedures;
+    ModuleInterface, DecimalToDouble, MethodSlots, VaxTypes, VaxImage, VaxInstructions, VaxEncoder, NestedProcedures;
 
   CONST
     tab = 9X;
@@ -343,6 +343,11 @@ MODULE VaxCodeGenerator;
        descriptor, which its initializer registers (section 19.5,
        proposals 2 to 4); set by the driver before any module is written *)
     withModules*: BOOLEAN;
+    (* an object or image is wanted, so VaxEncoder encodes each module's
+       lines as they are written, and drops them unless keepLines, when
+       its MACRO-32 is wanted too (doc/developer/vms-memory.md, step 6);
+       set by the driver before a module is written *)
+    encodeAsWritten*, keepLines*: BOOLEAN;
 
     (* the module being generated *)
     module: SyntaxTree.ModuleNode;
@@ -385,6 +390,7 @@ MODULE VaxCodeGenerator;
     descriptors: TypeDescriptor; (* in the order they were needed *)
     descriptorCount: INTEGER; (* the labels L_TD_<n> and L_AD_<n> made *)
     code, codeLast: Instruction; (* the procedures, written before the initializer *)
+    outEncoded: Instruction; (* the last line of out encoded, NIL before the first or when out is dropped *)
     (* the module-level or type-bound procedure being generated, as the
        root of the tree of those nested in it, and their symbols; NIL
        outside one (section 14, item 8) *)
@@ -437,6 +443,29 @@ MODULE VaxCodeGenerator;
   BEGIN
     WHILE first # NIL DO AppendOut(first); first := first.next END
   END PutLines;
+
+  (* The lines out has gained since the last call, encoded, when
+     encodeAsWritten, and dropped unless keepLines *)
+  PROCEDURE EncodeOut;
+  BEGIN
+    IF encodeAsWritten THEN
+      IF outEncoded = NIL THEN VaxEncoder.EncodeLines(out) ELSE VaxEncoder.EncodeLines(outEncoded.next) END;
+      IF keepLines THEN outEncoded := outLast ELSE out := NIL; outLast := NIL END
+    END
+  END EncodeOut;
+
+  (* A procedure's lines, from lines to linesLast, at the end of the
+     module's procedures: encoded at once, ahead of their place, when
+     encodeAsWritten (VaxEncoder.EncodeAside), and kept unless only the
+     encoding is wanted *)
+  PROCEDURE AddProcedure(lines, linesLast: Instruction);
+  BEGIN
+    IF encodeAsWritten THEN VaxEncoder.EncodeAside(lines, "POC_CODE") END;
+    IF ~encodeAsWritten OR keepLines THEN
+      IF code = NIL THEN code := lines ELSE codeLast.next := lines END;
+      codeLast := linesLast
+    END
+  END AddProcedure;
 
   PROCEDURE Uppercase(s: ARRAY OF CHAR; VAR u: ARRAY OF CHAR);
     VAR i: INTEGER; ch: CHAR;
@@ -6504,8 +6533,7 @@ MODULE VaxCodeGenerator;
     Add(VaxInstructions.RoutineProlog());
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
     Add(VaxInstructions.RoutineEnd());
-    IF code = NIL THEN code := first ELSE codeLast.next := first END;
-    codeLast := last
+    AddProcedure(first, last)
   END Body;
 
   (* A procedure of the module, and the procedures nested in it (section
@@ -6830,8 +6858,7 @@ MODULE VaxCodeGenerator;
     Add(VaxInstructions.RoutineProlog());
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
     Add(VaxInstructions.RoutineEnd());
-    IF code = NIL THEN code := first ELSE codeLast.next := first END;
-    codeLast := last
+    AddProcedure(first, last)
   END InitProcedure;
 
   (* Every initialization procedure wanted and not yet written, into the
@@ -7420,7 +7447,8 @@ MODULE VaxCodeGenerator;
   END CallImports;
 
   (* module as MACRO-32 lines, ModuleLines' (which VaxInstructions.PrintAll
-     prints and VaxEncoder encodes); scope is its scope after checking, key its
+     prints), and, when encodeAsWritten, encoded as they are written, for
+     VaxEncoder.Finish; scope is its scope after checking, key its
      .sym's (ModuleInterface.KeyOf), or empty, carried in .IDENT so that a
      map or ANALYZE/OBJECT shows which .sym the object was built from, and
      in the symbol its importers refer to (section 5.1). The main module,
@@ -7442,7 +7470,7 @@ MODULE VaxCodeGenerator;
     nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; initRecords := NIL; anonymousInits := 0; code := NIL; codeLast := NIL;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
-    out := NIL; outLast := NIL; NEW(pending, 256); pending[0] := 0X; pendingLength := 0;
+    out := NIL; outLast := NIL; outEncoded := NIL; NEW(pending, 256); pending[0] := 0X; pendingLength := 0;
     VaxInstructions.SetPosition(0, 0);
     IF ~VaxTypes.MakeInitSymbol(module.name^, init) THEN
       Diagnostics.Error(module.line, module.column,
@@ -7473,6 +7501,8 @@ MODULE VaxCodeGenerator;
     hasRoots := ok & WriteRoots();
     IF hasRoots THEN AddExternal("POC_ROOTS") END;
     IF withModules THEN AddExternal("POC_MODULE") END;
+    IF encodeAsWritten THEN VaxEncoder.Begin END;
+    EncodeOut; (* the header, before the procedures are encoded after it *)
     CollectDescriptors;
     Procedures;
     InitProcedures;
@@ -7522,11 +7552,13 @@ MODULE VaxCodeGenerator;
     END;
     WriteDescriptors;
     IF withModules THEN WriteModuleDescriptor END;
+    IF encodeAsWritten THEN EncodeOut; VaxEncoder.PlaceAside END;
     IF code # NIL THEN
       EndLine;
       PutText("; the module's procedures"); EndLine;
       Psect("POC_CODE", "");
-      PutLines(code)
+      PutLines(code);
+      IF encodeAsWritten THEN outEncoded := outLast END (* encoded already *)
     END;
     EndLine;
     PutText("; the module's initializer: once only"); EndLine;
@@ -7597,11 +7629,13 @@ MODULE VaxCodeGenerator;
       EndLine;
       AppendOut(VaxInstructions.Directive(".END"))
     END;
+    EncodeOut;
     RETURN TRUE
   END GenerateModule;
 
   (* The lines of the module GenerateModule wrote last, for the encoder
-     (PLAN.md Phase 18 step 3) *)
+     (PLAN.md Phase 18 step 3) or the printer; none when encodeAsWritten
+     and not keepLines *)
   PROCEDURE ModuleLines*(): VaxInstructions.Line;
   BEGIN
     RETURN out

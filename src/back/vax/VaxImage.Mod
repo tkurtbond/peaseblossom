@@ -166,6 +166,7 @@ MODULE VaxImage;
       routines, lastRoutine: Routine;
       variables, lastVariable: Variable; (* the module's own, outside any routine *)
       symbols: Symbol;
+      aside: Symbol; (* defined ahead of their place, the last one first: BeginAside *)
       references: Reference;
       transferSection*: Section; (* NIL when the module has no transfer address *)
       transferOffset*: LONGINT
@@ -176,7 +177,7 @@ MODULE VaxImage;
   BEGIN
     NEW(m); m.name := ""; m.ident := ""; m.sections := NIL; m.lastSection := NIL;
     m.routines := NIL; m.lastRoutine := NIL; m.variables := NIL; m.lastVariable := NIL;
-    m.symbols := NIL; m.references := NIL; m.transferSection := NIL; m.transferOffset := 0;
+    m.symbols := NIL; m.aside := NIL; m.references := NIL; m.transferSection := NIL; m.transferOffset := 0;
     RETURN m
   END NewModule;
 
@@ -272,6 +273,31 @@ MODULE VaxImage;
     y.entry := FALSE; y.mask := 0; y.next := m.symbols; m.symbols := y;
     RETURN y
   END AddSymbol;
+
+  (* The symbols AddSymbol adds from now until EndAside held aside, after
+     those held before, for PlaceAside to put where they belong in the
+     order they are defined (LastDefinedSymbol) *)
+  PROCEDURE BeginAside*(m: Module);
+    VAR y: Symbol;
+  BEGIN
+    y := m.symbols; m.symbols := m.aside; m.aside := y
+  END BeginAside;
+
+  PROCEDURE EndAside*(m: Module);
+  BEGIN
+    BeginAside(m) (* the same exchange, back *)
+  END EndAside;
+
+  (* The symbols held aside, defined now, after those defined so far *)
+  PROCEDURE PlaceAside*(m: Module);
+    VAR y: Symbol;
+  BEGIN
+    IF m.aside # NIL THEN
+      y := m.aside;
+      WHILE y.next # NIL DO y := y.next END;
+      y.next := m.symbols; m.symbols := m.aside; m.aside := NIL
+    END
+  END PlaceAside;
 
   (* An entry point m defines, with its register mask *)
   PROCEDURE AddEntry*(m: Module; name: ARRAY OF CHAR; section: Section; value, mask: LONGINT);

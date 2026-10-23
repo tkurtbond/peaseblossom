@@ -12,7 +12,9 @@ names, `VaxCodeGenerator.Mod` writes a module's `.mar` as the lines of
 (section 13). Phase 18 (`doc/developer/vax-object-language.md`) adds
 the object written directly: `VaxImage.Mod` holds a module as the linker
 sees it, `VaxOpcodes.Mod` and `VaxEncoder.Mod` encode the lines into one
-(step 3), and `VaxObjectWriter.Mod` writes its records (step 4) through
+(step 3; each procedure's as soon as it is written, and the lines then
+dropped unless MACRO-32 is wanted too: `doc/developer/vms-memory.md`,
+step 6), and `VaxObjectWriter.Mod` writes its records (step 4) through
 `ObjectRecords`, whose two implementations are in `host/`, for poc
 built for Linux and the BSDs, and `vms/`, for poc built for VMS, each
 chosen by the import path.

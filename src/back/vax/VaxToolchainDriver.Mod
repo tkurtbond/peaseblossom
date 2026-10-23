@@ -195,13 +195,14 @@ MODULE VaxToolchainDriver;
     e.next := encoded; encoded := e
   END RememberSymbols;
 
-  (* The module GenerateModule wrote last, encoded, and written as its
-     image, its object or both, as writeImage and writeObject say: FALSE if
-     the encoder reported an error or a file could not be written *)
+  (* The module GenerateModule wrote last, as it encoded it, written as
+     its image, its object or both, as writeImage and writeObject say:
+     FALSE if the encoder reported an error or a file could not be
+     written *)
   PROCEDURE WriteEncoded(moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
     VAR image: VaxImage.Module;
   BEGIN
-    image := VaxEncoder.Encode(VaxCodeGenerator.ModuleLines());
+    image := VaxEncoder.Finish();
     IF image # NIL THEN RememberSymbols(image, moduleName) END;
     RETURN (image # NIL) & (~writeImage OR WriteImage(image, moduleName, outputDir))
       & (~writeObject OR WriteObject(image, moduleName, outputDir))
@@ -232,6 +233,8 @@ MODULE VaxToolchainDriver;
     VAR ok: BOOLEAN;
   BEGIN
     ModuleOutputPath(outputDir, module.name^, path);
+    VaxCodeGenerator.encodeAsWritten := writeImage OR writeObject;
+    VaxCodeGenerator.keepLines := writeMacro;
     ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain)
       & (~writeMacro OR WriteMacro32(module.name^, outputDir))
       & (~(writeImage OR writeObject) OR WriteEncoded(module.name^, outputDir));
