@@ -32,7 +32,7 @@ MODULE ConstantEvaluator;
      and duplicating the magnitude/overflow logic there would risk the
      two silently drifting apart. *)
 
-  IMPORT SYSTEM, SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout, DecimalToDouble;
+  IMPORT SYSTEM, Names, SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout, DecimalToDouble;
 
   CONST
     maxHugeInt = MAX(LONGINT); (* Really means MAX(HUGEINT) - HUGEINT is
@@ -396,10 +396,10 @@ MODULE ConstantEvaluator;
   PROCEDURE FindQualifiedConst(scope: SymbolTable.Scope; d: SyntaxTree.Designator): SymbolTable.Object;
     VAR modObj: SymbolTable.Object;
   BEGIN
-    IF d.qualifier[0] = 0X THEN RETURN SymbolTable.Find(scope, d.name) END;
-    modObj := SymbolTable.Find(scope, d.qualifier);
+    IF d.qualifier[0] = 0X THEN RETURN SymbolTable.Find(scope, Names.Intern(d.name)) END;
+    modObj := SymbolTable.Find(scope, Names.Intern(d.qualifier));
     IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
-    RETURN SymbolTable.FindLocal(modObj.moduleScope, d.name)
+    RETURN SymbolTable.FindLocal(modObj.moduleScope, Names.Intern(d.name))
   END FindQualifiedConst;
 
   (* MAX(T)/MIN(T)/SIZE(T)'s argument position holds a bare *type* name,
@@ -1022,7 +1022,7 @@ MODULE ConstantEvaluator;
     IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier[0] # 0X) OR (d.name # "LEN") THEN
       RETURN FALSE
     END;
-    obj := SymbolTable.Find(scope, d.name);
+    obj := SymbolTable.Find(scope, Names.Intern(d.name));
     RETURN (obj # NIL) & (obj.type = Types.PredeclaredProcedureType)
   END IsLenCall;
 
@@ -1045,7 +1045,7 @@ MODULE ConstantEvaluator;
   BEGIN
     d := expr.designator;
     IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier[0] = 0X) OR (d.name # name) THEN RETURN FALSE END;
-    modObj := SymbolTable.Find(scope, d.qualifier);
+    modObj := SymbolTable.Find(scope, Names.Intern(d.qualifier));
     RETURN (modObj # NIL) & (modObj.class = SymbolTable.moduleClass)
            & (modObj.moduleScope = SymbolTable.SystemScope)
   END IsSystemCall;
@@ -1080,20 +1080,20 @@ MODULE ConstantEvaluator;
       RETURN UndefinedValue()
     END;
     IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X) & (d.name = "ASH") THEN
-      obj := SymbolTable.Find(scope, d.name);
+      obj := SymbolTable.Find(scope, Names.Intern(d.name));
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
         RETURN EvaluateAsh(expr.args, scope, expr.line, expr.column)
       END
     END;
     IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X) & IsValueFunctionName(d.name) THEN
-      obj := SymbolTable.Find(scope, d.name);
+      obj := SymbolTable.Find(scope, Names.Intern(d.name));
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
         RETURN EvaluateValueFunction(d.name, expr.args, scope, expr.line, expr.column)
       END
     END;
     IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X)
         & ((d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE")) THEN
-      obj := SymbolTable.Find(scope, d.name);
+      obj := SymbolTable.Find(scope, Names.Intern(d.name));
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
         RETURN EvaluateTypeBoundCall(d.name, expr.args, scope, expr.line, expr.column)
       END
@@ -2380,7 +2380,7 @@ MODULE ConstantEvaluator;
     IF d.selectors # NIL THEN RETURN FALSE END;
     IF expr.hasParens THEN
       IF d.qualifier[0] # 0X THEN RETURN IsConstantSystemVal(expr, scope) END;
-      obj := SymbolTable.Find(scope, d.name);
+      obj := SymbolTable.Find(scope, Names.Intern(d.name));
       IF (obj = NIL) OR (obj.type # Types.PredeclaredProcedureType) THEN RETURN FALSE END;
       IF (d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE") THEN
         RETURN (expr.args # NIL) & (expr.args.next = NIL) & (LookupBareTypeName(scope, expr.args) # NIL)

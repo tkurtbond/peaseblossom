@@ -32,7 +32,7 @@ MODULE SymbolTable;
      and externalConvention/externalName (procClass only: set only for
      an external procedure declaration - AGENTS.md's "External
      procedures" - so a later backend can find the linkage info without
-     re-walking the AST; both stay empty otherwise).
+     re-walking the AST; both stay NIL otherwise).
 
      PLAN.md Phase 7 adds moduleClass: an Object bound to an IMPORTed
      module's own name (or its "ident :=" alias), one per entry in a
@@ -50,7 +50,7 @@ MODULE SymbolTable;
      for Object.exported by the caller (SemanticActions.FindQualified
      does); the scope is no longer exported-only by construction. *)
 
-  IMPORT SyntaxTree, Types, Diagnostics;
+  IMPORT Names, SyntaxTree, Types, Diagnostics;
 
   CONST
     constClass* = 0; typeClass* = 1; varClass* = 2; procClass* = 3;
@@ -73,7 +73,7 @@ MODULE SymbolTable;
 
     Object* = POINTER TO ObjectDesc;
     ObjectDesc* = RECORD
-      name*: SyntaxTree.Ident;
+      name*: Names.Name;
       class*: INTEGER;
       type*: Types.Type;
       value*: Types.Value; (* meaningful only when class = constClass *)
@@ -115,9 +115,9 @@ MODULE SymbolTable;
         parameters"), set as isVarParam is. SemanticActions.CheckDesignator
         makes it, and every part of it, read-only, as readOnly does an
         imported variable. *)
-      externalConvention*, externalName*: SyntaxTree.Ident; (* procClass only; see above *)
+      externalConvention*, externalName*: Names.Name; (* procClass only; see above *)
       moduleScope*: Scope; (* moduleClass only; see above *)
-      realModuleName*: SyntaxTree.Ident; (* moduleClass only: the module's
+      realModuleName*: Names.Name; (* moduleClass only: the module's
         own real name, distinct from .name (the possibly-aliased local
         binding, "ident :=" ImportList syntax) whenever an alias was
         used - ModuleInterface.Mod's writer needs this to re-emit a
@@ -194,7 +194,7 @@ MODULE SymbolTable;
     RETURN scope.outer
   END CloseScope;
 
-  PROCEDURE FindLocal*(scope: Scope; name: SyntaxTree.Ident): Object;
+  PROCEDURE FindLocal*(scope: Scope; name: Names.Name): Object;
     VAR o: Object;
   BEGIN
     o := scope.objects;
@@ -202,7 +202,7 @@ MODULE SymbolTable;
     RETURN o
   END FindLocal;
 
-  PROCEDURE Find*(scope: Scope; name: SyntaxTree.Ident): Object;
+  PROCEDURE Find*(scope: Scope; name: Names.Name): Object;
     VAR o: Object; s: Scope;
   BEGIN
     s := scope; o := NIL;
@@ -227,13 +227,13 @@ MODULE SymbolTable;
      duplicate, reports the error but still returns a usable Object (a
      second, unlinked one carrying the newly given class/type) so callers
      never need to special-case NIL. *)
-  PROCEDURE Insert*(scope: Scope; name: SyntaxTree.Ident; class: INTEGER;
+  PROCEDURE Insert*(scope: Scope; name: Names.Name; class: INTEGER;
                     type: Types.Type; exported, readOnly: BOOLEAN;
                     line, column: INTEGER): Object;
     VAR o: Object;
   BEGIN
     IF FindLocal(scope, name) # NIL THEN
-      Diagnostics.ErrorAbout(line, column, "identifier already declared in this scope", name)
+      Diagnostics.ErrorAbout(line, column, "identifier already declared in this scope", name^)
     END;
     NEW(o);
     o.name := name; o.class := class; o.type := type;
@@ -241,8 +241,8 @@ MODULE SymbolTable;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
     o.declLine := line; o.declColumn := column;
     o.isForwardProc := FALSE; o.isVarParam := FALSE; o.isReadOnlyParam := FALSE; o.usedAtOtherLevel := FALSE; o.isExtension := FALSE;
-    o.externalConvention[0] := 0X; o.externalName[0] := 0X;
-    o.moduleScope := NIL; o.realModuleName[0] := 0X;
+    o.externalConvention := NIL; o.externalName := NIL;
+    o.moduleScope := NIL; o.realModuleName := NIL;
     o.next := scope.objects; scope.objects := o;
     RETURN o
   END Insert;
@@ -259,10 +259,9 @@ MODULE SymbolTable;
   END DeclaredAtOrAfter;
 
   PROCEDURE InsertPredeclared(name: ARRAY OF CHAR; type: Types.Type);
-    VAR ident: SyntaxTree.Ident; o: Object;
+    VAR o: Object;
   BEGIN
-    COPY(name, ident);
-    o := Insert(Universe, ident, typeClass, type, FALSE, FALSE, 0, 0)
+    o := Insert(Universe, Names.Intern(name), typeClass, type, FALSE, FALSE, 0, 0)
   END InsertPredeclared;
 
   (* Oberon2.pdf §10.3's full predeclared-procedure vocabulary (PLAN.md
@@ -274,41 +273,37 @@ MODULE SymbolTable;
      comment), so the type here only needs to mark "this name is one of
      them," never to describe a signature. *)
   PROCEDURE InsertPredeclaredProc(name: ARRAY OF CHAR);
-    VAR ident: SyntaxTree.Ident; o: Object;
+    VAR o: Object;
   BEGIN
-    COPY(name, ident);
-    o := Insert(Universe, ident, procClass, Types.PredeclaredProcedureType, FALSE, FALSE, 0, 0)
+    o := Insert(Universe, Names.Intern(name), procClass, Types.PredeclaredProcedureType, FALSE, FALSE, 0, 0)
   END InsertPredeclaredProc;
 
   PROCEDURE InsertPredeclaredConst(name: ARRAY OF CHAR; type: Types.Type;
                                    boolVal: BOOLEAN);
-    VAR ident: SyntaxTree.Ident; o: Object; v: Types.Value;
+    VAR o: Object; v: Types.Value;
   BEGIN
-    COPY(name, ident);
-    o := Insert(Universe, ident, constClass, type, FALSE, FALSE, 0, 0);
+    o := Insert(Universe, Names.Intern(name), constClass, type, FALSE, FALSE, 0, 0);
     NEW(v); v.type := type; v.kind := Types.boolValue; v.boolVal := boolVal;
     o.value := v
   END InsertPredeclaredConst;
 
   PROCEDURE InsertSystemType(name: ARRAY OF CHAR; type: Types.Type);
-    VAR ident: SyntaxTree.Ident; o: Object;
+    VAR o: Object;
   BEGIN
-    COPY(name, ident);
-    o := Insert(SystemScope, ident, typeClass, type, TRUE, FALSE, 0, 0)
+    o := Insert(SystemScope, Names.Intern(name), typeClass, type, TRUE, FALSE, 0, 0)
   END InsertSystemType;
 
   (* The name, already inserted in scope, is poc's extension (isExtension). *)
   PROCEDURE MarkExtension(scope: Scope; name: ARRAY OF CHAR);
-    VAR ident: SyntaxTree.Ident; o: Object;
+    VAR o: Object;
   BEGIN
-    COPY(name, ident); o := FindLocal(scope, ident); o.isExtension := TRUE
+    o := FindLocal(scope, Names.Intern(name)); o.isExtension := TRUE
   END MarkExtension;
 
   PROCEDURE InsertSystemProc(name: ARRAY OF CHAR);
-    VAR ident: SyntaxTree.Ident; o: Object;
+    VAR o: Object;
   BEGIN
-    COPY(name, ident);
-    o := Insert(SystemScope, ident, procClass, Types.PredeclaredProcedureType, TRUE, FALSE, 0, 0)
+    o := Insert(SystemScope, Names.Intern(name), procClass, Types.PredeclaredProcedureType, TRUE, FALSE, 0, 0)
   END InsertSystemProc;
 
 BEGIN

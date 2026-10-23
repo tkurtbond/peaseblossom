@@ -901,6 +901,11 @@ Those done while Phase 15 was current, 1-4, are in
 Those done while Phase 18 was current, 5-7, are in
 `doc/history/phases/phase-18.md`.
 
+8.  poc on VAX/VMS needs less memory and a smaller working set (the
+    user, 2026-10-22; left open by Phase 16): what holds poc's memory,
+    and the plan to reduce it in seven steps, measuring first, are in
+    `doc/developer/vms-memory.md`.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on

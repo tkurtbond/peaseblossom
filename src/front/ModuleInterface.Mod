@@ -64,7 +64,7 @@ MODULE ModuleInterface;
      name first - the compiling module's own top-level scope, then
      Universe (predeclared basics/HUGEINT), then each of its own imported
      modules' exported scopes (printed "Alias.Name", re-exporting that
-     import in the written IMPORT line unconditionally - see Write*'s own
+     import in the written IMPORT Names, line unconditionally - see Write*'s own
      comment on why this needn't be a used/unused dry-run pass) - falling
      back to printing the type's structure inline only when no name is
      bound anywhere (an anonymous inline array/record/pointer/procedure
@@ -124,7 +124,7 @@ MODULE ModuleInterface;
      scientific notation, D.DDD followed by a scale factor. Out of scope:
      non-finite values. *)
 
-  IMPORT SYSTEM, SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Directories,
+  IMPORT SYSTEM, Names, SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Directories,
          ConstantEvaluator, DecimalToDouble, Out;
 
   CONST
@@ -998,7 +998,7 @@ MODULE ModuleInterface;
                          & (~requireExported OR o.exported)) DO
       o := o.next
     END;
-    IF o # NIL THEN name := o.name; RETURN TRUE ELSE RETURN FALSE END
+    IF o # NIL THEN Names.GetText(o.name, name); RETURN TRUE ELSE RETURN FALSE END
   END FindInScope;
 
   PROCEDURE IsNeeded(obj: SymbolTable.Object): BOOLEAN;
@@ -1049,7 +1049,7 @@ MODULE ModuleInterface;
              & ((pass = 1) OR (printingDecl = NIL) OR (o = printingDecl)
                 OR DeclaredBefore(o, printingDecl)) THEN
             NeedType(o);
-            name := o.name; RETURN TRUE
+            Names.GetText(o.name, name); RETURN TRUE
           END;
           o := o.next
         END
@@ -1271,7 +1271,7 @@ MODULE ModuleInterface;
     VAR name: ARRAY 512 OF CHAR; pt: Types.PointerType; found: BOOLEAN;
   BEGIN
     printingDecl := obj;
-    WriteStr(w, obj.name);
+    WriteStr(w, obj.name^);
     IF obj.exported THEN
       IF obj.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
     END;
@@ -1304,11 +1304,11 @@ MODULE ModuleInterface;
   BEGIN
     any := FALSE; d := decls;
     WHILE d # NIL DO
-      obj := SymbolTable.FindLocal(scope, d.name.name);
+      obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
       IF (obj # NIL) & obj.exported & (obj.value # NIL)
          & ((obj.value.kind = Types.structuredValue) = structured) THEN
         IF ~any THEN WriteStr(w, "  CONST"); WriteLn(w) END;
-        WriteStr(w, "    "); WriteStr(w, obj.name); WriteStr(w, "* = ");
+        WriteStr(w, "    "); WriteStr(w, obj.name^); WriteStr(w, "* = ");
         IF structured THEN
           PrintStructuredValue(w, scope, obj.value, TRUE, d.line, d.column)
         ELSIF (obj.value.kind = Types.intValue) & Types.IsCardinal(obj.value.type)
@@ -1337,7 +1337,7 @@ MODULE ModuleInterface;
   BEGIN
     any := FALSE; d := decls;
     WHILE d # NIL DO
-      obj := SymbolTable.FindLocal(scope, d.name.name);
+      obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
       IF (obj # NIL) & (obj.exported OR IsNeeded(obj)) THEN
         IF ~any THEN WriteStr(w, "  TYPE"); WriteLn(w) END;
         WriteStr(w, "    "); PrintTypeDecl(w, scope, obj); WriteLn(w);
@@ -1358,10 +1358,10 @@ MODULE ModuleInterface;
     WHILE d # NIL DO
       idents := d.names;
       WHILE idents # NIL DO
-        obj := SymbolTable.FindLocal(scope, idents.name);
+        obj := SymbolTable.FindLocal(scope, Names.Intern(idents.name));
         IF (obj # NIL) & obj.exported THEN
           IF ~any THEN WriteStr(w, "  VAR"); WriteLn(w) END;
-          WriteStr(w, "    "); WriteStr(w, obj.name);
+          WriteStr(w, "    "); WriteStr(w, obj.name^);
           IF obj.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END;
           WriteStr(w, ": "); PrintTypeRef(w, scope, obj.type);
           WriteStr(w, ";"); WriteLn(w);
@@ -1379,7 +1379,7 @@ MODULE ModuleInterface;
     (* The receiver clause names m.receiverTypeName verbatim, so that
        declaration must exist in the file - print it too if it is not
        exported. *)
-    recvObj := SymbolTable.FindLocal(scope, m.receiverTypeName);
+    recvObj := SymbolTable.FindLocal(scope, Names.Intern(m.receiverTypeName));
     IF recvObj # NIL THEN NeedType(recvObj) END;
     IF exportedView THEN WriteStr(w, "  PROCEDURE (") ELSE WriteStr(w, "  PROCEDURE^ (") END;
     IF m.receiverIsVar THEN WriteStr(w, "VAR ") END;
@@ -1446,7 +1446,7 @@ MODULE ModuleInterface;
     done := NIL;
     d := decls;
     WHILE d # NIL DO
-      obj := SymbolTable.FindLocal(scope, d.name.name);
+      obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
       IF (obj # NIL) & (obj.exported OR IsNeeded(obj)) THEN
         rt := RecordOf(obj.type);
         IF (rt # NIL) & ~IsDone(done, rt) THEN
@@ -1480,21 +1480,21 @@ MODULE ModuleInterface;
     d := decls;
     WHILE d # NIL DO
       IF d.receiver = NIL THEN
-        obj := SymbolTable.FindLocal(scope, d.name.name);
+        obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
         IF (obj # NIL) & obj.exported & (obj.class = SymbolTable.procClass)
            & (d.isForward = obj.isForwardProc) THEN
           pt := obj.type(Types.ProcedureType);
-          IF obj.externalConvention[0] # 0X THEN
+          IF obj.externalConvention # NIL THEN
             (* an external procedure keeps its attribute, with the linkage
                name always written, so the importer calls the C symbol and
                not <M>.<name>, which nothing defines (Phase 14's "Ongoing bug
                fixing" 1); it is body-less already, so no "^" *)
-            WriteStr(w, '  PROCEDURE ["'); WriteStr(w, obj.externalConvention);
-            WriteStr(w, '", "'); WriteStr(w, obj.externalName); WriteStr(w, '"] ')
+            WriteStr(w, '  PROCEDURE ["'); WriteStr(w, obj.externalConvention^);
+            WriteStr(w, '", "'); WriteStr(w, obj.externalName^); WriteStr(w, '"] ')
           ELSIF exportedView THEN WriteStr(w, "  PROCEDURE ")
           ELSE WriteStr(w, "  PROCEDURE^ ")
           END;
-          WriteStr(w, obj.name);
+          WriteStr(w, obj.name^);
           WriteStr(w, "*(");
           first := TRUE; p := pt.params;
           WHILE p # NIL DO
@@ -1524,9 +1524,9 @@ MODULE ModuleInterface;
       IF o.class = SymbolTable.moduleClass THEN
         IF ~any THEN WriteStr(w, "  IMPORT ") ELSE WriteSeparator(w, ",") END;
         IF o.name = o.realModuleName THEN
-          WriteStr(w, o.name)
+          WriteStr(w, o.name^)
         ELSE
-          WriteStr(w, o.name); WriteStr(w, " := "); WriteStr(w, o.realModuleName)
+          WriteStr(w, o.name^); WriteStr(w, " := "); WriteStr(w, o.realModuleName^)
         END;
         any := TRUE
       END;

@@ -7,6 +7,9 @@ etc.).
 
 - `Diagnostics.Mod` (Phase 1): error reporting with source positions.
 - `Lexer.Mod` (Phase 1): scanner for the full Oberon-2 vocabulary (§3).
+- `Names.Mod` (`doc/developer/vms-memory.md`, step 4): identifiers interned,
+  one copy of each, so that equal names are the same pointer; NIL is the
+  empty name.
 - `SyntaxTree.Mod` (Phase 2): untyped AST node types for Appendix B,
   related via record extension (`StatementNode`, `ExprNode`, `TypeNode`
   are each an extensible family).

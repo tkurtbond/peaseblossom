@@ -1736,6 +1736,10 @@ MODULE GarbageCollectedHeap;
     (* called with an object the collector found unreachable (RegisterFinalizer) *)
     Finalizer* = PROCEDURE(obj: SYSTEM.PTR);
 
+    (* called with each allocated block's tag, data bytes and block bytes
+       (Census); types a program in strict Oberon2.pdf can name *)
+    CensusVisitor* = PROCEDURE(tag: SYSTEM.PTR; dataBytes: LONGINT; blockBytes: LONGINT);
+
   (* One full collection: roots, then the machine stack, then whatever
      they reach, then the sweep. Called by Allocate when it has run out
      of room, and directly by anything that wants one. *)
@@ -1773,6 +1777,17 @@ MODULE GarbageCollectedHeap;
 
   (* TRUE if address lies anywhere inside a block that is allocated now. *)
   PROCEDURE IsAllocated*(address: SYSTEM.ADDRESS): BOOLEAN;
+
+  (* The tag word of obj, an object on this heap: NIL, or its type
+     descriptor, the same for every record of one type. *)
+  PROCEDURE TagOf*(obj: SYSTEM.PTR): SYSTEM.PTR;
+
+  (* A collection, then visit called with each block still allocated, in
+     address order: its tag word (as TagOf), the object's data size and
+     the whole block's size in bytes. visit must not allocate. For
+     measuring what holds a program's memory (doc/developer/vms-memory.md,
+     step 1). *)
+  PROCEDURE Census*(visit: CensusVisitor);
 
   (* Finalizes every object pending or still registered, newest first,
      reachable or not, and those their finalizers register in turn: voc's

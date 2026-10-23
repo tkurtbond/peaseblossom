@@ -64,11 +64,11 @@ MODULE Poc;
      only what a command was asked to produce - a dump, an interface, the
      import path, the "syntax OK"/"semantic OK" lines, -help's list. *)
 
-  IMPORT Modules, Files, Out, Err, Platform, Directories, Lexer, Diagnostics, Parser, SyntaxTree,
+  IMPORT Names, Modules, Files, Out, Err, Platform, Directories, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
          ConstantEvaluator, PredeclaredProcedures, ModuleLists, LLVMBackEnd,
          DecimalToDouble, NestedProcedures, VaxTypes, VaxCodeGenerator, VaxToolchainDriver,
-         Libraries, Version, BuildInfo;
+         Libraries, MemoryCensus, Version, BuildInfo;
   (* LLVMBackEnd is src/driver/llvm's, or for a poc that runs on VAX/VMS
      src/driver/no-llvm's, which has no LLVM back end (Phase 17 step 7;
      doc/developer/vax-macro32-backend.md, section 21, proposal 8): the
@@ -1637,6 +1637,8 @@ MODULE Poc;
     END;
     m := modules; written := TRUE;
     COPY(Diagnostics.fileName, savedFileName);
+    (* doc/developer/vms-memory.md, step 1b: nothing unless asked for *)
+    MemoryCensus.Take("every module checked");
     WHILE m # NIL DO
       IF IsVaxUnit(m, onlyMembers) THEN
         IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
@@ -1645,7 +1647,8 @@ MODULE Poc;
         (* the program's main module is the last, as on LLVM *)
         IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, ~onlyMembers & (m.next = NIL), path) THEN
           written := FALSE
-        END
+        END;
+        MemoryCensus.Take(m.module.name)
       END;
       m := m.next
     END;
@@ -2415,7 +2418,7 @@ MODULE Poc;
       ELSIF module.declarations # NIL THEN
         d := module.declarations.typeDecls;
         WHILE d # NIL DO
-          obj := SymbolTable.FindLocal(scope, d.name.name);
+          obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
           PrintLayoutLine(d.name.name, obj.type);
           IF (obj.type # NIL) & (obj.type IS Types.RecordType) THEN
             PrintFieldLines(obj.type(Types.RecordType))
@@ -2466,7 +2469,7 @@ MODULE Poc;
       ELSIF module.declarations # NIL THEN
         d := module.declarations.typeDecls;
         WHILE d # NIL DO
-          obj := SymbolTable.FindLocal(scope, d.name.name);
+          obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
           PrintLLVMTypeLine(d.name.name, obj.type);
           d := d.next
         END
@@ -2503,11 +2506,11 @@ MODULE Poc;
       bodyScope: SymbolTable.Scope;
   BEGIN
     IF pd.receiver = NIL THEN
-      obj := SymbolTable.FindLocal(scope, pd.name.name);
+      obj := SymbolTable.FindLocal(scope, Names.Intern(pd.name.name));
       pt := obj.type(Types.ProcedureType);
       bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, NIL, pt)
     ELSE
-      typeObj := SymbolTable.FindLocal(scope, pd.receiver.typeName);
+      typeObj := SymbolTable.FindLocal(scope, Names.Intern(pd.receiver.typeName));
       method := Types.FindOwnMethod(ReceiverRecord(typeObj.type), pd.name.name);
       bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, typeObj.type, method.procType)
     END;
@@ -2518,7 +2521,7 @@ MODULE Poc;
       need := np.needs;
       IF need = NIL THEN Out.String(" (none)") END;
       WHILE need # NIL DO
-        Out.String(" "); Out.String(need.owner.pathName); Out.String("."); Out.String(need.obj.name);
+        Out.String(" "); Out.String(need.owner.pathName); Out.String("."); Out.String(need.obj.name^);
         need := need.next
       END;
       Out.Ln;
@@ -2615,7 +2618,7 @@ MODULE Poc;
       ELSIF module.declarations # NIL THEN
         d := module.declarations.typeDecls;
         WHILE d # NIL DO
-          obj := SymbolTable.FindLocal(scope, d.name.name);
+          obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
           PrintVaxTypeLine(d.name.name, obj.type);
           d := d.next
         END
@@ -2730,7 +2733,7 @@ MODULE Poc;
             ELSIF ~p.isForward THEN
               COPY(module.name, full); Strcat(full, ".");
               IF p.receiver # NIL THEN
-                typeObj := SymbolTable.FindLocal(scope, p.receiver.typeName); rec := NIL;
+                typeObj := SymbolTable.FindLocal(scope, Names.Intern(p.receiver.typeName)); rec := NIL;
                 IF typeObj # NIL THEN rec := ReceiverRecord(typeObj.type) END;
                 IF rec # NIL THEN Strcat(full, rec.name) ELSE Strcat(full, p.receiver.typeName) END;
                 Strcat(full, ".")

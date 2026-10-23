@@ -19,3 +19,8 @@ place of an `rtl/llvm` one that voc cannot compile.
   `Platform`, which has no such procedures: `IsDirectory` changes to the
   directory and back, and `MakeDirectory` runs `mkdir -p`. poc's own
   source names its files and directories through it (Phase 16 step 4).
+- `GarbageCollectedHeap.Mod` - the part of `rtl/llvm/GarbageCollectedHeap.Mod`
+  poc's own source uses (`CensusVisitor`, `TagOf`, `Census`, `HeapBytes`), for
+  `src/driver/MemoryCensus.Mod` (`doc/developer/vms-memory.md`, step 1b).
+  voc's collector is its own, so here `Census` visits nothing and the
+  voc-built poc's census is empty.

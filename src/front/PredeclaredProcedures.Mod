@@ -44,7 +44,7 @@ MODULE PredeclaredProcedures;
      need only the *shape*, not a real size), each an explicit, narrow
      scope boundary noted at its own call site below. *)
 
-  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer;
+  IMPORT Names, SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer;
 
   TYPE
     CheckExprProc* = PROCEDURE(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
@@ -89,11 +89,11 @@ MODULE PredeclaredProcedures;
        header comment on why that lookup is duplicated here rather than
        injected. *)
     IF de.designator.qualifier[0] = 0X THEN
-      obj := SymbolTable.Find(scope, de.designator.name)
+      obj := SymbolTable.Find(scope, Names.Intern(de.designator.name))
     ELSE
-      modObj := SymbolTable.Find(scope, de.designator.qualifier);
+      modObj := SymbolTable.Find(scope, Names.Intern(de.designator.qualifier));
       IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
-      obj := SymbolTable.FindLocal(modObj.moduleScope, de.designator.name)
+      obj := SymbolTable.FindLocal(modObj.moduleScope, Names.Intern(de.designator.name))
     END;
     IF (obj # NIL) & obj.isExtension THEN (* -strict: MAX(HUGEINT), SIZE(SYSTEM.INT32) *)
       IF de.designator.qualifier[0] # 0X THEN

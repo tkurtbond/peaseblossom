@@ -185,6 +185,9 @@ MODULE GarbageCollectedHeap;
   TYPE
     (* called with an object the collector found unreachable (RegisterFinalizer) *)
     Finalizer* = PROCEDURE (obj: SYSTEM.PTR);
+    (* called with each allocated block's tag, data bytes and block bytes
+       (Census); types a program in strict Oberon2.pdf can name *)
+    CensusVisitor* = PROCEDURE (tag: SYSTEM.PTR; dataBytes, blockBytes: LONGINT);
     ExitHandler = PROCEDURE;
 
   PROCEDURE ["C", "calloc"] CAllocate(count, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
@@ -859,6 +862,39 @@ MODULE GarbageCollectedHeap;
     IF block = 0 THEN RETURN FALSE END;
     RETURN IsInUse(GetWord(block))
   END IsAllocated;
+
+  (* The tag word of obj, an object on this heap: NIL, or its type
+     descriptor, the same for every record of one type. *)
+  PROCEDURE TagOf*(obj: SYSTEM.PTR): SYSTEM.PTR;
+  BEGIN
+    RETURN SYSTEM.VAL(SYSTEM.PTR, GetWord(SYSTEM.VAL(SYSTEM.ADDRESS, obj) - word))
+  END TagOf;
+
+  (* A collection, then visit called with each block still allocated, in
+     address order: its tag word (as TagOf), the object's data size and
+     the whole block's size in bytes. visit must not allocate. For
+     measuring what holds a program's memory (doc/developer/vms-memory.md,
+     step 1). *)
+  PROCEDURE Census*(visit: CensusVisitor);
+    VAR chunk, block, end, header: SYSTEM.ADDRESS;
+  BEGIN
+    Collect;
+    chunk := chunkHead;
+    WHILE chunk # 0 DO
+      block := ChunkField(chunk, chunkFirstBlock);
+      end := ChunkField(chunk, chunkBump);
+      WHILE end - block > 0 DO
+        header := GetWord(block);
+        IF IsInUse(header) THEN
+          visit(SYSTEM.VAL(SYSTEM.PTR, GetWord(block + word)),
+            SYSTEM.VAL(LONGINT, header DIV sizeUnit),
+            SYSTEM.VAL(LONGINT, BlockBytesOf(header)))
+        END;
+        block := block + BlockBytesOf(header)
+      END;
+      chunk := ChunkField(chunk, chunkNext)
+    END
+  END Census;
 
   (* ---- finalization, the public interface ---- *)
 

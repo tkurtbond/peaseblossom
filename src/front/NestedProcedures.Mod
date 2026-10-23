@@ -58,7 +58,7 @@ MODULE NestedProcedures;
      rather than themselves from inside a WITH branch (CheckExpr's comment in
      SemanticActions.Mod: a voc bug rejects the literal self-call). *)
 
-  IMPORT SyntaxTree, Types, SymbolTable, SemanticActions;
+  IMPORT Names, SyntaxTree, Types, SymbolTable, SemanticActions;
 
   CONST
     pathLength = 512;
@@ -153,7 +153,7 @@ MODULE NestedProcedures;
       d := np.decl.declarations.procDecls;
       WHILE d # NIL DO
         IF ~d.isForward & ~d.isExternal & (d.receiver = NIL) THEN
-          obj := SymbolTable.FindLocal(np.scope, d.name.name);
+          obj := SymbolTable.FindLocal(np.scope, Names.Intern(d.name.name));
           pt := obj.type(Types.ProcedureType);
           child := NewProc(np.root, np, d, obj, pt, SemanticActions.OpenProcedureBodyScope(d, np.scope, NIL, pt));
           BuildChildren(child)
@@ -220,7 +220,7 @@ MODULE NestedProcedures;
   BEGIN
     scope := np.scope; obj := NIL;
     WHILE (scope # NIL) & (obj = NIL) DO
-      obj := SymbolTable.FindLocal(scope, name);
+      obj := SymbolTable.FindLocal(scope, Names.Intern(name));
       IF obj = NIL THEN scope := scope.outer END
     END;
     IF obj # NIL THEN

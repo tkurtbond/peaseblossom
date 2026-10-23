@@ -15,8 +15,8 @@ CONFORMANCE_DIR := test/conformance
 FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod) $(wildcard src/back/vax/host/*.Mod)
-DRIVER_SRCS := src/driver/Version.Mod src/driver/Libraries.Mod src/driver/llvm/LLVMBackEnd.Mod \
-  src/driver/Poc.Mod
+DRIVER_SRCS := src/driver/Version.Mod src/driver/Libraries.Mod src/driver/MemoryCensus.Mod \
+  src/driver/llvm/LLVMBackEnd.Mod src/driver/Poc.Mod
 # Phase 17 step 7: the LLVMBackEnd of a poc without the LLVM back end, which
 # poc for VAX/VMS is built with (tools/bootstrap/vax-v1); checked by
 # check-strict, not part of poc here
@@ -32,10 +32,11 @@ RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
 # Phase 12 step 5a: the C part of an rtl module, compiled with it by poc
 RTL_C_SRCS := $(wildcard rtl/llvm/*.c)
 # what Stage 0 builds with voc besides src/: Err and what it needs (Phase 11
-# D11), and Directories (Phase 16 step 4)
+# D11), Directories (Phase 16 step 4), and the collector's census
+# (doc/developer/vms-memory.md, step 1b)
 STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
   rtl/llvm/FormattedText.Mod rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod \
-  rtl/voc/Directories.Mod
+  rtl/voc/Directories.Mod rtl/voc/GarbageCollectedHeap.Mod
 STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
 VAX_IMAGE_BIN := $(BUILD_DIR)/bin/vax-image
 # Phase 12 step 2d: rtl/llvm as the library poc-rtl, for this host's triple

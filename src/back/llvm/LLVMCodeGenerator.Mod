@@ -175,7 +175,7 @@ MODULE LLVMCodeGenerator;
      territory, once cross-target FFI actually needs verifying), not
      attempted here. *)
 
-  IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
+  IMPORT Names, Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
          MemoryLayout, Diagnostics, NestedProcedures, ModuleInterface, ModuleLists, MethodSlots, SYSTEM;
 
   VAR
@@ -1159,7 +1159,7 @@ MODULE LLVMCodeGenerator;
     IF debugInfo THEN
       typeId := DebugTypeId(obj.type);
       IF typeId >= 0 THEN
-        NEW(g); COPY(obj.name, g.name); g.line := obj.declLine; g.typeId := typeId;
+        NEW(g); COPY(obj.name^, g.name); g.line := obj.declLine; g.typeId := typeId;
         g.id := nextMetadata; INC(nextMetadata, 2); g.next := NIL;
         IF debugUnit.globalsTail = NIL THEN debugUnit.globals := g ELSE debugUnit.globalsTail.next := g END;
         debugUnit.globalsTail := g;
@@ -1213,7 +1213,7 @@ MODULE LLVMCodeGenerator;
     IF debugInfo & (debugScope >= 0) & (obj # NIL) THEN
       typeId := DebugTypeId(obj.type);
       IF typeId >= 0 THEN
-        DeclareDebugSlot(w, obj.name, obj.declLine, obj.declColumn, address, arg, typeId, FALSE, indirect)
+        DeclareDebugSlot(w, obj.name^, obj.declLine, obj.declColumn, address, arg, typeId, FALSE, indirect)
       END
     END
   END DeclareDebugVariable;
@@ -2506,12 +2506,12 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF qualifier[0] = 0X THEN
       COPY(cg.moduleName, homeModule);
-      RETURN SymbolTable.Find(cg.scope, name)
+      RETURN SymbolTable.Find(cg.scope, Names.Intern(name))
     END;
-    modObj := SymbolTable.Find(cg.scope, qualifier);
+    modObj := SymbolTable.Find(cg.scope, Names.Intern(qualifier));
     IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
-    COPY(modObj.realModuleName, homeModule);
-    RETURN SymbolTable.FindLocal(modObj.moduleScope, name)
+    COPY(modObj.realModuleName^, homeModule);
+    RETURN SymbolTable.FindLocal(modObj.moduleScope, Names.Intern(name))
   END ResolveQualifiedObject;
 
   PROCEDURE ResolveVarAddress(VAR cg: Codegen; obj: SymbolTable.Object; VAR addrText: ValueText);
@@ -2521,7 +2521,7 @@ MODULE LLVMCodeGenerator;
     IF b # NIL THEN
       COPY(b.addrText, addrText)
     ELSE
-      ModuleQualifiedName(cg, obj.name, addrText)
+      ModuleQualifiedName(cg, obj.name^, addrText)
     END
   END ResolveVarAddress;
 
@@ -3587,7 +3587,7 @@ MODULE LLVMCodeGenerator;
          ever holds the *current* procedure's own alloca'd params/locals,
          never anything reached through an imported module's own
          moduleScope. *)
-      QualifiedName(homeModule, obj.name, addrText)
+      QualifiedName(homeModule, obj.name^, addrText)
     END;
     IF obj.class = SymbolTable.constClass THEN addrType := obj.type ELSE addrType := EffectiveVarType(cg, obj) END;
     sel := d.selectors;
@@ -3723,22 +3723,22 @@ MODULE LLVMCodeGenerator;
       IF d.qualifier[0] = 0X THEN
         LoadVar(w, cg, obj, result)
       ELSE
-        QualifiedName(homeModule, obj.name, addrText);
+        QualifiedName(homeModule, obj.name^, addrText);
         LoadAtAddress(w, cg, addrText, obj.type, result)
       END
     ELSIF (obj.class = SymbolTable.procClass) & (obj.type # Types.PredeclaredProcedureType)
-        & (obj.externalConvention[0] = 0X) THEN
+        & (obj.externalConvention = NIL) THEN
       (* a procedure used as a value (Oberon2.pdf 6.5): the address of its
          function, which the checker has already restricted to a module-level
          Oberon procedure with the type's own parameter list, so a call
          through it lays its arguments out exactly as the function expects *)
-      QualifiedName(homeModule, obj.name, result.text);
+      QualifiedName(homeModule, obj.name^, result.text);
       COPY("ptr", result.llvmType); result.oberonType := obj.type
-    ELSIF (obj.class = SymbolTable.procClass) & (obj.externalConvention = "C") THEN
+    ELSIF (obj.class = SymbolTable.procClass) & Names.Equals(obj.externalConvention, "C") THEN
       (* the operand of SYSTEM.VAL(SYSTEM.ADDRESS, E), which the checker
          allows nowhere else: the C function's address, declared already
          (EmitExternalDeclares, DeclareModuleSymbols) *)
-      COPY("@", result.text); Strcat(result.text, obj.externalName);
+      COPY("@", result.text); Strcat(result.text, obj.externalName^);
       COPY("ptr", result.llvmType); result.oberonType := obj.type
     ELSE
       Unsupported(w, cg, "designator referring to a predeclared or external procedure, or a module",
@@ -4496,7 +4496,7 @@ MODULE LLVMCodeGenerator;
     pt := obj.type(Types.ProcedureType);
     IF pt.resultType = NIL THEN
       GenerateCallArgList(w, cg, pt.params, args, FALSE, argsText);
-      WriteStr(w, "  call void @"); WriteStr(w, obj.externalName); WriteStr(w, "(");
+      WriteStr(w, "  call void @"); WriteStr(w, obj.externalName^); WriteStr(w, "(");
       WriteStr(w, argsText^); WriteStr(w, ")"); WriteLn(w);
       result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X
     ELSE
@@ -4504,7 +4504,7 @@ MODULE LLVMCodeGenerator;
       LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
       NewTemp(cg, destTemp);
       WriteStr(w, "  "); WriteStr(w, destTemp); WriteStr(w, " = call "); WriteStr(w, retType);
-      WriteStr(w, " @"); WriteStr(w, obj.externalName); WriteStr(w, "(");
+      WriteStr(w, " @"); WriteStr(w, obj.externalName^); WriteStr(w, "(");
       WriteStr(w, argsText^); WriteStr(w, ")"); WriteLn(w);
       result.text := destTemp; COPY(retType, result.llvmType); result.oberonType := pt.resultType
     END
@@ -4579,7 +4579,7 @@ MODULE LLVMCodeGenerator;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
     VAR fnSymbol: ValueText;
   BEGIN
-    QualifiedName(homeModule, obj.name, fnSymbol);
+    QualifiedName(homeModule, obj.name^, fnSymbol);
     GenerateDirectCall(w, cg, obj.type(Types.ProcedureType), fnSymbol, args, NIL, result)
   END GenerateOrdinaryCall;
 
@@ -6182,7 +6182,7 @@ MODULE LLVMCodeGenerator;
      added to PredeclaredProcedures.Mod's CheckCall before its lowering
      exists: it routes to the same Unsupported placeholder every other
      out-of-scope construct does rather than falling through silently. *)
-  PROCEDURE GeneratePredeclaredCall(VAR w: Files.Rider; VAR cg: Codegen; name: SyntaxTree.Ident;
+  PROCEDURE GeneratePredeclaredCall(VAR w: Files.Rider; VAR cg: Codegen; name: ARRAY OF CHAR;
                                     args: SyntaxTree.ExprNode; qualified: BOOLEAN; VAR result: Value);
   BEGIN
     IF qualified & (name = "NEW") THEN GenerateSystemNew(w, cg, args, result)
@@ -6245,8 +6245,8 @@ MODULE LLVMCodeGenerator;
     IF (obj # NIL) & (obj.class = SymbolTable.varClass) THEN
       GenerateProcedureValueCall(w, cg, d, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type = Types.PredeclaredProcedureType) THEN
-      GeneratePredeclaredCall(w, cg, obj.name, args, d.qualifier[0] # 0X, result)
-    ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
+      GeneratePredeclaredCall(w, cg, obj.name^, args, d.qualifier[0] # 0X, result)
+    ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention # NIL) THEN
       GenerateExternalCall(w, cg, obj, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
       nested := NIL;
@@ -6366,7 +6366,7 @@ MODULE LLVMCodeGenerator;
         EmitRecordAssignmentGuard(w, cg, dyn, EffectiveVarType(cg, obj))
       END
     ELSE
-      QualifiedName(homeModule, obj.name, addrText)
+      QualifiedName(homeModule, obj.name^, addrText)
     END;
     (* the static type an enclosing WITH gave it: before Phase 12 step 1 the
        declared one, and a narrowed VAR record got only its base's fields *)
@@ -6642,7 +6642,7 @@ MODULE LLVMCodeGenerator;
       stepAmount: LONGINT; width: INTEGER; stepText, stepSizeText, condText, distance, lastStep: ValueText;
       headLabel, bodyLabel, latchLabel, stepLabel, endLabel: ValueText; pred: ARRAY 16 OF CHAR;
   BEGIN
-    obj := SymbolTable.Find(cg.scope, s.variable);
+    obj := SymbolTable.Find(cg.scope, Names.Intern(s.variable));
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       WriteStr(w, "  ; unsupported: FOR control variable is not a plain module VAR"); WriteLn(w);
       RETURN
@@ -6878,7 +6878,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
         IF (obj # NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
         nm := nm.next
       END;
@@ -6889,7 +6889,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
         IF (obj # NIL) & Types.NeedsInit(obj.type) THEN
           ResolveVarAddress(cg, obj, addrText);
           InitializeAt(w, cg, addrText, obj.type)
@@ -6929,7 +6929,7 @@ MODULE LLVMCodeGenerator;
       WHILE vd # NIL DO
         nm := vd.names;
         WHILE nm # NIL DO
-          obj := SymbolTable.FindLocal(cg.scope, nm.name);
+          obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
           LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
           WriteStr(w, "@"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, nm.name);
           WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer");
@@ -6958,12 +6958,12 @@ MODULE LLVMCodeGenerator;
   PROCEDURE EmitExternalDeclare(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object);
     VAR pt: Types.ProcedureType; p: Types.Param; retType, paramType: LongText; first: BOOLEAN;
   BEGIN
-    IF ~HasDeclaredExternal(cg, obj.externalName) THEN
+    IF ~HasDeclaredExternal(cg, obj.externalName^) THEN
       pt := obj.type(Types.ProcedureType);
       IF pt.resultType = NIL THEN COPY("void", retType)
       ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
       END;
-      WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName);
+      WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName^);
       WriteStr(w, "(");
       p := pt.params; first := TRUE;
       WHILE p # NIL DO
@@ -6974,7 +6974,7 @@ MODULE LLVMCodeGenerator;
         p := p.next
       END;
       WriteStr(w, ")"); WriteLn(w);
-      MarkDeclaredExternal(cg, obj.externalName)
+      MarkDeclaredExternal(cg, obj.externalName^)
     END
   END EmitExternalDeclare;
 
@@ -6985,8 +6985,8 @@ MODULE LLVMCodeGenerator;
     pd := module.declarations.procDecls;
     WHILE pd # NIL DO
       IF pd.isExternal THEN
-        obj := SymbolTable.FindLocal(cg.scope, pd.name.name);
-        IF obj.externalConvention = "VMS" THEN
+        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(pd.name.name));
+        IF Names.Equals(obj.externalConvention, "VMS") THEN
           (* the VMS Calling Standard is the VAX backend's (Phase 15); called as
              a C function here it would link against a symbol nothing defines
              or, worse, one that exists and means something else *)
@@ -7277,7 +7277,7 @@ MODULE LLVMCodeGenerator;
     IF module.declarations = NIL THEN RETURN END;
     td := module.declarations.typeDecls;
     WHILE td # NIL DO
-      obj := SymbolTable.FindLocal(cg.scope, td.name.name);
+      obj := SymbolTable.FindLocal(cg.scope, Names.Intern(td.name.name));
       IF obj # NIL THEN CollectRecordTypes(cg, obj.type) END;
       td := td.next
     END;
@@ -7285,7 +7285,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
         IF obj # NIL THEN CollectRecordTypes(cg, obj.type) END;
         nm := nm.next
       END;
@@ -7322,7 +7322,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
         IF obj # NIL THEN total := total + CountPointerSlots(obj.type) END;
         nm := nm.next
       END;
@@ -7356,9 +7356,9 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
         IF (obj # NIL) & (CountPointerSlots(obj.type) > 0) THEN
-          ModuleQualifiedName(cg, obj.name, global);
+          ModuleQualifiedName(cg, obj.name^, global);
           EmitPointerOffsets(w, wordInt, global, obj.type, 0, first)
         END;
         nm := nm.next
@@ -7715,13 +7715,13 @@ MODULE LLVMCodeGenerator;
           COPY(lengthBase, length); Strcat(length, ".len"); AppendLongInt(length, d);
           WriteStr(w, "  store "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, length);
           WriteStr(w, ", ptr "); WriteStr(w, slot); WriteLn(w);
-          name := "LEN("; Strcat(name, obj.name);
+          name := "LEN("; Strcat(name, obj.name^);
           IF d > 0 THEN Strcat(name, ", "); AppendLongInt(name, d) END;
           Strcat(name, ")");
           (* the lengths' nodes are a.firstLength, a.firstLength + 1, ... *)
           DeclareDebugSlot(w, name, obj.declLine, obj.declColumn, slot, 0, lengthTypeId, TRUE, FALSE)
         END;
-        DeclareDebugSlot(w, obj.name, obj.declLine, obj.declColumn, address, arg, a.id, FALSE, indirect)
+        DeclareDebugSlot(w, obj.name^, obj.declLine, obj.declColumn, address, arg, a.id, FALSE, indirect)
       END
     END
   END DeclareDebugOpenArray;
@@ -7771,7 +7771,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     p := pt.params; position := firstPosition;
     WHILE p # NIL DO
-      obj := SymbolTable.FindLocal(bodyScope, p.name);
+      obj := SymbolTable.FindLocal(bodyScope, Names.Intern(p.name));
       ParamName(p.name, argName);
       IF IsOpenArrayType(p.type) THEN
         (* the hidden lengths follow the pointer (EmitProcSignature) *)
@@ -7825,7 +7825,7 @@ MODULE LLVMCodeGenerator;
                          receiver: SyntaxTree.ReceiverNode);
     VAR obj: SymbolTable.Object; argName, tagName, addrText: ValueText;
   BEGIN
-    obj := SymbolTable.FindLocal(bodyScope, receiver.name);
+    obj := SymbolTable.FindLocal(bodyScope, Names.Intern(receiver.name));
     ParamName(receiver.name, argName);
     IF receiver.isVar THEN
       DeclareDebugVariable(w, obj, argName, 1, TRUE);
@@ -7861,7 +7861,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(bodyScope, nm.name);
+        obj := SymbolTable.FindLocal(bodyScope, Names.Intern(nm.name));
         LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
         NewTemp(cg, addrText);
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
@@ -7975,8 +7975,8 @@ MODULE LLVMCodeGenerator;
                                   pd: SyntaxTree.ProcDeclNode);
     VAR obj: SymbolTable.Object; fnSymbol: ValueText; pt: Types.ProcedureType;
   BEGIN
-    obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
-    ModuleQualifiedName(cg, obj.name, fnSymbol);
+    obj := SymbolTable.FindLocal(moduleScope, Names.Intern(pd.name.name));
+    ModuleQualifiedName(cg, obj.name^, fnSymbol);
     pt := obj.type(Types.ProcedureType);
     GenerateProcedureBody(w, cg, SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt), pd, pt, fnSymbol)
   END GenerateProcedureDecl;
@@ -7993,7 +7993,7 @@ MODULE LLVMCodeGenerator;
     VAR
       typeObj: SymbolTable.Object; owner: Types.RecordType; method: Types.Method; sym: LongText;
   BEGIN
-    typeObj := SymbolTable.FindLocal(moduleScope, pd.receiver.typeName);
+    typeObj := SymbolTable.FindLocal(moduleScope, Names.Intern(pd.receiver.typeName));
     owner := TargetRecord(typeObj.type);
     method := Types.FindOwnMethod(owner, pd.name.name);
     MethodSymbol(owner, method.name, sym);
@@ -8493,16 +8493,16 @@ MODULE LLVMCodeGenerator;
     obj := x.scope.objects;
     WHILE obj # NIL DO
       IF obj.class = SymbolTable.varClass THEN
-        QualifiedName(x.module.name, obj.name, symbol); EmitDataDeclaration(w, cg, symbol);
+        QualifiedName(x.module.name, obj.name^, symbol); EmitDataDeclaration(w, cg, symbol);
         DeclareTypeSymbols(w, cg, obj.type, x.module.name)
       ELSIF obj.class = SymbolTable.procClass THEN
         pt := obj.type(Types.ProcedureType);
         p := pt.params;
         WHILE p # NIL DO DeclareTypeSymbols(w, cg, p.type, x.module.name); p := p.next END;
-        IF obj.externalConvention[0] = 0X THEN
-          QualifiedName(x.module.name, obj.name, symbol);
+        IF obj.externalConvention = NIL THEN
+          QualifiedName(x.module.name, obj.name^, symbol);
           EmitProcDeclaration(w, cg, pt, symbol, FALSE, FALSE)
-        ELSIF obj.externalConvention # "VMS" THEN
+        ELSIF ~Names.Equals(obj.externalConvention, "VMS") THEN
           EmitExternalDeclare(w, cg, obj)
         END
       ELSIF obj.class = SymbolTable.typeClass THEN
@@ -8525,7 +8525,7 @@ MODULE LLVMCodeGenerator;
     obj := x.scope.objects;
     WHILE obj # NIL DO
       IF obj.class = SymbolTable.moduleClass THEN
-        y := FindProgramModule(program, obj.realModuleName);
+        y := FindProgramModule(program, obj.realModuleName^);
         CollectClosure(program, y, closure)
       END;
       obj := obj.next
@@ -8920,7 +8920,7 @@ MODULE LLVMCodeGenerator;
     IF m.module.declarations # NIL THEN
       td := m.module.declarations.typeDecls;
       WHILE td # NIL DO
-        typeObj := SymbolTable.FindLocal(m.scope, td.name.name);
+        typeObj := SymbolTable.FindLocal(m.scope, Names.Intern(td.name.name));
         IF typeObj # NIL THEN CollectInitRecords(cg, typeObj.type) END;
         td := td.next
       END

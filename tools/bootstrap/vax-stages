@@ -31,11 +31,11 @@
 # V1's output, Poc.com, poc's sources, rtl/vax's and BuildInfo.Mod go to
 # the guest at once, and one procedure, VAXBOOT.COM, written here, runs
 # every stage there (tools/vax-do), with each compilation's time, CPU time
-# and the process's peak virtual memory in its log. Each compilation of
-# poc takes about 45 minutes on the SIMH VAX, so VAX_DO_TIMEOUT (default
-# here 14400 seconds) bounds the whole run, and the guest's lock
-# (tools/vax-lock.sh) is held throughout: a VAX fixture run meanwhile
-# waits for it. Every stage, V1's included, runs under one
+# and page faults and the process's peak virtual memory and working set in
+# its log. Each compilation of poc takes about 45 minutes on the SIMH VAX,
+# so VAX_DO_TIMEOUT (default here 14400 seconds) bounds the whole run, and
+# the guest's lock (tools/vax-lock.sh) is held throughout: a VAX fixture
+# run meanwhile waits for it. Every stage, V1's included, runs under one
 # SOURCE_DATE_EPOCH (the time of the tree's commit; a logical name on the
 # guest), so that the objects' creation times agree.
 #
@@ -221,6 +221,7 @@ $ POC :== $'IMAGE_DIR'POC.EXE
 $ WRITE SYS$OUTPUT STAGE, ": compiling poc with ", IMAGE_DIR, "POC.EXE"
 $ T0 = F$TIME()
 $ C0 = F$GETJPI("", "CPUTIM")
+$ F0 = F$GETJPI("", "PAGEFLTS")
 $ DEFINE/USER_MODE SYS$ERROR POC.ERR
 DCL
   echo "\$ POC -OC -TARGET VAX-DEC-VMS$poc_way -BUILD POC.MOD"
@@ -230,6 +231,7 @@ $ CPU = (F$GETJPI("", "CPUTIM") - C0) / 100
 $ DELETE/SYMBOL/GLOBAL POC
 $ WRITE SYS$OUTPUT STAGE, ": status ", S, ", from ", T0, " to ", F$TIME(), ", ", CPU, " s of CPU"
 $ WRITE SYS$OUTPUT STAGE, ": peak virtual memory so far ", F$GETJPI("", "VIRTPEAK"), " pages"
+$ WRITE SYS$OUTPUT STAGE, ": peak working set so far ", F$GETJPI("", "WSPEAK"), " pages of ", F$GETJPI("", "WSEXTENT"), ", ", F$GETJPI("", "PAGEFLTS") - F0, " page faults"
 $ IF F$SEARCH("POC.ERR") .NES. "" THEN TYPE POC.ERR
 $ N = 0
 $ COUNT_OBJ:

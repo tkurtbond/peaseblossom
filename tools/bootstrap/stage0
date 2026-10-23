@@ -61,6 +61,7 @@ voc -OC -s "$ROOT/rtl/llvm/Err.Mod"
 voc -OC -s "$ROOT/rtl/voc/Directories.Mod"
 voc -OC -s "$ROOT/src/front/Diagnostics.Mod"
 voc -OC -s "$ROOT/src/front/Lexer.Mod"
+voc -OC -s "$ROOT/src/front/Names.Mod"
 voc -OC -s "$ROOT/src/front/SyntaxTree.Mod"
 voc -OC -s "$ROOT/src/front/Types.Mod"
 voc -OC -s "$ROOT/src/front/MemoryLayout.Mod"
@@ -92,6 +93,10 @@ voc -OC -s "$ROOT/src/back/vax/VaxToolchainDriver.Mod"
 voc -OC -s "$ROOT/src/driver/Version.Mod"
 voc -OC -s "$BUILD/gen/BuildInfo.Mod"
 voc -OC -s "$ROOT/src/driver/Libraries.Mod"
+# doc/developer/vms-memory.md, step 1b: the census, over voc's version of
+# the collector's interface to it, which counts nothing
+voc -OC -s "$ROOT/rtl/voc/GarbageCollectedHeap.Mod"
+voc -OC -s "$ROOT/src/driver/MemoryCensus.Mod"
 # the LLVM back end as the driver sees it (Phase 17 step 7)
 voc -OC -s "$ROOT/src/driver/llvm/LLVMBackEnd.Mod"
 # voc's collector misses a pointer held only in a callee-saved register
