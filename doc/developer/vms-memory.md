@@ -544,3 +544,42 @@ The working set no longer fills its extent, so poc no longer pages
 against its own limit: page faults fall by 78%, CPU time by 37% (the
 collector has less to mark and sweep, and the faults themselves cost
 CPU). V2 writes 44 objects where it wrote 43, the new one `Names`.
+
+### Step 6: each procedure encoded as it is written (2026-10-23)
+
+`27f64bd`, measured as before. On hosts, peak resident size in MB of a
+Stage 2 poc (`tools/bench/poc-memory.sh`), against 4d's:
+
+| run                          | cymoril, 4d | cymoril, 6 | atla, 4d | atla, 6 |
+|------------------------------|------------:|-----------:|---------:|--------:|
+| all of poc, one program      |  40.6       |  34.3      |  80.5    |  45.5   |
+| `Poc` alone                  |  26.3       |  25.8      |  34.1    |  32.9   |
+| `VaxCodeGenerator` alone     |  36.0       |  25.9      |  49.2    |  33.0   |
+| `VaxToolchainDriver` alone   |  15.8       |  16.8      |  23.7    |  23.3   |
+| `SemanticActions` alone      |  18.6       |  14.6      |  24.7    |  19.3   |
+| `Parser` alone               |  11.9       |  12.5      |  15.2    |  15.7   |
+| `NestedProcedures` alone     |  10.2       |  10.6      |  12.2    |  13.0   |
+| `ModuleInterface` alone      |  11.1       |  10.3      |  12.7    |  12.5   |
+
+The modules with the most code fall most, `VaxCodeGenerator` by 28-33%:
+its procedures' lines are no longer held to the end of the module. A
+module with little code moves by a megabyte either way, which is when
+the collector runs. atla's figure for all of poc, which rose to 80.5 MB
+at 4d for when the collector ran (4d's section), is 45.5 MB.
+
+On the guest, `tools/bootstrap/vax-stages -to v2` at `27f64bd`, against
+4e. V2 wrote the same objects as V1: the fixed point holds.
+
+| measure                          | after 4d (4e)     | after step 6      |
+|----------------------------------|------------------:|------------------:|
+| compilation, elapsed             | 16.2 min          | 14.2 min          |
+| CPU                              | 961 s             | 844 s             |
+| page faults                      | 389,481           | 174,605           |
+| peak virtual memory (pages)      | 130,994           | 74,128            |
+| peak working set (pages)         | 119,344           | 69,566            |
+| the guest's run, transfers too   | 17 min            | 15 min            |
+
+Peak virtual memory falls by 43% and the working set by 42%, to about
+35 MB; page faults by 55%, CPU by 12%. Against the start of the work
+(before step 4), poc on VMS now needs 35% of the virtual memory, a third
+of the working set and a tenth of the page faults, and 56% of the CPU.
