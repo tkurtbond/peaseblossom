@@ -453,3 +453,25 @@ the front end has checked every module, 11.6 MB live (13.6) in a heap of
 55.2 MB (65.3). The largest there are `VaxInstructions.Specifier` (7.2
 MB, 90,503) and `VaxInstructions.Line` (6.2 MB, 77,021), then
 `SyntaxTree.Designator` (1.67 MB) and `SymbolTable.Object` (1.2 MB).
+
+### Step 4e: measured on the guest (2026-10-23)
+
+`tools/bootstrap/vax-stages -to v2` at `321be40` (4d), on the SIMH VAX,
+POC.EXE from V1 compiling all of poc's source to objects, against the
+two runs before step 4 (step 3's section, "before"). V2 wrote the same
+objects as V1: the fixed point holds. Pages are VMS's, 512 bytes; the
+working set's extent is 200,000 pages.
+
+| measure                          | before step 4      | after 4d          |
+|----------------------------------|-------------------:|------------------:|
+| compilation, elapsed             | 25.7-26.0 min      | 16.2 min          |
+| CPU                              | 1,506-1,520 s      | 961 s             |
+| page faults                      | 1.73-1.81 million  | 389,481           |
+| peak virtual memory (pages)      | 212,289            | 130,994           |
+| peak working set (pages)         | 200,000 (all)      | 119,344           |
+| the guest's run, transfers too   | 29 min             | 17 min            |
+
+The working set no longer fills its extent, so poc no longer pages
+against its own limit: page faults fall by 78%, CPU time by 37% (the
+collector has less to mark and sweep, and the faults themselves cost
+CPU). V2 writes 44 objects where it wrote 43, the new one `Names`.
