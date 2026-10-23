@@ -417,3 +417,39 @@ the heap's growth depends on when the collector runs). There the largest
 are now the back end's `VaxInstructions.Specifier` (7.2 MB, 90,503) and
 `VaxInstructions.Line` (6.2 MB, 77,021), the plan's item 3, and then
 `SyntaxTree.LiteralExprNode` (2.7 MB, 9,506; its lexeme, for 4d).
+
+### Step 4d: literals' text sized to fit (2026-10-23)
+
+`SyntaxTree.LiteralExprNodeDesc.lexeme`, a literal's text as written, is
+a `Lexer.Text` made by `Lexer.NewText`: a copy sized to fit, never NIL,
+so the code that indexes it (`lexeme[0]`) is unchanged and the code that
+passes it to a parser (`ConstantEvaluator`, `LLVMCodeGenerator`) passes
+`lexeme^`. It is not interned: literals repeat less than identifiers, and
+nothing compares them. A string's text is still only its first
+`identLength` characters, as before; its value is elsewhere. `make check`
+on atla (the fixed point, `check-strict` and `check-o2` included) and
+`gmake check-stage1` on cymoril, artos and alerik passed, with the VAX
+objects unchanged. Peak resident size in MB, as for 4c:
+
+| run                          | cymoril, 4c | cymoril, 4d | atla, 4c | atla, 4d |
+|------------------------------|------------:|------------:|---------:|---------:|
+| all of poc, one program      |  45.1       |  40.6       |  68.4    |  80.5    |
+| `Poc` alone                  |  29.7       |  26.3       |  37.5    |  34.1    |
+| `VaxCodeGenerator` alone     |  40.2       |  36.0       |  50.1    |  49.2    |
+| `VaxToolchainDriver` alone   |  17.5       |  15.8       |  24.5    |  23.7    |
+| `SemanticActions` alone      |  19.8       |  18.6       |  26.0    |  24.7    |
+| `Parser` alone               |  12.6       |  11.9       |  16.3    |  15.2    |
+| `NestedProcedures` alone     |  11.0       |  10.2       |  14.2    |  12.2    |
+| `ModuleInterface` alone      |  11.9       |  11.1       |  13.9    |  12.7    |
+
+atla's figure for all of poc rose where every other one fell, and stayed
+there when run again (79.4 and 80.0 MB). It is when the collector runs,
+not what is live: the same poc with `POC_MEMORY_CENSUS` set, whose census
+adds collections, peaked at 61.7 MB. The live data is what the census
+measures. The census (cymoril, all of poc):
+`SyntaxTree.LiteralExprNode` is 0.46 MB for 9,488 (2.74 MB before). When
+the front end has checked every module, 11.6 MB live (13.6) in a heap of
+20.5 MB (24.0); at `VaxCodeGenerator`, 33.4 MB live (35.5) in a heap of
+55.2 MB (65.3). The largest there are `VaxInstructions.Specifier` (7.2
+MB, 90,503) and `VaxInstructions.Line` (6.2 MB, 77,021), then
+`SyntaxTree.Designator` (1.67 MB) and `SymbolTable.Object` (1.2 MB).

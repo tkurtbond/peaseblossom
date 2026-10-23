@@ -3366,12 +3366,12 @@ MODULE LLVMCodeGenerator;
       result.text[0] := 0X; AppendLongInt(result.text, value);
       result.oberonType := t
     ELSIF lit.literalKind = Lexer.charConst THEN
-      ch := ConstantEvaluator.ParseCharConst(lit.lexeme);
+      ch := ConstantEvaluator.ParseCharConst(lit.lexeme^);
       COPY("i8", result.llvmType);
       result.text[0] := 0X; AppendLongInt(result.text, ORD(ch));
       result.oberonType := Types.Char
     ELSIF lit.literalKind = Lexer.real THEN
-      RealConstant(w, cg, lit.lexeme, 0.0D0, ~lit.isLongReal, result)
+      RealConstant(w, cg, lit.lexeme^, 0.0D0, ~lit.isLongReal, result)
     ELSIF lit.lexeme[0] # 0X THEN
       IF lit.lexeme[1] = 0X THEN
         (* Oberon2.pdf §3: a string of length 1 can be used wherever a

@@ -146,7 +146,7 @@ MODULE SyntaxTree;
 
     LiteralExprNodeDesc* = RECORD (ExprNodeDesc)
       literalKind*: INTEGER; (* Lexer.integer, .real, .charConst, or .string *)
-      lexeme*: ARRAY identLength + 1 OF CHAR; (* a string's only up to this length *)
+      lexeme*: Lexer.Text; (* sized to fit, never NIL; a string's only up to identLength characters *)
       string*: Lexer.Text; (* a string's whole text (Lexer.Token.text); NIL for any other literal *)
       isHex*, isLongReal*: BOOLEAN
     END;

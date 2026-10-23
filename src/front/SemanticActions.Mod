@@ -371,7 +371,7 @@ MODULE SemanticActions;
     VAR e: SyntaxTree.LiteralExprNode;
   BEGIN
     NEW(e);
-    e.literalKind := literalKind; COPY(lexeme, e.lexeme); e.string := string;
+    e.literalKind := literalKind; e.lexeme := Lexer.NewText(lexeme); e.string := string;
     e.isHex := isHex; e.isLongReal := isLongReal;
     e.next := NIL; e.line := line; e.column := column;
     RETURN e

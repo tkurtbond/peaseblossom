@@ -257,7 +257,7 @@ MODULE ConstantEvaluator;
     VAR value: LONGINT; overflow, wraps: BOOLEAN;
   BEGIN
     IF (expr.literalKind # Lexer.integer) OR ~expr.isHex THEN RETURN FALSE END;
-    ParseHexDigits(expr.lexeme, value, overflow, wraps);
+    ParseHexDigits(expr.lexeme^, value, overflow, wraps);
     RETURN wraps
   END IsWrappedHexLiteral;
 
@@ -294,8 +294,8 @@ MODULE ConstantEvaluator;
   PROCEDURE IntegerLiteralType*(expr: SyntaxTree.LiteralExprNode; VAR value: LONGINT): Types.Type;
     VAR overflow: BOOLEAN;
   BEGIN
-    IF expr.isHex THEN ParseHexInteger(expr.lexeme, value, overflow)
-    ELSE ParseDecimalInteger(expr.lexeme, value, overflow)
+    IF expr.isHex THEN ParseHexInteger(expr.lexeme^, value, overflow)
+    ELSE ParseDecimalInteger(expr.lexeme^, value, overflow)
     END;
     IF overflow THEN
       Diagnostics.Error(expr.line, expr.column, "integer literal too large for HUGEINT");
@@ -367,11 +367,11 @@ MODULE ConstantEvaluator;
     ELSIF expr.literalKind = Lexer.real THEN
       v.kind := Types.realValue;
       IF expr.isLongReal THEN v.type := Types.LongReal ELSE v.type := Types.Real END;
-      v.realVal := ParseReal(expr.lexeme);
-      COPY(expr.lexeme, v.realText)
+      v.realVal := ParseReal(expr.lexeme^);
+      COPY(expr.lexeme^, v.realText)
     ELSIF expr.literalKind = Lexer.charConst THEN
       v.kind := Types.charValue; v.type := Types.Char;
-      v.charVal := ParseCharConst(expr.lexeme)
+      v.charVal := ParseCharConst(expr.lexeme^)
     ELSE (* Lexer.string; also covers a single-quoted single character -
             treating that as CHAR-compatible is deferred, see header *)
       v.kind := Types.stringValue; v.type := Types.String;
