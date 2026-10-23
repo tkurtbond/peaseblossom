@@ -18,9 +18,12 @@ MODULE SyntaxTree;
      literal's lexical class (BinaryExprNode.op, UnaryExprNode.op,
      LiteralExprNode.literalKind) hold one of Lexer.Mod's token-kind
      constants, which this module only stores, never interprets; it
-     imports Lexer for Lexer.Text, a string literal's text. *)
+     imports Lexer for Lexer.Text, a string literal's text.
 
-  IMPORT Lexer;
+     An identifier is a Names.Name, interned (doc/developer/vms-memory.md,
+     step 4), NIL where there is none. *)
+
+  IMPORT Lexer, Names;
 
   CONST
     identLength = 255; (* mirrors Lexer.Mod's own (private) lexeme limit *)
@@ -93,8 +96,8 @@ MODULE SyntaxTree;
     (* Designators (Appendix B: Designator, ExprList) *)
 
     DesignatorDesc* = RECORD (NodeDesc)
-      qualifier*: Ident; (* empty string if the designator is unqualified *)
-      name*: Ident;
+      qualifier*: Names.Name; (* NIL if the designator is unqualified *)
+      name*: Names.Name;
       selectors*: Selector
     END;
 
@@ -103,7 +106,7 @@ MODULE SyntaxTree;
     END;
 
     FieldSelectorDesc* = RECORD (SelectorDesc)
-      name*: Ident
+      name*: Names.Name
     END;
 
     IndexSelectorDesc* = RECORD (SelectorDesc)
@@ -114,7 +117,7 @@ MODULE SyntaxTree;
     END;
 
     GuardSelectorDesc* = RECORD (SelectorDesc)
-      qualifier*, name*: Ident (* the qualident being tested against, v(T) *)
+      qualifier*, name*: Names.Name (* the qualident being tested against, v(T) *)
     END;
 
     (* Expressions (Appendix B: Expr, SimpleExpr, Term, Factor, Set) *)
@@ -165,14 +168,14 @@ MODULE SyntaxTree;
     TypeHandleDesc* = RECORD END;
     (* Phase 14: a record or array literal, "T{...}"
        (doc/developer/language-extensions.md, "Record and array literals"). name is
-       empty for a nested literal that leaves out its type's name, "{...}"
+       NIL for a nested literal that leaves out its type's name, "{...}"
        as an element of another literal, which the checker resolves by the
        element's type: a literal of a record or array type, or, for a set
        type, a set constructor that replaces it (LiteralElementNodeDesc.
        value). type is the literal's type, set by the checker (a
        Types.Type). *)
     StructuredLiteralNodeDesc* = RECORD (ExprNodeDesc)
-      qualifier*, name*: Ident;
+      qualifier*, name*: Names.Name;
       elements*: LiteralElementNode;
       type*: TypeHandle;
       (* read from a .sym file, which writes a constant whole, its hidden
@@ -180,7 +183,7 @@ MODULE SyntaxTree;
          where it is written does not apply *)
       fromInterface*: BOOLEAN
     END;
-    (* One element of a literal: "field := value" (field empty for a
+    (* One element of a literal: "field := value" (field NIL for a
        positional element), "[labels]: value" in an array literal (indexes
        its labels, NIL otherwise), and, in a nested "{...}" that turns out
        to be a set constructor, "value .. high" (high NIL otherwise).
@@ -189,7 +192,7 @@ MODULE SyntaxTree;
        gives, which the checker works out: its labels' values, or the one
        index a positional element takes. *)
     LiteralElementNodeDesc* = RECORD (NodeDesc)
-      field*: Ident;
+      field*: Names.Name;
       indexes*: CaseLabelNode;
       value*, high*: ExprNode;
       copiesArray*: BOOLEAN;
@@ -208,7 +211,7 @@ MODULE SyntaxTree;
     END;
 
     QualidentTypeNodeDesc* = RECORD (TypeNodeDesc)
-      qualifier*, name*: Ident
+      qualifier*, name*: Names.Name
     END;
 
     ArrayTypeNodeDesc* = RECORD (TypeNodeDesc)
@@ -245,7 +248,7 @@ MODULE SyntaxTree;
     END;
 
     IdentDefNodeDesc* = RECORD (NodeDesc)
-      name*: Ident;
+      name*: Names.Name;
       exportMark*: INTEGER; (* exportNone, exportPublic, or exportReadOnly *)
       next*: IdentDefNode
     END;
@@ -268,7 +271,7 @@ MODULE SyntaxTree;
 
     ReceiverNodeDesc* = RECORD (NodeDesc)
       isVar*: BOOLEAN;
-      name*, typeName*: Ident
+      name*, typeName*: Names.Name
     END;
 
     (* Statements (Appendix B: StatementSeq, Statement, Case, CaseLabels,
@@ -348,7 +351,7 @@ MODULE SyntaxTree;
     END;
 
     ForStatementNodeDesc* = RECORD (StatementNodeDesc)
-      variable*: Ident;
+      variable*: Names.Name;
       start*, stop*, step*: ExprNode; (* step is NIL when BY was omitted *)
       body*: StatementNode
     END;
@@ -369,8 +372,8 @@ MODULE SyntaxTree;
     END;
 
     WithGuardNodeDesc* = RECORD (NodeDesc)
-      variableQualifier*, variableName*: Ident;
-      typeQualifier*, typeName*: Ident;
+      variableQualifier*, variableName*: Names.Name;
+      typeQualifier*, typeName*: Names.Name;
       body*: StatementNode;
       next*: WithGuardNode
     END;
@@ -410,13 +413,13 @@ MODULE SyntaxTree;
     ProcDeclNodeDesc* = RECORD (NodeDesc)
       isForward*: BOOLEAN;
       isExternal*: BOOLEAN; (* PLAN.md Phase 6: "PROCEDURE [conv] Name(...);" *)
-      externalConvention*, externalName*: Ident; (* "" unless isExternal *)
+      externalConvention*, externalName*: Names.Name; (* NIL unless isExternal *)
       receiver*: ReceiverNode; (* NIL for a non-bound procedure *)
       name*: IdentDefNode;
       formals*: FormalParsNode; (* NIL if no formal parameter list at all *)
       declarations*: DeclSeqNode; (* NIL for a ForwardDecl or an external decl *)
       statements*: StatementNode; (* NIL for a ForwardDecl, an external decl, or an empty body *)
-      endName*: Ident; (* empty for a ForwardDecl or an external decl *)
+      endName*: Names.Name; (* NIL for a ForwardDecl or an external decl *)
       endLine*, endColumn*: INTEGER; (* its END keyword; 0 for a ForwardDecl or an external decl.
                                        Where a function that reaches END traps (Phase 12 step 1) *)
       next*: ProcDeclNode
@@ -445,17 +448,17 @@ MODULE SyntaxTree;
     END;
 
     ImportNodeDesc* = RECORD (NodeDesc)
-      alias*: Ident; (* empty string if no "ident :=" alias was given *)
-      moduleName*: Ident;
+      alias*: Names.Name; (* NIL if no "ident :=" alias was given *)
+      moduleName*: Names.Name;
       next*: ImportNode
     END;
 
     ModuleNodeDesc* = RECORD (NodeDesc)
-      name*: Ident;
+      name*: Names.Name;
       imports*: ImportNode;
       declarations*: DeclSeqNode;
       statements*: StatementNode;
-      endName*: Ident
+      endName*: Names.Name
     END;
 
 END SyntaxTree.

@@ -59,7 +59,7 @@ MODULE SemanticActions;
        same shape, one level up (modules instead of types). *)
     ImportChain = POINTER TO ImportChainDesc;
     ImportChainDesc = RECORD
-      name: SyntaxTree.Ident;
+      name: Names.Name;
       next: ImportChain
     END;
 
@@ -91,7 +91,7 @@ MODULE SemanticActions;
        import alias, matching ImportChain's own keying above. *)
     LoadedModule = POINTER TO LoadedModuleDesc;
     LoadedModuleDesc = RECORD
-      name: SyntaxTree.Ident;
+      name: Names.Name;
       scope: SymbolTable.Scope;
       next: LoadedModule
     END;
@@ -191,13 +191,13 @@ MODULE SemanticActions;
   (* Under -strict, a use of a name that is poc's extension (HUGEINT,
      ASSERT, SYSTEM.ADDRESS, ...: SymbolTable.ObjectDesc.isExtension) is an
      error, named as written. *)
-  PROCEDURE NoteExtensionName(obj: SymbolTable.Object; qualifier, name: SyntaxTree.Ident;
+  PROCEDURE NoteExtensionName(obj: SymbolTable.Object; qualifier, name: Names.Name;
                               line, column: INTEGER);
     VAR what: ARRAY 600 OF CHAR; i, j: INTEGER;
   BEGIN
     IF (obj # NIL) & obj.isExtension THEN
       i := 0;
-      IF qualifier[0] # 0X THEN
+      IF qualifier # NIL THEN
         WHILE qualifier[i] # 0X DO what[i] := qualifier[i]; INC(i) END;
         what[i] := "."; INC(i)
       END;
@@ -211,12 +211,12 @@ MODULE SemanticActions;
   (* message about the name qualifier.name, or name alone if there is no
      qualifier: "undeclared identifier: Out.Strng" *)
   PROCEDURE ReportQualified(line, column: INTEGER; message: ARRAY OF CHAR;
-                            qualifier, name: ARRAY OF CHAR);
+                            qualifier, name: Names.Name);
     VAR what: ARRAY 520 OF CHAR; (* two identifiers and a period *)
   BEGIN
     what := "";
-    IF qualifier[0] # 0X THEN Diagnostics.AppendText(what, qualifier); Diagnostics.AppendText(what, ".") END;
-    Diagnostics.AppendText(what, name);
+    IF qualifier # NIL THEN Diagnostics.AppendText(what, qualifier^); Diagnostics.AppendText(what, ".") END;
+    Diagnostics.AppendText(what, name^);
     Diagnostics.ErrorAbout(line, column, message, what)
   END ReportQualified;
 
@@ -233,27 +233,27 @@ MODULE SemanticActions;
     Diagnostics.ErrorAbout(line, column, message, what)
   END ReportTypes;
 
-  PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
+  PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: Names.Name;
                           line, column: INTEGER): SymbolTable.Object;
     VAR modObj, obj: SymbolTable.Object;
   BEGIN
     lookupDiagnosed := FALSE;
-    IF qualifier[0] = 0X THEN
-      obj := SymbolTable.Find(scope, Names.Intern(name));
+    IF qualifier = NIL THEN
+      obj := SymbolTable.Find(scope, name);
       NoteExtensionName(obj, qualifier, name, line, column);
       RETURN obj
     END;
-    modObj := SymbolTable.Find(scope, Names.Intern(qualifier));
+    modObj := SymbolTable.Find(scope, qualifier);
     IF (modObj # NIL) & (modObj.class = SymbolTable.moduleClass)
        & (modObj.moduleScope = unresolvedModuleScope) THEN
       lookupDiagnosed := TRUE; (* the import's error is enough *)
       RETURN NIL
     ELSIF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN
-      Diagnostics.ErrorAbout(line, column, "not an imported module", qualifier);
+      Diagnostics.ErrorAbout(line, column, "not an imported module", qualifier^);
       lookupDiagnosed := TRUE;
       RETURN NIL
     END;
-    obj := SymbolTable.FindLocal(modObj.moduleScope, Names.Intern(name));
+    obj := SymbolTable.FindLocal(modObj.moduleScope, name);
     IF (obj # NIL) & ~obj.exported THEN
       (* PLAN.md Phase 9 step 4a: a .sym file now also carries the
          unexported declarations an importer's layout depends on, so
@@ -276,12 +276,12 @@ MODULE SemanticActions;
      for, walking outward - so a WITH-narrowed copy of a name, which
      shadows it in a scope of its own procedure, counts as that procedure's
      own. Anything but a variable is not noted. *)
-  PROCEDURE NoteVariableUse(scope: SymbolTable.Scope; name: SyntaxTree.Ident; obj: SymbolTable.Object);
+  PROCEDURE NoteVariableUse(scope: SymbolTable.Scope; name: Names.Name; obj: SymbolTable.Object);
     VAR declaringScope: SymbolTable.Scope;
   BEGIN
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     declaringScope := scope;
-    WHILE (declaringScope # NIL) & (SymbolTable.FindLocal(declaringScope, Names.Intern(name)) # obj) DO
+    WHILE (declaringScope # NIL) & (SymbolTable.FindLocal(declaringScope, name) # obj) DO
       declaringScope := declaringScope.outer
     END;
     IF (declaringScope # NIL) & (declaringScope.enclosingProc # scope.enclosingProc) THEN
@@ -291,7 +291,7 @@ MODULE SemanticActions;
 
   (* Designators and selectors *)
 
-  PROCEDURE NewDesignator*(qualifier, name: SyntaxTree.Ident;
+  PROCEDURE NewDesignator*(qualifier, name: Names.Name;
                             line, column: INTEGER): SyntaxTree.Designator;
     VAR d: SyntaxTree.Designator;
   BEGIN
@@ -301,7 +301,7 @@ MODULE SemanticActions;
     RETURN d
   END NewDesignator;
 
-  PROCEDURE NewFieldSelector*(name: SyntaxTree.Ident;
+  PROCEDURE NewFieldSelector*(name: Names.Name;
                               line, column: INTEGER): SyntaxTree.FieldSelector;
     VAR s: SyntaxTree.FieldSelector;
   BEGIN
@@ -325,7 +325,7 @@ MODULE SemanticActions;
     RETURN s
   END NewDereferenceSelector;
 
-  PROCEDURE NewGuardSelector*(qualifier, name: SyntaxTree.Ident;
+  PROCEDURE NewGuardSelector*(qualifier, name: Names.Name;
                               line, column: INTEGER): SyntaxTree.GuardSelector;
     VAR s: SyntaxTree.GuardSelector;
   BEGIN
@@ -404,7 +404,7 @@ MODULE SemanticActions;
 
   (* Types *)
 
-  PROCEDURE NewStructuredLiteral*(qualifier, name: SyntaxTree.Ident;
+  PROCEDURE NewStructuredLiteral*(qualifier, name: Names.Name;
                                   elements: SyntaxTree.LiteralElementNode;
                                   line, column: INTEGER): SyntaxTree.StructuredLiteralNode;
     VAR e: SyntaxTree.StructuredLiteralNode;
@@ -414,7 +414,7 @@ MODULE SemanticActions;
     RETURN e
   END NewStructuredLiteral;
 
-  PROCEDURE NewLiteralElement*(field: SyntaxTree.Ident; value, high: SyntaxTree.ExprNode;
+  PROCEDURE NewLiteralElement*(field: Names.Name; value, high: SyntaxTree.ExprNode;
                                line, column: INTEGER): SyntaxTree.LiteralElementNode;
     VAR el: SyntaxTree.LiteralElementNode;
   BEGIN
@@ -432,7 +432,7 @@ MODULE SemanticActions;
     head := NIL; tail := NIL;
     el := lit.elements;
     WHILE el # NIL DO
-      IF el.field[0] # 0X THEN
+      IF el.field # NIL THEN
         Diagnostics.Error(el.line, el.column, "a set element has no name")
       ELSIF el.indexes # NIL THEN
         Diagnostics.Error(el.line, el.column, "a set element has no index")
@@ -448,7 +448,7 @@ MODULE SemanticActions;
     RETURN NewSetExpr(head, lit.line, lit.column)
   END SetFromLiteral;
 
-  PROCEDURE NewQualidentType*(qualifier, name: SyntaxTree.Ident;
+  PROCEDURE NewQualidentType*(qualifier, name: Names.Name;
                               line, column: INTEGER): SyntaxTree.QualidentTypeNode;
     VAR t: SyntaxTree.QualidentTypeNode;
   BEGIN
@@ -503,7 +503,7 @@ MODULE SemanticActions;
     RETURN f
   END NewFieldList;
 
-  PROCEDURE NewIdentDef*(name: SyntaxTree.Ident; exportMark: INTEGER;
+  PROCEDURE NewIdentDef*(name: Names.Name; exportMark: INTEGER;
                          line, column: INTEGER): SyntaxTree.IdentDefNode;
     VAR d: SyntaxTree.IdentDefNode;
   BEGIN
@@ -534,7 +534,7 @@ MODULE SemanticActions;
     RETURN s
   END NewFPSection;
 
-  PROCEDURE NewReceiver*(isVar: BOOLEAN; name, typeName: SyntaxTree.Ident;
+  PROCEDURE NewReceiver*(isVar: BOOLEAN; name, typeName: Names.Name;
                          line, column: INTEGER): SyntaxTree.ReceiverNode;
     VAR r: SyntaxTree.ReceiverNode;
   BEGIN
@@ -633,7 +633,7 @@ MODULE SemanticActions;
     RETURN s
   END NewRepeatStatement;
 
-  PROCEDURE NewForStatement*(variable: SyntaxTree.Ident;
+  PROCEDURE NewForStatement*(variable: Names.Name;
                              start, stop, step: SyntaxTree.ExprNode;
                              body: SyntaxTree.StatementNode;
                              line, column: INTEGER): SyntaxTree.ForStatementNode;
@@ -663,7 +663,7 @@ MODULE SemanticActions;
     RETURN s
   END NewWithStatement;
 
-  PROCEDURE NewWithGuard*(variableQualifier, variableName, typeQualifier, typeName: SyntaxTree.Ident;
+  PROCEDURE NewWithGuard*(variableQualifier, variableName, typeQualifier, typeName: Names.Name;
                           body: SyntaxTree.StatementNode;
                           line, column: INTEGER): SyntaxTree.WithGuardNode;
     VAR g: SyntaxTree.WithGuardNode;
@@ -720,12 +720,12 @@ MODULE SemanticActions;
   END NewVarDecl;
 
   PROCEDURE NewProcDecl*(isForward, isExternal: BOOLEAN;
-                         externalConvention, externalName: SyntaxTree.Ident;
+                         externalConvention, externalName: Names.Name;
                          receiver: SyntaxTree.ReceiverNode;
                          name: SyntaxTree.IdentDefNode; formals: SyntaxTree.FormalParsNode;
                          declarations: SyntaxTree.DeclSeqNode;
                          statements: SyntaxTree.StatementNode;
-                         endName: SyntaxTree.Ident;
+                         endName: Names.Name;
                          line, column: INTEGER): SyntaxTree.ProcDeclNode;
     VAR d: SyntaxTree.ProcDeclNode;
   BEGIN
@@ -753,7 +753,7 @@ MODULE SemanticActions;
     RETURN d
   END NewDeclSeq;
 
-  PROCEDURE NewImport*(alias, moduleName: SyntaxTree.Ident;
+  PROCEDURE NewImport*(alias, moduleName: Names.Name;
                        line, column: INTEGER): SyntaxTree.ImportNode;
     VAR i: SyntaxTree.ImportNode;
   BEGIN
@@ -762,10 +762,10 @@ MODULE SemanticActions;
     RETURN i
   END NewImport;
 
-  PROCEDURE NewModule*(name: SyntaxTree.Ident; imports: SyntaxTree.ImportNode;
+  PROCEDURE NewModule*(name: Names.Name; imports: SyntaxTree.ImportNode;
                        declarations: SyntaxTree.DeclSeqNode;
                        statements: SyntaxTree.StatementNode;
-                       endName: SyntaxTree.Ident;
+                       endName: Names.Name;
                        line, column: INTEGER): SyntaxTree.ModuleNode;
     VAR m: SyntaxTree.ModuleNode;
   BEGIN
@@ -892,14 +892,14 @@ MODULE SemanticActions;
        & (d.name.exportMark # SyntaxTree.exportNone) & ~HasTypeName(scope, v.type) THEN
       (* the .sym file writes it as a literal, which names its type *)
       Diagnostics.ErrorAbout(d.name.line, d.name.column,
-        "an exported record or array constant's type must have a name", d.name.name)
+        "an exported record or array constant's type must have a name", d.name.name^)
     END;
     IF v.type = Types.HugeInt THEN
       Diagnostics.NotInReport(d.name.line, d.name.column, "an integer constant too large for LONGINT")
     ELSIF v.type = Types.Set64 THEN
       Diagnostics.NotInReport(d.name.line, d.name.column, "a set constant with an element above MAX(SET)")
     END;
-    obj := SymbolTable.Insert(scope, Names.Intern(d.name.name), SymbolTable.constClass, v.type,
+    obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.constClass, v.type,
                                d.name.exportMark # SyntaxTree.exportNone, FALSE,
                                d.name.line, d.name.column);
     obj.value := v
@@ -1098,7 +1098,7 @@ MODULE SemanticActions;
            (Appendix A/the Trees example's Node.name-) - unlike
            CheckExportMark's callers (CONST/TYPE names), so this does not
            call CheckExportMark. *)
-        addedField := Types.AddField(rec, idents.name, fieldType,
+        addedField := Types.AddField(rec, idents.name^, fieldType,
                                       idents.exportMark # SyntaxTree.exportNone,
                                       idents.exportMark = SyntaxTree.exportReadOnly,
                                       idents.line, idents.column);
@@ -1202,7 +1202,7 @@ MODULE SemanticActions;
     END
   END ResolveNamedType;
 
-  PROCEDURE DeclaredLater(name: SyntaxTree.Ident): BOOLEAN;
+  PROCEDURE DeclaredLater(name: Names.Name): BOOLEAN;
     VAR t: SyntaxTree.TypeDeclNode;
   BEGIN
     t := laterTypes;
@@ -1219,7 +1219,7 @@ MODULE SemanticActions;
     obj := FindQualified(scope, node.qualifier, node.name, node.line, node.column);
     IF obj = NIL THEN
       IF lookupDiagnosed THEN (* already reported *)
-      ELSIF allowForward & (node.qualifier[0] = 0X) & DeclaredLater(node.name) THEN
+      ELSIF allowForward & (node.qualifier = NIL) & DeclaredLater(node.name) THEN
         Diagnostics.Error(node.line, node.column,
           "a POINTER TO base type must be declared before the next procedure")
       ELSE
@@ -1242,7 +1242,7 @@ MODULE SemanticActions;
       Diagnostics.Error(node.line, node.column,
         "a record may not directly contain itself; use POINTER TO instead");
       RETURN Types.Undefined
-    ELSIF ~allowForward & (node.qualifier[0] = 0X) & SymbolTable.DeclaredAtOrAfter(obj, node.line, node.column) THEN
+    ELSIF ~allowForward & (node.qualifier = NIL) & SymbolTable.DeclaredAtOrAfter(obj, node.line, node.column) THEN
       (* Checked before the obj.type # NIL fast path below, not after -
          found while implementing "Declaration order" (PLAN.md's "Open
          design questions"): once CONST/TYPE/VAR resolve in one merged
@@ -1385,7 +1385,7 @@ MODULE SemanticActions;
         paramType := ResolveType(scope, section.type, FALSE);
         idents := section.names;
         WHILE idents # NIL DO
-          Types.AddParam(pt, idents.name, paramType, section.isVar,
+          Types.AddParam(pt, idents.name^, paramType, section.isVar,
                          idents.exportMark = SyntaxTree.exportReadOnly);
           idents := idents.next
         END;
@@ -1479,7 +1479,7 @@ MODULE SemanticActions;
          in the merged pass, like every other diagnostic. Found by
          semantic-reject-readonly-mark's own two expected errors coming
          back swapped once this pre-pass existed. *)
-      obj := SymbolTable.Insert(scope, Names.Intern(d.name.name), SymbolTable.typeClass, NIL,
+      obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.typeClass, NIL,
                                  d.name.exportMark # SyntaxTree.exportNone, FALSE,
                                  d.name.line, d.name.column);
       obj.pendingTypeNode := d.type;
@@ -1505,14 +1505,14 @@ MODULE SemanticActions;
      walk, except the declared record itself; so does a path too long for
      an identifier, which leaves what is below it unnamed (the backend
      then cannot initialize such a record from another module). *)
-  PROCEDURE NameInitPaths(t: Types.Type; path: SyntaxTree.Ident);
+  PROCEDURE NameInitPaths(t: Types.Type; path: ARRAY OF CHAR);
     VAR rec: Types.RecordType; f: Types.Field; inner: SyntaxTree.Ident;
 
     (* inner := path "." suffix; FALSE if that does not fit *)
     PROCEDURE Extend(suffix: ARRAY OF CHAR): BOOLEAN;
       VAR i, k: INTEGER;
     BEGIN
-      inner := path; i := 0;
+      COPY(path, inner); i := 0;
       WHILE inner[i] # 0X DO INC(i) END;
       k := 0;
       WHILE suffix[k] # 0X DO INC(k) END;
@@ -1528,7 +1528,7 @@ MODULE SemanticActions;
     IF t IS Types.RecordType THEN
       rec := t(Types.RecordType);
       IF rec.moduleName # currentModuleName THEN RETURN END;
-      IF rec.initPath[0] = 0X THEN rec.initPath := path END;
+      IF rec.initPath[0] = 0X THEN COPY(path, rec.initPath) END;
       IF rec.initPath = path THEN
         f := rec.fields;
         WHILE f # NIL DO
@@ -1548,9 +1548,9 @@ MODULE SemanticActions;
   BEGIN
     CheckExportMark(d.name); (* deferred from PredeclareTypeNames - see its
                                  own comment on why *)
-    obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
+    obj := SymbolTable.FindLocal(scope, d.name.name);
     resolved := ResolveNamedType(scope, obj);
-    IF scope.outer = SymbolTable.Universe THEN NameInitPaths(resolved, d.name.name) END
+    IF scope.outer = SymbolTable.Universe THEN NameInitPaths(resolved, d.name.name^) END
   END ResolveOneTypeDecl;
 
   (* Resolves one VAR declaration (one comma-separated name group sharing
@@ -1567,7 +1567,7 @@ MODULE SemanticActions;
     RejectOpenArray(t, d.type, "a variable cannot be an open array");
     idents := d.names;
     WHILE idents # NIL DO
-      obj := SymbolTable.Insert(scope, Names.Intern(idents.name), SymbolTable.varClass, t,
+      obj := SymbolTable.Insert(scope, idents.name, SymbolTable.varClass, t,
                                  idents.exportMark # SyntaxTree.exportNone,
                                  idents.exportMark = SyntaxTree.exportReadOnly,
                                  idents.line, idents.column);
@@ -1700,7 +1700,7 @@ MODULE SemanticActions;
      through), CheckDesignator's own GuardSelector case (mid-chain
      guards, which already carry qualifier/name directly - see
      SyntaxTree.GuardSelectorDesc), and CheckWithGuard (WITH v: T DO). *)
-  PROCEDURE ResolveTypeName(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
+  PROCEDURE ResolveTypeName(scope: SymbolTable.Scope; qualifier, name: Names.Name;
                             line, column: INTEGER): Types.Type;
     VAR obj: SymbolTable.Object;
   BEGIN
@@ -1830,13 +1830,13 @@ MODULE SemanticActions;
   PROCEDURE UnqualifyHidden(scope: SymbolTable.Scope; d: SyntaxTree.Designator);
     VAR obj: SymbolTable.Object; field: SyntaxTree.FieldSelector; length: INTEGER;
   BEGIN
-    IF d.qualifier[0] = 0X THEN RETURN END;
-    obj := SymbolTable.Find(scope, Names.Intern(d.qualifier));
+    IF d.qualifier = NIL THEN RETURN END;
+    obj := SymbolTable.Find(scope, d.qualifier);
     IF (obj # NIL) & (obj.class # SymbolTable.moduleClass) THEN
       length := 0; WHILE d.qualifier[length] # 0X DO INC(length) END;
       field := NewFieldSelector(d.name, d.line, d.column + length + 1);
       field.next := d.selectors; d.selectors := field;
-      d.name := d.qualifier; d.qualifier[0] := 0X
+      d.name := d.qualifier; d.qualifier := NIL
     END
   END UnqualifyHidden;
 
@@ -1875,7 +1875,7 @@ MODULE SemanticActions;
       method: Types.Method;
       rec, fieldOwner: Types.RecordType;
       methodOwner: Types.RecordType;
-      methodName: SyntaxTree.Ident;
+      methodName: Names.Name;
       idx: SyntaxTree.ExprNode;
       idxType: Types.Type; indexValue: Types.Value;
       ptr: Types.PointerType;
@@ -1904,9 +1904,9 @@ MODULE SemanticActions;
        behavior, and still correctly catches the direct
        "Module.exportedVar.field := ..." shape. *)
     UnqualifyHidden(scope, d);
-    crossedBoundary := d.qualifier[0] # 0X;
+    crossedBoundary := d.qualifier # NIL;
     obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
-    IF (obj # NIL) & (d.qualifier[0] = 0X) THEN NoteVariableUse(scope, d.name, obj) END;
+    IF (obj # NIL) & (d.qualifier = NIL) THEN NoteVariableUse(scope, d.name, obj) END;
     IF obj = NIL THEN
       IF ~lookupDiagnosed THEN ReportQualified(d.line, d.column, "undeclared identifier", d.qualifier, d.name) END;
       RETURN Types.Undefined
@@ -1939,7 +1939,7 @@ MODULE SemanticActions;
             t := Types.Undefined
           ELSE
             rec := t(Types.RecordType);
-            field := Types.FindField(rec, sel.name);
+            field := Types.FindField(rec, sel.name^);
             IF field # NIL THEN
               (* Judged against the record that *declared* the field, not
                  the (possibly local extension) record it was reached
@@ -1947,30 +1947,30 @@ MODULE SemanticActions;
                  make the base's own hidden or read-only fields local. *)
               fieldOwner := Types.FieldOwner(rec, field);
               IF ~field.exported & ~IsLocalRecord(fieldOwner) THEN
-                Diagnostics.ErrorAbout(sel.line, sel.column, "field is not exported by its module", sel.name);
+                Diagnostics.ErrorAbout(sel.line, sel.column, "field is not exported by its module", sel.name^);
                 t := Types.Undefined
               ELSE
                 t := field.type;
                 readOnly := readOnly OR (field.readOnly & ~IsLocalRecord(fieldOwner))
               END
             ELSE
-              method := Types.FindMethod(rec, sel.name);
+              method := Types.FindMethod(rec, sel.name^);
               IF method = NIL THEN
                 (* one of rec's bases did not resolve, and was reported:
                    the name may be that base's *)
                 IF ~Types.HasUnresolvedBase(rec) THEN
-                  Diagnostics.ErrorAbout(sel.line, sel.column, "undeclared field or type-bound procedure", sel.name)
+                  Diagnostics.ErrorAbout(sel.line, sel.column, "undeclared field or type-bound procedure", sel.name^)
                 END;
                 t := Types.Undefined
               ELSIF ~method.exported & ~IsLocalRecord(Types.MethodOwner(rec, method)) THEN
-                Diagnostics.ErrorAbout(sel.line, sel.column, "type-bound procedure is not exported by its module", sel.name);
+                Diagnostics.ErrorAbout(sel.line, sel.column, "type-bound procedure is not exported by its module", sel.name^);
                 t := Types.Undefined
               ELSE
                 IF readOnly & method.receiverIsVar THEN
                   (* the call would pass a read-only record as the VAR
                      receiver, which may change it *)
                   Diagnostics.ErrorAbout(sel.line, sel.column,
-                    "a read-only record cannot be the VAR receiver of a type-bound procedure", sel.name)
+                    "a read-only record cannot be the VAR receiver of a type-bound procedure", sel.name^)
                 END;
                 t := method.procType; readOnly := TRUE; boundProc := TRUE;
                 methodOwner := rec; methodName := sel.name
@@ -2012,7 +2012,7 @@ MODULE SemanticActions;
           IF methodOwner # NIL THEN
             method := NIL;
             IF (methodOwner.baseType # NIL) & (methodOwner.baseType IS Types.RecordType) THEN
-              method := Types.FindMethod(methodOwner.baseType(Types.RecordType), methodName)
+              method := Types.FindMethod(methodOwner.baseType(Types.RecordType), methodName^)
             END;
             IF method = NIL THEN
               Diagnostics.Error(sel.line, sel.column,
@@ -2258,11 +2258,11 @@ MODULE SemanticActions;
      is not the Universe. (The module's own scope is the only one whose
      outer scope is; a procedure's body, and a WITH branch's narrowed
      scope, nest inside it.) *)
-  PROCEDURE IsNestedProcedureName(scope: SymbolTable.Scope; name: SyntaxTree.Ident): BOOLEAN;
+  PROCEDURE IsNestedProcedureName(scope: SymbolTable.Scope; name: Names.Name): BOOLEAN;
     VAR s: SymbolTable.Scope;
   BEGIN
     s := scope;
-    WHILE (s # NIL) & (SymbolTable.FindLocal(s, Names.Intern(name)) = NIL) DO s := s.outer END;
+    WHILE (s # NIL) & (SymbolTable.FindLocal(s, name) = NIL) DO s := s.outer END;
     RETURN (s # NIL) & (s.outer # SymbolTable.Universe)
   END IsNestedProcedureName;
 
@@ -2293,7 +2293,7 @@ MODULE SemanticActions;
           Diagnostics.NotInReport(d.line, d.column, "the address of an external procedure")
         ELSIF obj.externalConvention # NIL THEN
           Diagnostics.Error(d.line, d.column, "an external procedure cannot be used as a procedure value")
-        ELSIF (d.qualifier[0] = 0X) & IsNestedProcedureName(scope, d.name) THEN
+        ELSIF (d.qualifier = NIL) & IsNestedProcedureName(scope, d.name) THEN
           Diagnostics.Error(d.line, d.column,
             "a procedure local to another procedure cannot be used as a procedure value")
         END
@@ -2384,21 +2384,21 @@ MODULE SemanticActions;
       RETURN baseType
     END;
     IF baseType = Types.PredeclaredProcedureType THEN
-      resultType := PredeclaredProcedures.CheckCall(scope, node.designator.name, node.args,
+      resultType := PredeclaredProcedures.CheckCall(scope, node.designator.name^, node.args,
                                                       node.line, node.column,
                                                       CheckExpr, CheckDesignator,
-                                                      node.designator.qualifier[0] # 0X, isProperProcedure);
+                                                      node.designator.qualifier # NIL, isProperProcedure);
       IF isProperProcedure THEN
         Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
         RETURN Types.Undefined
-      ELSIF (node.designator.name = "ASH") OR (node.designator.name = "LEN") THEN
+      ELSIF (Names.Equals(node.designator.name, "ASH")) OR (Names.Equals(node.designator.name, "LEN")) THEN
         (* a constant ASH is typed by its value, as a constant + is; LEN of a
            dimension of fixed length, a constant since 2026-10-02
            (ConstantEvaluator.FixedLength), keeps LONGINT, but is folded
            here for what folding reports *)
         RETURN FoldConstantType(scope, node, resultType)
-      ELSIF (resultType # Types.Undefined) & (node.designator.qualifier[0] = 0X)
-            & ConstantEvaluator.IsValueFunctionName(node.designator.name)
+      ELSIF (resultType # Types.Undefined) & (node.designator.qualifier = NIL)
+            & ConstantEvaluator.IsValueFunctionName(node.designator.name^)
             & ConstantEvaluator.IsConstantExpr(node, scope) THEN
         (* Phase 11 (C9): ORD ABS CHR CAP ENTIER LONG SHORT ODD of a constant
            are folded here too, so an argument that does not fit (CHR(300),
@@ -2828,7 +2828,7 @@ MODULE SemanticActions;
     ELSE
       nested := NIL
     END;
-    IF (nested # NIL) & (nested.name[0] = 0X) & (dstType # Types.Undefined) & ~Types.IsSet(dstType) THEN
+    IF (nested # NIL) & (nested.name = NIL) & (dstType # Types.Undefined) & ~Types.IsSet(dstType) THEN
       IF el.high # NIL THEN Diagnostics.Error(el.line, el.column, "a range is allowed only in a set") END;
       IF HasLiteral(dstType) THEN
         CheckLiteralOfType(scope, nested, dstType)
@@ -2836,7 +2836,7 @@ MODULE SemanticActions;
         ReportTypes(nested.line, nested.column, "this element's type has no literal", dstType, "", NIL)
       END
     ELSE
-      IF (nested # NIL) & (nested.name[0] = 0X) THEN
+      IF (nested # NIL) & (nested.name = NIL) THEN
         el.value := SetFromLiteral(nested)
       END;
       IF el.high # NIL THEN Diagnostics.Error(el.line, el.column, "a range is allowed only in a set") END;
@@ -2931,20 +2931,20 @@ MODULE SemanticActions;
         IF el.indexes # NIL THEN
           Diagnostics.Error(el.line, el.column, "an index is allowed only in an array literal");
           CheckLiteralElement(scope, el, Types.Undefined)
-        ELSIF el.field[0] = 0X THEN
+        ELSIF el.field = NIL THEN
           Diagnostics.Error(el.line, el.column, "a record literal names its fields: field := value");
           CheckLiteralElement(scope, el, Types.Undefined)
         ELSE
-          field := Types.FindField(rec, el.field);
+          field := Types.FindField(rec, el.field^);
           earlier := lit.elements;
           WHILE (earlier # el) & (earlier.field # el.field) DO earlier := earlier.next END;
           IF field = NIL THEN
             IF ~Types.HasUnresolvedBase(rec) THEN
-              Diagnostics.ErrorAbout(el.line, el.column, "the record has no field of this name", el.field)
+              Diagnostics.ErrorAbout(el.line, el.column, "the record has no field of this name", el.field^)
             END;
             CheckLiteralElement(scope, el, Types.Undefined)
           ELSIF earlier # el THEN
-            Diagnostics.ErrorAbout(el.line, el.column, "this field is given twice in the literal", el.field);
+            Diagnostics.ErrorAbout(el.line, el.column, "this field is given twice in the literal", el.field^);
             CheckLiteralElement(scope, el, field.type)
           ELSE
             CheckLiteralElement(scope, el, field.type)
@@ -2959,7 +2959,7 @@ MODULE SemanticActions;
       next := 0; tooMany := FALSE;
       WHILE el # NIL DO
         el.ranges := NIL;
-        IF el.field[0] # 0X THEN
+        IF el.field # NIL THEN
           Diagnostics.Error(el.line, el.column, "an array literal's elements have no names")
         ELSIF el.indexes # NIL THEN
           label := el.indexes; highest := -1;
@@ -2998,7 +2998,7 @@ MODULE SemanticActions;
   PROCEDURE CheckStructuredLiteral(scope: SymbolTable.Scope; node: SyntaxTree.StructuredLiteralNode): Types.Type;
     VAR t: Types.Type; obj: SymbolTable.Object;
   BEGIN
-    IF node.name[0] = 0X THEN
+    IF node.name = NIL THEN
       Diagnostics.Error(node.line, node.column,
         "a literal without its type's name can only be an element of another literal");
       RETURN Types.Undefined
@@ -3008,7 +3008,7 @@ MODULE SemanticActions;
     IF obj = NIL THEN
       RETURN Types.Undefined
     ELSIF (obj.class # SymbolTable.typeClass) OR (obj.type = NIL) THEN
-      Diagnostics.ErrorAbout(node.line, node.column, "a literal begins with the name of a type", node.name);
+      Diagnostics.ErrorAbout(node.line, node.column, "a literal begins with the name of a type", node.name^);
       RETURN Types.Undefined
     END;
     t := obj.type;
@@ -3162,9 +3162,9 @@ MODULE SemanticActions;
   BEGIN
     baseType := CheckDesignator(scope, s.designator, readOnly, isVariable);
     IF baseType = Types.PredeclaredProcedureType THEN
-      baseType := PredeclaredProcedures.CheckCall(scope, s.designator.name, s.args, s.line, s.column,
+      baseType := PredeclaredProcedures.CheckCall(scope, s.designator.name^, s.args, s.line, s.column,
                                                     CheckExpr, CheckDesignator,
-                                                    s.designator.qualifier[0] # 0X, isProperProcedure)
+                                                    s.designator.qualifier # NIL, isProperProcedure)
     ELSIF baseType = Types.Undefined THEN
       CheckExprList(scope, s.args)
     ELSIF ~(baseType IS Types.ProcedureType) THEN
@@ -3349,11 +3349,11 @@ MODULE SemanticActions;
                               loopDepth: INTEGER; procResultType: Types.Type);
     VAR obj: SymbolTable.Object; varType, startType, stopType: Types.Type; stepVal: Types.Value;
   BEGIN
-    obj := SymbolTable.Find(scope, Names.Intern(s.variable));
+    obj := SymbolTable.Find(scope, s.variable);
     NoteVariableUse(scope, s.variable, obj);
     varType := Types.Undefined;
     IF obj = NIL THEN
-      Diagnostics.ErrorAbout(s.line, s.column, "undeclared identifier", s.variable)
+      Diagnostics.ErrorAbout(s.line, s.column, "undeclared identifier", s.variable^)
     ELSIF (obj.class # SymbolTable.varClass) OR ~Types.IsInteger(obj.type) THEN
       Diagnostics.Error(s.line, s.column, "FOR control variable must be an integer variable")
     ELSE
@@ -3517,7 +3517,7 @@ MODULE SemanticActions;
       IF ~lookupDiagnosed THEN ReportQualified(g.line, g.column, "undeclared identifier", g.variableQualifier, g.variableName) END;
       RETURN
     END;
-    IF g.variableQualifier[0] = 0X THEN NoteVariableUse(scope, g.variableName, obj) END;
+    IF g.variableQualifier = NIL THEN NoteVariableUse(scope, g.variableName, obj) END;
     leftType := obj.type;
     targetType := ResolveTypeName(scope, g.typeQualifier, g.typeName, g.line, g.column);
     IF targetType = NIL THEN
@@ -3525,10 +3525,10 @@ MODULE SemanticActions;
       RETURN
     END;
     narrowed := CheckGuard(leftType, targetType,
-                           (g.variableQualifier[0] = 0X) & (obj.class = SymbolTable.varClass) & obj.isVarParam,
+                           (g.variableQualifier = NIL) & (obj.class = SymbolTable.varClass) & obj.isVarParam,
                            g.line, g.column);
     IF (narrowed # Types.Undefined) & (leftType IS Types.PointerType) THEN
-      IF (g.variableQualifier[0] # 0X) OR obj.isVarParam OR obj.usedAtOtherLevel THEN
+      IF (g.variableQualifier # NIL) OR obj.isVarParam OR obj.usedAtOtherLevel THEN
         Diagnostics.Error(g.line, g.column,
           "guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable");
         narrowed := Types.Undefined
@@ -3579,7 +3579,7 @@ MODULE SemanticActions;
                             VAR receiverType: Types.Type): Types.RecordType;
     VAR obj: SymbolTable.Object; ptr: Types.PointerType;
   BEGIN
-    obj := SymbolTable.Find(scope, Names.Intern(r.typeName));
+    obj := SymbolTable.Find(scope, r.typeName);
     IF (obj = NIL) OR (obj.class # SymbolTable.typeClass) THEN
       Diagnostics.Error(r.line, r.column, "receiver type must be a declared type");
       receiverType := Types.Undefined;
@@ -3611,7 +3611,7 @@ MODULE SemanticActions;
      P' must be exported too" - at least as exported as the original.
      TRUE if this is a legal override, or there is no inherited method of
      this name at all (not an override). *)
-  PROCEDURE CheckOverride(owner: Types.RecordType; name: SyntaxTree.Ident;
+  PROCEDURE CheckOverride(owner: Types.RecordType; name: ARRAY OF CHAR;
                           procType: Types.ProcedureType; receiverIsVar, exported: BOOLEAN;
                           line, column: INTEGER): BOOLEAN;
     VAR inherited: Types.Method;
@@ -3712,18 +3712,18 @@ MODULE SemanticActions;
     VAR pt: Types.ProcedureType; obj: SymbolTable.Object; exported: BOOLEAN;
   BEGIN
     Diagnostics.NotInReport(d.line, d.column, "an external procedure");
-    IF (d.externalConvention # "C") & (d.externalConvention # "VMS") THEN
+    IF (~Names.Equals(d.externalConvention, "C")) & (~Names.Equals(d.externalConvention, "VMS")) THEN
       Diagnostics.Error(d.line, d.column, "unknown external calling convention")
     END;
     exported := d.name.exportMark # SyntaxTree.exportNone;
     CheckExportMark(d.name);
     pt := ResolveFormalPars(scope, d.formals);
-    obj := SymbolTable.Insert(scope, Names.Intern(d.name.name), SymbolTable.procClass, pt, exported, FALSE,
+    obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
                                d.line, d.column);
-    obj.externalConvention := Names.Intern(d.externalConvention);
-    IF d.externalConvention = "VMS" THEN pt.isVms := TRUE; CheckVmsParameters(pt, d.line, d.column) END;
-    IF d.externalName[0] # 0X THEN obj.externalName := Names.Intern(d.externalName)
-    ELSE obj.externalName := Names.Intern(d.name.name)
+    obj.externalConvention := d.externalConvention;
+    IF Names.Equals(d.externalConvention, "VMS") THEN pt.isVms := TRUE; CheckVmsParameters(pt, d.line, d.column) END;
+    IF d.externalName # NIL THEN obj.externalName := d.externalName
+    ELSE obj.externalName := d.name.name
     END
   END ResolveExternalProcDecl;
 
@@ -3769,7 +3769,7 @@ MODULE SemanticActions;
        keep naming whichever procedure it already sits inside. *)
     bodyScope.enclosingProc := d;
     IF (d.receiver # NIL) & (receiverType # NIL) THEN
-      paramObj := SymbolTable.Insert(bodyScope, Names.Intern(d.receiver.name), SymbolTable.varClass, receiverType,
+      paramObj := SymbolTable.Insert(bodyScope, d.receiver.name, SymbolTable.varClass, receiverType,
                                       FALSE, FALSE, d.receiver.line, d.receiver.column);
       paramObj.isVarParam := d.receiver.isVar
     END;
@@ -3779,7 +3779,7 @@ MODULE SemanticActions;
       WHILE section # NIL DO
         idents := section.names;
         WHILE idents # NIL DO
-          paramObj := SymbolTable.Insert(bodyScope, Names.Intern(idents.name), SymbolTable.varClass, p.type,
+          paramObj := SymbolTable.Insert(bodyScope, idents.name, SymbolTable.varClass, p.type,
                                           FALSE, FALSE, idents.line, idents.column);
           paramObj.isVarParam := section.isVar;
           paramObj.isReadOnlyParam := p.isReadOnly;
@@ -3867,9 +3867,9 @@ MODULE SemanticActions;
         pt := ResolveFormalPars(scope, d.formals);
         IF owner # NIL THEN
           IF d.isForward THEN
-            unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
-            method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, TRUE,
-                                       d.receiver.typeName, d.line, d.column)
+            unused := CheckOverride(owner, d.name.name^, pt, d.receiver.isVar, exported, d.line, d.column);
+            method := Types.AddMethod(owner, d.name.name^, pt, d.receiver.isVar, exported, TRUE,
+                                       d.receiver.typeName^, d.line, d.column)
           ELSE
             (* owner's *own* list only: FindMethod's walk up the base
                chain would find an *imported* base's forward-declared
@@ -3878,7 +3878,7 @@ MODULE SemanticActions;
                mutating the base's method instead of recording an
                override on owner. Latent until PLAN.md Phase 9 step 4a's
                fixtures first overrode an imported procedure. *)
-            method := Types.FindOwnMethod(owner, d.name.name);
+            method := Types.FindOwnMethod(owner, d.name.name^);
             IF (method # NIL) & method.pending THEN
               IF ~Types.ProcedureTypesMatch(pt, method.procType) OR (method.receiverIsVar # d.receiver.isVar) THEN
                 Diagnostics.Error(d.line, d.column,
@@ -3886,9 +3886,9 @@ MODULE SemanticActions;
               END;
               method.pending := FALSE; method.procType := pt
             ELSE
-              unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
-              method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, FALSE,
-                                         d.receiver.typeName, d.line, d.column)
+              unused := CheckOverride(owner, d.name.name^, pt, d.receiver.isVar, exported, d.line, d.column);
+              method := Types.AddMethod(owner, d.name.name^, pt, d.receiver.isVar, exported, FALSE,
+                                         d.receiver.typeName^, d.line, d.column)
             END;
             CheckProcedureBody(d, scope, receiverType, pt)
           END
@@ -3896,11 +3896,11 @@ MODULE SemanticActions;
       ELSE
         pt := ResolveFormalPars(scope, d.formals);
         IF d.isForward THEN
-          obj := SymbolTable.Insert(scope, Names.Intern(d.name.name), SymbolTable.procClass, pt, exported, FALSE,
+          obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
                                      d.line, d.column);
           obj.isForwardProc := TRUE
         ELSE
-          obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
+          obj := SymbolTable.FindLocal(scope, d.name.name);
           IF (obj # NIL) & (obj.class = SymbolTable.procClass) & obj.isForwardProc THEN
             IF ~Types.ProcedureTypesMatch(pt, obj.type(Types.ProcedureType)) THEN
               Diagnostics.Error(d.line, d.column,
@@ -3908,7 +3908,7 @@ MODULE SemanticActions;
             END;
             obj.isForwardProc := FALSE; obj.type := pt
           ELSE
-            obj := SymbolTable.Insert(scope, Names.Intern(d.name.name), SymbolTable.procClass, pt, exported, FALSE,
+            obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
                                        d.line, d.column)
           END;
           CheckProcedureBody(d, scope, NIL, pt)
@@ -3926,7 +3926,7 @@ MODULE SemanticActions;
      lookups, made in the finished scopes, find what the checker found. *)
   PROCEDURE CheckLateName(scope: SymbolTable.Scope; name: SyntaxTree.IdentDefNode);
   BEGIN
-    IF (scope.outer # NIL) & (SymbolTable.Find(scope.outer, Names.Intern(name.name)) # NIL) THEN
+    IF (scope.outer # NIL) & (SymbolTable.Find(scope.outer, name.name) # NIL) THEN
       Diagnostics.Error(name.line, name.column,
         "a declaration after a procedure cannot reuse a name visible from an enclosing scope")
     END
@@ -4138,15 +4138,15 @@ MODULE SemanticActions;
             exported := d.name.exportMark # SyntaxTree.exportNone;
             pt := ResolveFormalPars(bodyScope, d.formals);
             IF d.isForward THEN
-              obj := SymbolTable.Insert(bodyScope, Names.Intern(d.name.name), SymbolTable.procClass, pt, exported, FALSE,
+              obj := SymbolTable.Insert(bodyScope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
                                          d.line, d.column);
               obj.isForwardProc := TRUE
             ELSE
-              obj := SymbolTable.FindLocal(bodyScope, Names.Intern(d.name.name));
+              obj := SymbolTable.FindLocal(bodyScope, d.name.name);
               IF (obj # NIL) & (obj.class = SymbolTable.procClass) & obj.isForwardProc THEN
                 obj.isForwardProc := FALSE; obj.type := pt
               ELSE
-                obj := SymbolTable.Insert(bodyScope, Names.Intern(d.name.name), SymbolTable.procClass, pt, exported, FALSE,
+                obj := SymbolTable.Insert(bodyScope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
                                            d.line, d.column)
               END
             END
@@ -4220,7 +4220,7 @@ MODULE SemanticActions;
   PROCEDURE ^ CheckModuleBody(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc;
                               resolving: ImportChain; VAR cache: LoadedModule): SymbolTable.Scope;
 
-  PROCEDURE InChain(chain: ImportChain; name: SyntaxTree.Ident): BOOLEAN;
+  PROCEDURE InChain(chain: ImportChain; name: Names.Name): BOOLEAN;
   BEGIN
     WHILE (chain # NIL) & (chain.name # name) DO chain := chain.next END;
     RETURN chain # NIL
@@ -4229,7 +4229,7 @@ MODULE SemanticActions;
   (* LoadedModule's own header comment (top of this module) has the full
      rationale; this is a plain linear lookup over the same small-list
      shape InChain/IsProcAssigned already use here. *)
-  PROCEDURE FindLoadedModule(cache: LoadedModule; name: SyntaxTree.Ident): SymbolTable.Scope;
+  PROCEDURE FindLoadedModule(cache: LoadedModule; name: Names.Name): SymbolTable.Scope;
   BEGIN
     WHILE (cache # NIL) & (cache.name # name) DO cache := cache.next END;
     IF cache = NIL THEN RETURN NIL ELSE RETURN cache.scope END
@@ -4273,7 +4273,7 @@ MODULE SemanticActions;
       savedStrict: BOOLEAN;
       chain: ImportChain;
       loaded: LoadedModule;
-      bindName: SyntaxTree.Ident;
+      bindName: Names.Name;
       obj: SymbolTable.Object;
       errorCountBefore: INTEGER;
   BEGIN
@@ -4281,33 +4281,33 @@ MODULE SemanticActions;
       Diagnostics.Error(imp.line, imp.column, "a module must not import itself")
     ELSIF InChain(resolving, imp.moduleName) THEN
       Diagnostics.Error(imp.line, imp.column, "cyclic module import")
-    ELSIF imp.moduleName = "SYSTEM" THEN
+    ELSIF Names.Equals(imp.moduleName, "SYSTEM") THEN
       (* PLAN.md Phase 9 step 4: a pseudo-module with no source or .sym
          file, bound straight to SymbolTable.SystemScope. *)
-      IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
-      obj := SymbolTable.Insert(scope, Names.Intern(bindName), SymbolTable.moduleClass, NIL, FALSE, FALSE,
+      IF imp.alias # NIL THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+      obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
                                  imp.line, imp.column);
-      obj.moduleScope := SymbolTable.SystemScope; obj.realModuleName := Names.Intern(imp.moduleName)
+      obj.moduleScope := SymbolTable.SystemScope; obj.realModuleName := imp.moduleName
     ELSE
       impScope := FindLoadedModule(cache, imp.moduleName);
       IF impScope # NIL THEN
-        IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
-        obj := SymbolTable.Insert(scope, Names.Intern(bindName), SymbolTable.moduleClass, NIL, FALSE, FALSE,
+        IF imp.alias # NIL THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+        obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
                                    imp.line, imp.column);
-        obj.moduleScope := impScope; obj.realModuleName := Names.Intern(imp.moduleName);
+        obj.moduleScope := impScope; obj.realModuleName := imp.moduleName;
         RETURN
       END;
-      ModuleInterface.ReadSource(imp.moduleName, buffer, length, found);
+      ModuleInterface.ReadSource(imp.moduleName^, buffer, length, found);
       IF ~found THEN
-        Diagnostics.ErrorAbout(imp.line, imp.column, "unknown imported module", imp.moduleName);
+        Diagnostics.ErrorAbout(imp.line, imp.column, "unknown imported module", imp.moduleName^);
         IF ModuleInterface.explainMissingModule # NIL THEN
-          ModuleInterface.explainMissingModule(module.name, imp.moduleName, imp.line, imp.column)
+          ModuleInterface.explainMissingModule(module.name^, imp.moduleName^, imp.line, imp.column)
         END;
         IF unresolvedModuleScope = NIL THEN unresolvedModuleScope := SymbolTable.OpenScope(NIL) END;
-        IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
-        obj := SymbolTable.Insert(scope, Names.Intern(bindName), SymbolTable.moduleClass, NIL, FALSE, FALSE,
+        IF imp.alias # NIL THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+        obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
                                    imp.line, imp.column);
-        obj.moduleScope := unresolvedModuleScope; obj.realModuleName := Names.Intern(imp.moduleName)
+        obj.moduleScope := unresolvedModuleScope; obj.realModuleName := imp.moduleName
       ELSE
         errorCountBefore := Diagnostics.errorCount;
         (* a .sym is not the strict module's text: -strict is off for parsing
@@ -4320,7 +4320,7 @@ MODULE SemanticActions;
           Diagnostics.Error(imp.line, imp.column, "malformed module interface file")
         ELSE
           COPY(Diagnostics.fileName, savedFileName);
-          ModuleInterface.SymFileName(imp.moduleName, symName);
+          ModuleInterface.SymFileName(imp.moduleName^, symName);
           COPY(symName, Diagnostics.fileName);
           NEW(chain); chain.name := imp.moduleName; chain.next := resolving;
           impScope := CheckModuleBody(impModule, parseModule, chain, cache);
@@ -4328,10 +4328,10 @@ MODULE SemanticActions;
           COPY(savedFileName, Diagnostics.fileName);
           NEW(loaded); loaded.name := imp.moduleName; loaded.scope := impScope;
           loaded.next := cache; cache := loaded;
-          IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
-          obj := SymbolTable.Insert(scope, Names.Intern(bindName), SymbolTable.moduleClass, NIL, FALSE, FALSE,
+          IF imp.alias # NIL THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+          obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
                                      imp.line, imp.column);
-          obj.moduleScope := impScope; obj.realModuleName := Names.Intern(imp.moduleName)
+          obj.moduleScope := impScope; obj.realModuleName := imp.moduleName
         END
       END
     END
@@ -4350,7 +4350,7 @@ MODULE SemanticActions;
     VAR
       scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode; savedModuleName: SyntaxTree.Ident;
   BEGIN
-    COPY(currentModuleName, savedModuleName); COPY(module.name, currentModuleName);
+    COPY(currentModuleName, savedModuleName); COPY(module.name^, currentModuleName);
     COPY(currentModuleName, Types.messageModule);
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
     imp := module.imports;

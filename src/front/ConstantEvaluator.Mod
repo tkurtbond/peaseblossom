@@ -175,12 +175,12 @@ MODULE ConstantEvaluator;
   (* message about the name qualifier.name, or name alone if there is no
      qualifier: "undeclared identifier: M.x" *)
   PROCEDURE ReportName(line, column: INTEGER; message: ARRAY OF CHAR;
-                       qualifier, name: ARRAY OF CHAR);
+                       qualifier, name: Names.Name);
     VAR what: ARRAY 520 OF CHAR; (* two identifiers and a period *)
   BEGIN
     what := "";
-    IF qualifier[0] # 0X THEN Diagnostics.AppendText(what, qualifier); Diagnostics.AppendText(what, ".") END;
-    Diagnostics.AppendText(what, name);
+    IF qualifier # NIL THEN Diagnostics.AppendText(what, qualifier^); Diagnostics.AppendText(what, ".") END;
+    Diagnostics.AppendText(what, name^);
     Diagnostics.ErrorAbout(line, column, message, what)
   END ReportName;
 
@@ -396,10 +396,10 @@ MODULE ConstantEvaluator;
   PROCEDURE FindQualifiedConst(scope: SymbolTable.Scope; d: SyntaxTree.Designator): SymbolTable.Object;
     VAR modObj: SymbolTable.Object;
   BEGIN
-    IF d.qualifier[0] = 0X THEN RETURN SymbolTable.Find(scope, Names.Intern(d.name)) END;
-    modObj := SymbolTable.Find(scope, Names.Intern(d.qualifier));
+    IF d.qualifier = NIL THEN RETURN SymbolTable.Find(scope, d.name) END;
+    modObj := SymbolTable.Find(scope, d.qualifier);
     IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
-    RETURN SymbolTable.FindLocal(modObj.moduleScope, Names.Intern(d.name))
+    RETURN SymbolTable.FindLocal(modObj.moduleScope, d.name)
   END FindQualifiedConst;
 
   (* MAX(T)/MIN(T)/SIZE(T)'s argument position holds a bare *type* name,
@@ -419,7 +419,7 @@ MODULE ConstantEvaluator;
     obj := FindQualifiedConst(scope, de.designator);
     IF (obj = NIL) OR (obj.class # SymbolTable.typeClass) THEN
       RETURN NIL
-    ELSIF (de.designator.qualifier[0] = 0X) & SymbolTable.DeclaredAtOrAfter(obj, expr.line, expr.column) THEN
+    ELSIF (de.designator.qualifier = NIL) & SymbolTable.DeclaredAtOrAfter(obj, expr.line, expr.column) THEN
       (* A same-module (unqualified) forward reference - PLAN.md's
          "Declaration order": now that CONST/TYPE/VAR resolve in one
          merged textual-order pass (SemanticActions.ResolveDeclSeq),
@@ -584,7 +584,7 @@ MODULE ConstantEvaluator;
      name shadowing it - Oberon-2 permits that, and SemanticActions.Mod's
      own CheckDesignatorExpr/CheckCallStatement make the identical check
      before dispatching to PredeclaredProcedures.CheckCall). *)
-  PROCEDURE EvaluateTypeBoundCall(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
+  PROCEDURE EvaluateTypeBoundCall(name: ARRAY OF CHAR; args: SyntaxTree.ExprNode;
                                   scope: SymbolTable.Scope; line, column: INTEGER): Types.Value;
     VAR t: Types.Type; v: Types.Value;
   BEGIN
@@ -724,7 +724,7 @@ MODULE ConstantEvaluator;
      - ODD of an integer is a BOOLEAN.
      A real result carries no numeral text but ABS's. *)
 
-  PROCEDURE IsValueFunctionName*(name: SyntaxTree.Ident): BOOLEAN;
+  PROCEDURE IsValueFunctionName*(name: ARRAY OF CHAR): BOOLEAN;
   BEGIN
     RETURN (name = "ORD") OR (name = "ABS") OR (name = "CHR") OR (name = "CAP")
         OR (name = "ENTIER") OR (name = "LONG") OR (name = "SHORT") OR (name = "ODD")
@@ -735,7 +735,7 @@ MODULE ConstantEvaluator;
      GenerateFoldedInteger) and would otherwise Evaluate for nothing. ABS
      is integer or real by its argument; this says yes for it, and the
      caller tests the folded value's own kind. *)
-  PROCEDURE IsIntegerValueFunctionName*(name: SyntaxTree.Ident): BOOLEAN;
+  PROCEDURE IsIntegerValueFunctionName*(name: ARRAY OF CHAR): BOOLEAN;
   BEGIN
     RETURN (name = "ORD") OR (name = "ABS") OR (name = "ENTIER")
         OR (name = "LONG") OR (name = "SHORT")
@@ -813,7 +813,7 @@ MODULE ConstantEvaluator;
     RETURN x
   END RealOperand;
 
-  PROCEDURE EvaluateValueFunction(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
+  PROCEDURE EvaluateValueFunction(name: ARRAY OF CHAR; args: SyntaxTree.ExprNode;
                                   scope: SymbolTable.Scope; line, column: INTEGER): Types.Value;
     VAR x, result: Types.Value; ch: CHAR; value: LONGINT; limit, real: LONGREAL;
   BEGIN
@@ -966,7 +966,7 @@ MODULE ConstantEvaluator;
         sel: SyntaxTree.FieldSelector DO
           IF t IS Types.PointerType THEN t := t(Types.PointerType).base END;
           IF (t # NIL) & (t IS Types.RecordType) THEN
-            field := Types.FindField(t(Types.RecordType), sel.name);
+            field := Types.FindField(t(Types.RecordType), sel.name^);
             IF field = NIL THEN t := NIL ELSE t := field.type END
           ELSE
             t := NIL
@@ -1019,10 +1019,10 @@ MODULE ConstantEvaluator;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
   BEGIN
     d := expr.designator;
-    IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier[0] # 0X) OR (d.name # "LEN") THEN
+    IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier # NIL) OR (~Names.Equals(d.name, "LEN")) THEN
       RETURN FALSE
     END;
-    obj := SymbolTable.Find(scope, Names.Intern(d.name));
+    obj := SymbolTable.Find(scope, d.name);
     RETURN (obj # NIL) & (obj.type = Types.PredeclaredProcedureType)
   END IsLenCall;
 
@@ -1044,8 +1044,8 @@ MODULE ConstantEvaluator;
     VAR modObj: SymbolTable.Object; d: SyntaxTree.Designator;
   BEGIN
     d := expr.designator;
-    IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier[0] = 0X) OR (d.name # name) THEN RETURN FALSE END;
-    modObj := SymbolTable.Find(scope, Names.Intern(d.qualifier));
+    IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier = NIL) OR (~Names.Equals(d.name, name)) THEN RETURN FALSE END;
+    modObj := SymbolTable.Find(scope, d.qualifier);
     RETURN (modObj # NIL) & (modObj.class = SymbolTable.moduleClass)
            & (modObj.moduleScope = SymbolTable.SystemScope)
   END IsSystemCall;
@@ -1079,23 +1079,23 @@ MODULE ConstantEvaluator;
       Diagnostics.Error(expr.line, expr.column, "not a constant expression: LEN of an open array");
       RETURN UndefinedValue()
     END;
-    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X) & (d.name = "ASH") THEN
-      obj := SymbolTable.Find(scope, Names.Intern(d.name));
+    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier = NIL) & (Names.Equals(d.name, "ASH")) THEN
+      obj := SymbolTable.Find(scope, d.name);
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
         RETURN EvaluateAsh(expr.args, scope, expr.line, expr.column)
       END
     END;
-    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X) & IsValueFunctionName(d.name) THEN
-      obj := SymbolTable.Find(scope, Names.Intern(d.name));
+    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier = NIL) & IsValueFunctionName(d.name^) THEN
+      obj := SymbolTable.Find(scope, d.name);
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
-        RETURN EvaluateValueFunction(d.name, expr.args, scope, expr.line, expr.column)
+        RETURN EvaluateValueFunction(d.name^, expr.args, scope, expr.line, expr.column)
       END
     END;
-    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X)
-        & ((d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE")) THEN
-      obj := SymbolTable.Find(scope, Names.Intern(d.name));
+    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier = NIL)
+        & ((Names.Equals(d.name, "MAX")) OR (Names.Equals(d.name, "MIN")) OR (Names.Equals(d.name, "SIZE"))) THEN
+      obj := SymbolTable.Find(scope, d.name);
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
-        RETURN EvaluateTypeBoundCall(d.name, expr.args, scope, expr.line, expr.column)
+        RETURN EvaluateTypeBoundCall(d.name^, expr.args, scope, expr.line, expr.column)
       END
     END;
     IF (d.selectors # NIL) & ~expr.hasParens THEN
@@ -1785,7 +1785,7 @@ MODULE ConstantEvaluator;
     VAR d: SyntaxTree.Designator; obj: SymbolTable.Object;
   BEGIN
     IF lit.type # NIL THEN RETURN lit.type(Types.Type) END;
-    IF lit.name[0] = 0X THEN RETURN NIL END;
+    IF lit.name = NIL THEN RETURN NIL END;
     NEW(d); d.qualifier := lit.qualifier; d.name := lit.name; d.selectors := NIL;
     obj := FindQualifiedConst(scope, d);
     IF (obj # NIL) & (obj.class = SymbolTable.typeClass) THEN RETURN obj.type END;
@@ -1971,7 +1971,7 @@ MODULE ConstantEvaluator;
 
   PROCEDURE BareLiteral(e: SyntaxTree.ExprNode): SyntaxTree.StructuredLiteralNode;
   BEGIN
-    IF (e # NIL) & (e IS SyntaxTree.StructuredLiteralNode) & (e(SyntaxTree.StructuredLiteralNode).name[0] = 0X) THEN
+    IF (e # NIL) & (e IS SyntaxTree.StructuredLiteralNode) & (e(SyntaxTree.StructuredLiteralNode).name = NIL) THEN
       RETURN e(SyntaxTree.StructuredLiteralNode)
     END;
     RETURN NIL
@@ -2005,7 +2005,7 @@ MODULE ConstantEvaluator;
     VAR el: SyntaxTree.LiteralElementNode;
   BEGIN
     el := lit.elements;
-    WHILE (el # NIL) & (el.field # f.name) DO el := el.next END;
+    WHILE (el # NIL) & (~Names.Equals(el.field, f.name)) DO el := el.next END;
     RETURN el
   END NamedElement;
 
@@ -2182,7 +2182,7 @@ MODULE ConstantEvaluator;
       el := lit.elements;
       WHILE el # NIL DO
         (* a name that is no field: the checker says so *)
-        IF Types.FindField(t(Types.RecordType), el.field) = NIL THEN RETURN FALSE END;
+        IF (el.field = NIL) OR (Types.FindField(t(Types.RecordType), el.field^) = NIL) THEN RETURN FALSE END;
         el := el.next
       END;
       RETURN FieldsConstant(lit, t(Types.RecordType), scope)
@@ -2208,7 +2208,7 @@ MODULE ConstantEvaluator;
   (* ---- selecting from a record or array constant: origin.x, table[3] ---- *)
 
   (* the field of a structured value v of record type rec named name *)
-  PROCEDURE FieldValue(v: Types.Value; rec: Types.RecordType; name: SyntaxTree.Ident): Types.Value;
+  PROCEDURE FieldValue(v: Types.Value; rec: Types.RecordType; name: ARRAY OF CHAR): Types.Value;
     VAR levels: ARRAY 64 OF Types.RecordType; n, i: INTEGER; r: Types.RecordType;
         f: Types.Field; e: Types.Value;
   BEGIN
@@ -2282,7 +2282,7 @@ MODULE ConstantEvaluator;
         Diagnostics.Error(sel.line, sel.column, "not a constant expression");
         RETURN UndefinedValue()
       ELSIF sel IS SyntaxTree.FieldSelector THEN
-        e := FieldValue(v, v.type(Types.RecordType), sel(SyntaxTree.FieldSelector).name);
+        e := FieldValue(v, v.type(Types.RecordType), sel(SyntaxTree.FieldSelector).name^);
         IF e = NIL THEN RETURN UndefinedValue() END;
         v := e
       ELSE
@@ -2379,19 +2379,19 @@ MODULE ConstantEvaluator;
     END;
     IF d.selectors # NIL THEN RETURN FALSE END;
     IF expr.hasParens THEN
-      IF d.qualifier[0] # 0X THEN RETURN IsConstantSystemVal(expr, scope) END;
-      obj := SymbolTable.Find(scope, Names.Intern(d.name));
+      IF d.qualifier # NIL THEN RETURN IsConstantSystemVal(expr, scope) END;
+      obj := SymbolTable.Find(scope, d.name);
       IF (obj = NIL) OR (obj.type # Types.PredeclaredProcedureType) THEN RETURN FALSE END;
-      IF (d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE") THEN
+      IF (Names.Equals(d.name, "MAX")) OR (Names.Equals(d.name, "MIN")) OR (Names.Equals(d.name, "SIZE")) THEN
         RETURN (expr.args # NIL) & (expr.args.next = NIL) & (LookupBareTypeName(scope, expr.args) # NIL)
-      ELSIF d.name = "LEN" THEN
+      ELSIF Names.Equals(d.name, "LEN") THEN
         RETURN FixedLength(expr.args, scope, length)
-      ELSIF d.name = "ASH" THEN
+      ELSIF Names.Equals(d.name, "ASH") THEN
         RETURN (expr.args # NIL) & (expr.args.next # NIL) & (expr.args.next.next = NIL)
                & IsConstant(expr.args, scope) & IsConstant(expr.args.next, scope)
-      ELSIF IsValueFunctionName(d.name) THEN
+      ELSIF IsValueFunctionName(d.name^) THEN
         RETURN (expr.args # NIL) & (expr.args.next = NIL) & IsConstant(expr.args, scope)
-               & ~((d.name = "ORD") & IsSetConstantExpr(expr.args, scope))
+               & ~((Names.Equals(d.name, "ORD")) & IsSetConstantExpr(expr.args, scope))
       ELSE
         RETURN FALSE
       END

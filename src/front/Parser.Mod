@@ -61,12 +61,12 @@ MODULE Parser;
      ParseExternalAttribute parses the "[" string [ "," string ] "]"
      itself. *)
 
-  IMPORT Lexer, Diagnostics, SyntaxTree, SemanticActions;
+  IMPORT Names, Lexer, Diagnostics, SyntaxTree, SemanticActions;
 
   TYPE
     Alias = POINTER TO AliasDesc;
     AliasDesc = RECORD
-      name: SyntaxTree.Ident;
+      name: Names.Name;
       next: Alias
     END;
 
@@ -101,21 +101,21 @@ MODULE Parser;
   (* a block whose END names another: "message: END Q, not END P"; nothing
      when the END has no name, which ExpectIdent has reported *)
   PROCEDURE ReportEndName(line, column: INTEGER; message: ARRAY OF CHAR;
-                          endName, name: ARRAY OF CHAR);
+                          endName, name: Names.Name);
     VAR what: ARRAY 520 OF CHAR; (* two identifiers and the words *)
   BEGIN
-    IF endName[0] = 0X THEN RETURN END;
-    what := "END "; Diagnostics.AppendText(what, endName);
-    Diagnostics.AppendText(what, ", not END "); Diagnostics.AppendText(what, name);
+    IF endName = NIL THEN RETURN END;
+    what := "END "; Diagnostics.AppendText(what, endName^);
+    Diagnostics.AppendText(what, ", not END "); Diagnostics.AppendText(what, name^);
     Diagnostics.ErrorAbout(line, column, message, what)
   END ReportEndName;
 
-  PROCEDURE ExpectIdent(VAR p: Parser; VAR name: SyntaxTree.Ident);
+  PROCEDURE ExpectIdent(VAR p: Parser; VAR name: Names.Name);
   BEGIN
     IF p.current.kind = Lexer.ident THEN
-      COPY(p.current.lexeme, name)
+      name := Names.Intern(p.current.lexeme)
     ELSE
-      name[0] := 0X;
+      name := NIL;
       Diagnostics.Error(p.current.line, p.current.column, "expected an identifier")
     END;
     Advance(p)
@@ -141,7 +141,7 @@ MODULE Parser;
          OR (kind = Lexer.inKeyword) OR (kind = Lexer.isKeyword)
   END IsRelation;
 
-  PROCEDURE IsKnownAlias(VAR p: Parser; name: SyntaxTree.Ident): BOOLEAN;
+  PROCEDURE IsKnownAlias(VAR p: Parser; name: Names.Name): BOOLEAN;
     VAR a: Alias;
   BEGIN
     a := p.aliases;
@@ -149,14 +149,14 @@ MODULE Parser;
     RETURN a # NIL
   END IsKnownAlias;
 
-  PROCEDURE AddAlias(VAR p: Parser; name: SyntaxTree.Ident);
+  PROCEDURE AddAlias(VAR p: Parser; name: Names.Name);
     VAR a: Alias;
   BEGIN
     NEW(a); a.name := name; a.next := p.aliases; p.aliases := a
   END AddAlias;
 
-  PROCEDURE ParseQualident(VAR p: Parser; VAR qualifier, name: SyntaxTree.Ident);
-    VAR first: SyntaxTree.Ident;
+  PROCEDURE ParseQualident(VAR p: Parser; VAR qualifier, name: Names.Name);
+    VAR first: Names.Name;
   BEGIN
     ExpectIdent(p, first);
     IF (p.current.kind = Lexer.period) & IsKnownAlias(p, first) THEN
@@ -164,13 +164,13 @@ MODULE Parser;
       ExpectIdent(p, name);
       qualifier := first
     ELSE
-      qualifier[0] := 0X;
+      qualifier := NIL;
       name := first
     END
   END ParseQualident;
 
   PROCEDURE ParseIdentDef(VAR p: Parser): SyntaxTree.IdentDefNode;
-    VAR name: SyntaxTree.Ident; exportMark: INTEGER; line, column: INTEGER;
+    VAR name: Names.Name; exportMark: INTEGER; line, column: INTEGER;
   BEGIN
     line := p.current.line; column := p.current.column;
     ExpectIdent(p, name);
@@ -203,7 +203,7 @@ MODULE Parser;
      exportReadOnly mark, which -strict reports. "x*" is reported and
      skipped, so the rest of the section still parses. *)
   PROCEDURE ParseParamName(VAR p: Parser): SyntaxTree.IdentDefNode;
-    VAR name: SyntaxTree.Ident; line, column, mark: INTEGER;
+    VAR name: Names.Name; line, column, mark: INTEGER;
   BEGIN
     line := p.current.line; column := p.current.column;
     ExpectIdent(p, name);
@@ -267,18 +267,18 @@ MODULE Parser;
      those report diagnostics on a mismatch - an abandoned trial must
      leave no trace. *)
   PROCEDURE TryParseGuardSelector(VAR p: Parser; VAR sel: SyntaxTree.Selector): BOOLEAN;
-    VAR saved: Parser; qualifier, name: SyntaxTree.Ident; line, column: INTEGER;
+    VAR saved: Parser; qualifier, name: Names.Name; line, column: INTEGER;
   BEGIN
     saved := p;
     line := p.current.line; column := p.current.column;
     Advance(p); (* past "(" *)
     IF p.current.kind # Lexer.ident THEN p := saved; RETURN FALSE END;
-    COPY(p.current.lexeme, name); Advance(p);
-    qualifier[0] := 0X;
+    name := Names.Intern(p.current.lexeme); Advance(p);
+    qualifier := NIL;
     IF (p.current.kind = Lexer.period) & IsKnownAlias(p, name) THEN
       Advance(p);
       IF p.current.kind # Lexer.ident THEN p := saved; RETURN FALSE END;
-      qualifier := name; COPY(p.current.lexeme, name); Advance(p)
+      qualifier := name; name := Names.Intern(p.current.lexeme); Advance(p)
     END;
     IF p.current.kind # Lexer.rightParen THEN p := saved; RETURN FALSE END;
     Advance(p); (* past ")" *)
@@ -293,7 +293,7 @@ MODULE Parser;
 
   PROCEDURE ParseDesignator(VAR p: Parser): SyntaxTree.Designator;
     VAR
-      qualifier, name, fieldName: SyntaxTree.Ident;
+      qualifier, name, fieldName: Names.Name;
       d: SyntaxTree.Designator;
       tail, sel: SyntaxTree.Selector;
       indices: SyntaxTree.ExprNode;
@@ -392,7 +392,7 @@ MODULE Parser;
     END
   END SkipCallOfResult;
 
-  PROCEDURE ^ ParseLiteral(VAR p: Parser; qualifier, name: SyntaxTree.Ident;
+  PROCEDURE ^ ParseLiteral(VAR p: Parser; qualifier, name: Names.Name;
                            line, column: INTEGER): SyntaxTree.StructuredLiteralNode;
 
   PROCEDURE ParseFactor(VAR p: Parser): SyntaxTree.ExprNode;
@@ -516,7 +516,7 @@ MODULE Parser;
   PROCEDURE ParseLiteralElements(VAR p: Parser): SyntaxTree.LiteralElementNode;
     VAR
       head, tail, el: SyntaxTree.LiteralElementNode;
-      field, empty: SyntaxTree.Ident;
+      field, empty: Names.Name;
       value, high: SyntaxTree.ExprNode;
       nested: SyntaxTree.StructuredLiteralNode;
       indexes, lastIndex, label: SyntaxTree.CaseLabelNode;
@@ -524,11 +524,11 @@ MODULE Parser;
       line, column: INTEGER;
   BEGIN
     ExpectToken(p, Lexer.leftBrace, "expected '{'");
-    head := NIL; tail := NIL; empty[0] := 0X;
+    head := NIL; tail := NIL; empty := NIL;
     IF p.current.kind # Lexer.rightBrace THEN
       LOOP
         line := p.current.line; column := p.current.column;
-        field[0] := 0X; high := NIL; indexes := NIL;
+        field := NIL; high := NIL; indexes := NIL;
         IF p.current.kind = Lexer.leftBracket THEN
           Advance(p);
           indexes := ParseCaseLabel(p); lastIndex := indexes;
@@ -540,8 +540,8 @@ MODULE Parser;
           ExpectToken(p, Lexer.rightBracket, "expected ']'");
           ExpectToken(p, Lexer.colon, "expected ':'")
         ELSIF p.current.kind = Lexer.ident THEN
-          saved := p; COPY(p.current.lexeme, field); Advance(p);
-          IF p.current.kind = Lexer.assign THEN Advance(p) ELSE p := saved; field[0] := 0X END
+          saved := p; field := Names.Intern(p.current.lexeme); Advance(p);
+          IF p.current.kind = Lexer.assign THEN Advance(p) ELSE p := saved; field := NIL END
         END;
         IF p.current.kind = Lexer.leftBrace THEN
           nested := ParseLiteral(p, empty, empty, p.current.line, p.current.column);
@@ -566,7 +566,7 @@ MODULE Parser;
     RETURN head
   END ParseLiteralElements;
 
-  PROCEDURE ParseLiteral(VAR p: Parser; qualifier, name: SyntaxTree.Ident;
+  PROCEDURE ParseLiteral(VAR p: Parser; qualifier, name: Names.Name;
                          line, column: INTEGER): SyntaxTree.StructuredLiteralNode;
     VAR lit: SyntaxTree.StructuredLiteralNode;
   BEGIN
@@ -628,7 +628,7 @@ MODULE Parser;
     VAR
       head, tail, section: SyntaxTree.FPSectionNode;
       returnType: SyntaxTree.QualidentTypeNode;
-      qualifier, name: SyntaxTree.Ident;
+      qualifier, name: Names.Name;
       line, column, rtLine, rtColumn: INTEGER;
   BEGIN
     line := p.current.line; column := p.current.column;
@@ -655,7 +655,7 @@ MODULE Parser;
 
   PROCEDURE ParseType(VAR p: Parser): SyntaxTree.TypeNode;
     VAR
-      qualifier, name: SyntaxTree.Ident;
+      qualifier, name: Names.Name;
       line, column: INTEGER;
       lengths, len: SyntaxTree.ExprNode;
       lenTail: SyntaxTree.ExprNode;
@@ -712,14 +712,14 @@ MODULE Parser;
     ELSE
       Diagnostics.Error(line, column, "expected a type");
       Advance(p);
-      RETURN SemanticActions.NewQualidentType("", "", line, column)
+      RETURN SemanticActions.NewQualidentType(NIL, NIL, line, column)
     END
   END ParseType;
 
   (* ---- Receiver ---- *)
 
   PROCEDURE ParseReceiver(VAR p: Parser): SyntaxTree.ReceiverNode;
-    VAR isVar: BOOLEAN; name, typeName: SyntaxTree.Ident; line, column: INTEGER;
+    VAR isVar: BOOLEAN; name, typeName: Names.Name; line, column: INTEGER;
   BEGIN
     line := p.current.line; column := p.current.column;
     ExpectToken(p, Lexer.leftParen, "expected '('");
@@ -767,7 +767,7 @@ MODULE Parser;
   END ParseCase;
 
   PROCEDURE ParseGuard(VAR p: Parser; VAR variableQualifier, variableName,
-                        typeQualifier, typeName: SyntaxTree.Ident);
+                        typeQualifier, typeName: Names.Name);
   BEGIN
     ParseQualident(p, variableQualifier, variableName);
     ExpectToken(p, Lexer.colon, "expected ':'");
@@ -785,10 +785,10 @@ MODULE Parser;
       elseBody, body: SyntaxTree.StatementNode;
       hasElse: BOOLEAN;
       cases, caseTail, caseNode: SyntaxTree.CaseNode;
-      variable: SyntaxTree.Ident;
+      variable: Names.Name;
       start, stop, step: SyntaxTree.ExprNode;
       guards, guardTail, guard: SyntaxTree.WithGuardNode;
-      variableQualifier, variableName, typeQualifier, typeName: SyntaxTree.Ident;
+      variableQualifier, variableName, typeQualifier, typeName: Names.Name;
   BEGIN
     line := p.current.line; column := p.current.column;
     IF p.current.kind = Lexer.ident THEN
@@ -968,13 +968,13 @@ MODULE Parser;
     VAR
       start: Parser; name: SyntaxTree.IdentDefNode; value: SyntaxTree.ExprNode;
       assignment: SyntaxTree.AssignStatementNode; tail: SyntaxTree.StatementNode;
-      errorsBefore, line, column: INTEGER; empty: SyntaxTree.Ident;
+      errorsBefore, line, column: INTEGER; empty: Names.Name;
   BEGIN
     line := p.current.line; column := p.current.column; (* the := *)
     Diagnostics.NotInReport(line, column, "a variable initializer");
     Advance(p);
     start := p; errorsBefore := Diagnostics.errorCount;
-    empty[0] := 0X; tail := NIL; name := decl.names;
+    empty := NIL; tail := NIL; name := decl.names;
     WHILE name # NIL DO
       IF name # decl.names THEN p := start END;
       value := ParseExpr(p);
@@ -1057,17 +1057,17 @@ MODULE Parser;
      procedures"; PLAN.md's "Open design questions"). Lexer.ScanString
      strips the surrounding quotes itself, so p.current.lexeme is already
      the bare convention/name text. *)
-  PROCEDURE ParseExternalAttribute(VAR p: Parser; VAR convention, name: SyntaxTree.Ident);
+  PROCEDURE ParseExternalAttribute(VAR p: Parser; VAR convention, name: Names.Name);
 
     (* the current string token, in an identifier's room: a longer string
        has only its start in the lexeme (Lexer, header), so it is an error,
        not a silently shorter name *)
-    PROCEDURE TakeName(VAR p: Parser; VAR result: SyntaxTree.Ident);
+    PROCEDURE TakeName(VAR p: Parser; VAR result: Names.Name);
     BEGIN
-      IF LEN(p.current.text^) > LEN(result) THEN
+      IF LEN(p.current.text^) > LEN(p.current.lexeme) THEN
         Diagnostics.Error(p.current.line, p.current.column, "name too long")
       END;
-      COPY(p.current.lexeme, result); Advance(p)
+      result := Names.Intern(p.current.lexeme); Advance(p)
     END TakeName;
 
   BEGIN
@@ -1076,9 +1076,9 @@ MODULE Parser;
       TakeName(p, convention)
     ELSE
       Diagnostics.Error(p.current.line, p.current.column, "expected a calling-convention string");
-      convention[0] := 0X
+      convention := NIL
     END;
-    name[0] := 0X;
+    name := NIL;
     IF p.current.kind = Lexer.comma THEN
       Advance(p);
       IF p.current.kind = Lexer.string THEN
@@ -1091,7 +1091,7 @@ MODULE Parser;
   END ParseExternalAttribute;
 
   PROCEDURE ParseProcDecl(VAR p: Parser; isForward, isExternal: BOOLEAN;
-                          externalConvention, externalName: SyntaxTree.Ident;
+                          externalConvention, externalName: Names.Name;
                           line, column: INTEGER): SyntaxTree.ProcDeclNode;
     VAR
       receiver: SyntaxTree.ReceiverNode;
@@ -1099,7 +1099,7 @@ MODULE Parser;
       formals: SyntaxTree.FormalParsNode;
       declarations: SyntaxTree.DeclSeqNode;
       statements: SyntaxTree.StatementNode;
-      endName: SyntaxTree.Ident;
+      endName: Names.Name;
       endLine, endColumn: INTEGER;
       node: SyntaxTree.ProcDeclNode;
   BEGIN
@@ -1111,7 +1111,7 @@ MODULE Parser;
     name := ParseIdentDef(p);
     formals := NIL;
     IF p.current.kind = Lexer.leftParen THEN formals := ParseFormalPars(p) END;
-    declarations := NIL; statements := NIL; endName[0] := 0X;
+    declarations := NIL; statements := NIL; endName := NIL;
     IF ~isForward & ~isExternal THEN
       ExpectToken(p, Lexer.semicolon, "expected ';'");
       declarations := ParseDeclSeq(p);
@@ -1122,7 +1122,7 @@ MODULE Parser;
       endLine := p.current.line; endColumn := p.current.column;
       ExpectToken(p, Lexer.endKeyword, "expected 'END'");
       ExpectIdent(p, endName);
-      IF endName # name.name THEN
+      IF name.name # endName THEN
         ReportEndName(line, column, "procedure END identifier does not match its name", endName, name.name)
       END
     END;
@@ -1139,12 +1139,12 @@ MODULE Parser;
     VAR
       procNode: SyntaxTree.ProcDeclNode; line, column: INTEGER;
       isForward, isExternal: BOOLEAN;
-      externalConvention, externalName: SyntaxTree.Ident;
+      externalConvention, externalName: Names.Name;
   BEGIN
     line := p.current.line; column := p.current.column;
     Advance(p);
     isForward := FALSE; isExternal := FALSE;
-    externalConvention[0] := 0X; externalName[0] := 0X;
+    externalConvention := NIL; externalName := NIL;
     IF p.current.kind = Lexer.caret THEN
       isForward := TRUE; Advance(p)
     ELSIF p.current.kind = Lexer.leftBracket THEN
@@ -1220,7 +1220,7 @@ MODULE Parser;
   PROCEDURE ParseImportList(VAR p: Parser): SyntaxTree.ImportNode;
     VAR
       head, tail, node: SyntaxTree.ImportNode;
-      first, alias, moduleName: SyntaxTree.Ident;
+      first, alias, moduleName: Names.Name;
       line, column: INTEGER;
   BEGIN
     ExpectToken(p, Lexer.importKeyword, "expected 'IMPORT'");
@@ -1233,12 +1233,12 @@ MODULE Parser;
         ExpectIdent(p, moduleName);
         alias := first
       ELSE
-        moduleName := first; alias[0] := 0X
+        moduleName := first; alias := NIL
       END;
       node := SemanticActions.NewImport(alias, moduleName, line, column);
       IF tail = NIL THEN head := node ELSE tail.next := node END;
       tail := node;
-      IF alias[0] # 0X THEN AddAlias(p, alias) ELSE AddAlias(p, moduleName) END;
+      IF alias # NIL THEN AddAlias(p, alias) ELSE AddAlias(p, moduleName) END;
       IF p.current.kind = Lexer.comma THEN Advance(p) ELSE EXIT END
     END;
     ExpectToken(p, Lexer.semicolon, "expected ';'");
@@ -1260,7 +1260,7 @@ MODULE Parser;
 
   PROCEDURE ParseModule*(VAR p: Parser): SyntaxTree.ModuleNode;
     VAR
-      name, endName: SyntaxTree.Ident;
+      name, endName: Names.Name;
       imports: SyntaxTree.ImportNode;
       declarations: SyntaxTree.DeclSeqNode;
       statements: SyntaxTree.StatementNode;

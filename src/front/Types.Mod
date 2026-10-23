@@ -441,7 +441,7 @@ MODULE Types;
      still be gaining fields when an extension of it is built (a chain of
      pointers resolved early), so SemanticActions.CheckExtensions does that
      once a declaration sequence is resolved (Oberon2.pdf 6.3). *)
-  PROCEDURE AddField*(rec: RecordType; name: SyntaxTree.Ident; type: Type;
+  PROCEDURE AddField*(rec: RecordType; name: ARRAY OF CHAR; type: Type;
                       exported, readOnly: BOOLEAN; line, column: INTEGER): Field;
     VAR f, existing: Field;
   BEGIN
@@ -450,7 +450,7 @@ MODULE Types;
     IF existing # NIL THEN
       Diagnostics.ErrorAbout(line, column, "field already declared in this record", name)
     END;
-    NEW(f); f.name := name; f.type := type; f.exported := exported;
+    NEW(f); COPY(name, f.name); f.type := type; f.exported := exported;
     f.readOnly := readOnly; f.next := NIL;
     f.hasInitializer := FALSE; f.initializer := NIL; f.fieldList := NIL;
     f.line := line; f.column := column;
@@ -492,7 +492,7 @@ MODULE Types;
     RETURN FALSE
   END HasUnresolvedBase;
 
-  PROCEDURE FindField*(rec: RecordType; name: SyntaxTree.Ident): Field;
+  PROCEDURE FindField*(rec: RecordType; name: ARRAY OF CHAR): Field;
     VAR f: Field;
   BEGIN
     IF rec = NIL THEN RETURN NIL END;
@@ -515,9 +515,9 @@ MODULE Types;
      Appendix A's "matching formal parameter lists" plus the export-mark
      rule before ever calling this), mirroring how AddField* likewise
      never checks inherited-field collisions. *)
-  PROCEDURE AddMethod*(rec: RecordType; name: SyntaxTree.Ident; procType: ProcedureType;
+  PROCEDURE AddMethod*(rec: RecordType; name: ARRAY OF CHAR; procType: ProcedureType;
                        receiverIsVar, exported, pending: BOOLEAN;
-                       receiverTypeName: SyntaxTree.Ident;
+                       receiverTypeName: ARRAY OF CHAR;
                        line, column: INTEGER): Method;
     VAR m, existing: Method; f: Field;
   BEGIN
@@ -528,8 +528,8 @@ MODULE Types;
     IF (existing # NIL) OR (f # NIL) THEN
       Diagnostics.ErrorAbout(line, column, "name already declared in this record", name)
     END;
-    NEW(m); m.name := name; m.procType := procType; m.receiverIsVar := receiverIsVar;
-    m.exported := exported; m.pending := pending; m.receiverTypeName := receiverTypeName;
+    NEW(m); COPY(name, m.name); m.procType := procType; m.receiverIsVar := receiverIsVar;
+    m.exported := exported; m.pending := pending; COPY(receiverTypeName, m.receiverTypeName);
     m.next := NIL;
     IF rec.methods = NIL THEN
       rec.methods := m
@@ -545,7 +545,7 @@ MODULE Types;
      own header comment explains why override-checking lives in
      SemanticActions.Mod rather than here. NIL if name is not a
      type-bound procedure of rec or any of its bases. *)
-  PROCEDURE FindMethod*(rec: RecordType; name: SyntaxTree.Ident): Method;
+  PROCEDURE FindMethod*(rec: RecordType; name: ARRAY OF CHAR): Method;
     VAR m: Method;
   BEGIN
     IF rec = NIL THEN RETURN NIL END;
@@ -571,7 +571,7 @@ MODULE Types;
      module M itself. *)
 
   (* rec's own method list only - unlike FindMethod*, never its bases. *)
-  PROCEDURE FindOwnMethod*(rec: RecordType; name: SyntaxTree.Ident): Method;
+  PROCEDURE FindOwnMethod*(rec: RecordType; name: ARRAY OF CHAR): Method;
     VAR m: Method;
   BEGIN
     IF rec = NIL THEN RETURN NIL END;
@@ -583,7 +583,7 @@ MODULE Types;
   (* The nearest type-bound procedure named name at or above rec that a
      declaration in module fromModule could override: exported, or
      declared by a record belonging to fromModule itself. NIL if none. *)
-  PROCEDURE FindOverridable*(rec: RecordType; name, fromModule: SyntaxTree.Ident): Method;
+  PROCEDURE FindOverridable*(rec: RecordType; name, fromModule: ARRAY OF CHAR): Method;
     VAR m: Method; r: RecordType;
   BEGIN
     r := rec;
@@ -637,10 +637,10 @@ MODULE Types;
 
   (* Appends a parameter to pt's own list, in declaration order (needed by
      ParamListsMatch/Appendix A's "matching formal parameter lists"). *)
-  PROCEDURE AddParam*(pt: ProcedureType; name: SyntaxTree.Ident; type: Type; isVar, isReadOnly: BOOLEAN);
+  PROCEDURE AddParam*(pt: ProcedureType; name: ARRAY OF CHAR; type: Type; isVar, isReadOnly: BOOLEAN);
     VAR p, tail: Param;
   BEGIN
-    NEW(p); p.name := name; p.type := type; p.isVar := isVar; p.isReadOnly := isReadOnly; p.next := NIL;
+    NEW(p); COPY(name, p.name); p.type := type; p.isVar := isVar; p.isReadOnly := isReadOnly; p.next := NIL;
     IF pt.params = NIL THEN
       pt.params := p
     ELSE

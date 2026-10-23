@@ -231,11 +231,11 @@ MODULE VaxToolchainDriver;
                         isMain: BOOLEAN; VAR path: ARRAY OF CHAR): BOOLEAN;
     VAR ok: BOOLEAN;
   BEGIN
-    ModuleOutputPath(outputDir, module.name, path);
+    ModuleOutputPath(outputDir, module.name^, path);
     ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain)
-      & (~writeMacro OR WriteMacro32(module.name, outputDir))
-      & (~(writeImage OR writeObject) OR WriteEncoded(module.name, outputDir));
-    IF ~ok THEN RemoveModuleFiles(outputDir, module.name) END;
+      & (~writeMacro OR WriteMacro32(module.name^, outputDir))
+      & (~(writeImage OR writeObject) OR WriteEncoded(module.name^, outputDir));
+    IF ~ok THEN RemoveModuleFiles(outputDir, module.name^) END;
     RETURN ok
   END EmitModule;
 

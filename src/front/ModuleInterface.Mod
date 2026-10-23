@@ -279,7 +279,7 @@ MODULE ModuleInterface;
 
   (* ---- File naming ---- *)
 
-  PROCEDURE SymFileName*(moduleName: SyntaxTree.Ident; VAR result: ARRAY OF CHAR);
+  PROCEDURE SymFileName*(moduleName: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
     VAR i: INTEGER;
   BEGIN
     i := 0;
@@ -481,7 +481,7 @@ MODULE ModuleInterface;
     COPY(interfaceDir, dir)
   END GetInterfaceDir;
 
-  PROCEDURE ReadSource*(moduleName: SyntaxTree.Ident; VAR buffer: Lexer.CharBuffer;
+  PROCEDURE ReadSource*(moduleName: ARRAY OF CHAR; VAR buffer: Lexer.CharBuffer;
                         VAR length: LONGINT; VAR found: BOOLEAN);
     VAR
       name: ARRAY nameBufferLength OF CHAR;
@@ -1304,7 +1304,7 @@ MODULE ModuleInterface;
   BEGIN
     any := FALSE; d := decls;
     WHILE d # NIL DO
-      obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
+      obj := SymbolTable.FindLocal(scope, d.name.name);
       IF (obj # NIL) & obj.exported & (obj.value # NIL)
          & ((obj.value.kind = Types.structuredValue) = structured) THEN
         IF ~any THEN WriteStr(w, "  CONST"); WriteLn(w) END;
@@ -1337,7 +1337,7 @@ MODULE ModuleInterface;
   BEGIN
     any := FALSE; d := decls;
     WHILE d # NIL DO
-      obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
+      obj := SymbolTable.FindLocal(scope, d.name.name);
       IF (obj # NIL) & (obj.exported OR IsNeeded(obj)) THEN
         IF ~any THEN WriteStr(w, "  TYPE"); WriteLn(w) END;
         WriteStr(w, "    "); PrintTypeDecl(w, scope, obj); WriteLn(w);
@@ -1358,7 +1358,7 @@ MODULE ModuleInterface;
     WHILE d # NIL DO
       idents := d.names;
       WHILE idents # NIL DO
-        obj := SymbolTable.FindLocal(scope, Names.Intern(idents.name));
+        obj := SymbolTable.FindLocal(scope, idents.name);
         IF (obj # NIL) & obj.exported THEN
           IF ~any THEN WriteStr(w, "  VAR"); WriteLn(w) END;
           WriteStr(w, "    "); WriteStr(w, obj.name^);
@@ -1446,7 +1446,7 @@ MODULE ModuleInterface;
     done := NIL;
     d := decls;
     WHILE d # NIL DO
-      obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
+      obj := SymbolTable.FindLocal(scope, d.name.name);
       IF (obj # NIL) & (obj.exported OR IsNeeded(obj)) THEN
         rt := RecordOf(obj.type);
         IF (rt # NIL) & ~IsDone(done, rt) THEN
@@ -1480,7 +1480,7 @@ MODULE ModuleInterface;
     d := decls;
     WHILE d # NIL DO
       IF d.receiver = NIL THEN
-        obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
+        obj := SymbolTable.FindLocal(scope, d.name.name);
         IF (obj # NIL) & obj.exported & (obj.class = SymbolTable.procClass)
            & (d.isForward = obj.isForwardProc) THEN
           pt := obj.type(Types.ProcedureType);
@@ -1584,7 +1584,7 @@ MODULE ModuleInterface;
       name: ARRAY nameBufferLength OF CHAR;
       f: Files.File; w: Files.Rider; ok: BOOLEAN;
   BEGIN
-    SymFileName(module.name, name);
+    SymFileName(module.name^, name);
     ok := TRUE;
     IF outputDir[0] # 0X THEN
       Directories.MakePath(outputDir, name, pathOut);
@@ -1608,13 +1608,13 @@ MODULE ModuleInterface;
         PrintDeclarations(w, module, scope)
       UNTIL ~needChanged;
       dryRun := FALSE; lineUsed := 0; breakAt := -1;
-      WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
+      WriteStr(w, "MODULE "); WriteStr(w, module.name^); WriteStr(w, ";");
       WriteLn(w);
       PrintImports(w, scope);
       PrintDeclarations(w, module, scope);
-      WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
+      WriteStr(w, "END "); WriteStr(w, module.name^); WriteStr(w, "."); WriteLn(w);
       Files.Register(f);
-      RecordKey(module.name, f)
+      RecordKey(module.name^, f)
     END;
     RETURN ok
   END Write;
@@ -1635,11 +1635,11 @@ MODULE ModuleInterface;
   BEGIN
     neededHead := NIL; printingDecl := NIL; forwardBaseOK := FALSE;
     dryRun := FALSE; exportedView := TRUE; toConsole := TRUE; lineUsed := 0; breakAt := -1;
-    WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
+    WriteStr(w, "MODULE "); WriteStr(w, module.name^); WriteStr(w, ";");
     WriteLn(w);
     PrintImports(w, scope);
     PrintDeclarations(w, module, scope);
-    WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
+    WriteStr(w, "END "); WriteStr(w, module.name^); WriteStr(w, "."); WriteLn(w);
     exportedView := FALSE; toConsole := FALSE
   END Show;
 

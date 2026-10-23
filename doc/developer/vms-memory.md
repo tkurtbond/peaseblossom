@@ -341,3 +341,37 @@ module, 61.1 MB live (75.8) and a heap of 92 MB (108); at
 `VaxCodeGenerator`, 82.8 MB live (97.4) and a heap of 165 MB (196). The
 other records are as step 1 found them: `SyntaxTree.Designator` is still
 28.4 MB, for 4b.
+
+### Step 4b: the syntax tree's names interned (2026-10-22)
+
+`SyntaxTree`'s identifier fields as `Names.Name`, interned by the parser
+(and so by `ModuleInterface`, which reads `.sym` files through it); the
+checker, both back ends and the driver take them as they are. `Types`'
+adders and lookups still take `ARRAY OF CHAR` until 4c: a name that is
+never NIL goes to them as `name^`, one that may be (a qualifier, an
+alias, an external name, an `END` name) is tested against NIL or read
+with `Names.GetText`. One bug found on the way: `UnqualifyHidden` cleared
+a qualifier by writing `0X` into its text, which for an interned name
+would have emptied every use of that identifier; it now sets the field
+to NIL. `make check` on atla and `gmake check-stage1` on cymoril, artos
+and alerik passed, with the fixed point, `check-strict`, `check-o2` and
+the VAX objects unchanged. Peak resident size in MB, as for 4a:
+
+| run                          | cymoril, 4a | cymoril, 4b | atla, 4a | atla, 4b |
+|------------------------------|------------:|------------:|---------:|---------:|
+| all of poc, one program      | 131.6       |  67.8       | 140.9    |  87.5    |
+| `Poc` alone                  |  94.0       |  37.8       |  94.6    |  46.3    |
+| `VaxCodeGenerator` alone     |  79.4       |  43.7       |  89.9    |  54.3    |
+| `VaxToolchainDriver` alone   |  68.6       |  23.5       |  66.3    |  28.2    |
+| `SemanticActions` alone      |  46.8       |  22.1       |  48.5    |  28.3    |
+| `Parser` alone               |  41.5       |  16.6       |  39.6    |  19.3    |
+| `NestedProcedures` alone     |  38.9       |  14.2       |  38.0    |  17.2    |
+| `ModuleInterface` alone      |  27.4       |  13.1       |  29.4    |  15.0    |
+
+The census (cymoril, all of poc): `SyntaxTree.Designator` is 1.67 MB for
+52,258 (28.4 MB before). When the front end has checked every module,
+19.6 MB live (61.1) and a heap of 34.6 MB (92); at `VaxCodeGenerator`,
+41.4 MB live (82.8) and a heap of 58.7 MB (165). The largest left are
+`Types.Param` (4.2 MB, 14,594), `SyntaxTree.LiteralExprNode` (2.7 MB,
+9,533; its lexeme, for 4d), `Types.Field` (1.75 MB) and
+`Types.RecordType` (1.19 MB), for 4c.

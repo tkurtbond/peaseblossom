@@ -688,10 +688,10 @@ MODULE Poc;
     m := modules;
     WHILE ok & (m # NIL) DO
       IF m.inLibrary THEN
-        lib := Libraries.FindModule(m.module.name);
-        member := Libraries.FindMember(lib, m.module.name);
-        IF ~ModuleInterface.KeyOf(m.module.name, key) OR (member = NIL) OR (member.key # key) THEN
-          Err.String("poc: "); Err.String(m.module.name); Err.String(".sym in "); Err.String(lib.dir);
+        lib := Libraries.FindModule(m.module.name^);
+        member := Libraries.FindMember(lib, m.module.name^);
+        IF ~ModuleInterface.KeyOf(m.module.name^, key) OR (member = NIL) OR (member.key # key) THEN
+          Err.String("poc: "); Err.String(m.module.name^); Err.String(".sym in "); Err.String(lib.dir);
           Err.String(" does not match library "); Err.String(lib.name); Err.String("'s manifest; rebuild ");
           Err.String(lib.name); Err.Ln;
           ok := FALSE
@@ -864,7 +864,7 @@ MODULE Poc;
     Err.Ln
   END WarnIfSourceDiffers;
 
-  PROCEDURE ^ DiscoverModule(name: SyntaxTree.Ident;
+  PROCEDURE ^ DiscoverModule(moduleName: ARRAY OF CHAR;
                              VAR modules, tail: ModuleLists.ModuleList; VAR ok: BOOLEAN);
 
   (* Whether path names a file *)
@@ -1002,7 +1002,7 @@ MODULE Poc;
     END;
     imp := module.imports;
     WHILE (imp # NIL) & ok DO
-      DiscoverModule(imp.moduleName, modules, tail, ok);
+      DiscoverModule(imp.moduleName^, modules, tail, ok);
       imp := imp.next
     END;
     (* the interfaces the object was compiled against, and this program's *)
@@ -1065,14 +1065,14 @@ MODULE Poc;
     END;
     imp := module.imports;
     WHILE (imp # NIL) & ok DO
-      IF (imp.moduleName # "SYSTEM") & (Libraries.FindModule(imp.moduleName) = NIL) THEN
+      IF (~Names.Equals(imp.moduleName, "SYSTEM")) & (Libraries.FindModule(imp.moduleName^) = NIL) THEN
         failed := TRUE;
         Err.String("poc: module "); Err.String(name); Err.String(" of library "); Err.String(lib.name);
-        Err.String(" imports "); Err.String(imp.moduleName);
+        Err.String(" imports "); Err.String(imp.moduleName^);
         Err.String(", which no library on the library path has"); Err.Ln;
         ok := FALSE
       ELSE
-        DiscoverModule(imp.moduleName, modules, tail, ok)
+        DiscoverModule(imp.moduleName^, modules, tail, ok)
       END;
       imp := imp.next
     END;
@@ -1085,7 +1085,7 @@ MODULE Poc;
     END
   END DiscoverLibraryModule;
 
-  PROCEDURE DiscoverModule(name: SyntaxTree.Ident;
+  PROCEDURE DiscoverModule(moduleName: ARRAY OF CHAR;
                            VAR modules, tail: ModuleLists.ModuleList; VAR ok: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer;
@@ -1101,12 +1101,14 @@ MODULE Poc;
       m, entry: ModuleLists.ModuleList;
       lib: Libraries.Library; member: LibraryMember;
       symPath, objectPath, irPath: Libraries.Path;
+      name: SyntaxTree.Ident;
   BEGIN
     IF ~ok THEN RETURN END;
+    COPY(moduleName, name);
     (* SYSTEM is a pseudo-module with no source (SymbolTable.SystemScope) *)
     IF name = "SYSTEM" THEN RETURN END;
     m := modules;
-    WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
+    WHILE (m # NIL) & (~Names.Equals(m.module.name, name)) DO m := m.next END;
     IF m # NIL THEN RETURN END;
     member := FindMember(name);
     (* a module being compiled is its own, whatever a library has *)
@@ -1161,7 +1163,7 @@ MODULE Poc;
     ELSE
       imp := module.imports;
       WHILE (imp # NIL) & ok DO
-        DiscoverModule(imp.moduleName, modules, tail, ok);
+        DiscoverModule(imp.moduleName^, modules, tail, ok);
         imp := imp.next
       END;
       IF ok THEN
@@ -1184,7 +1186,7 @@ MODULE Poc;
   PROCEDURE CheckVaxModuleName(module: SyntaxTree.ModuleNode);
     VAR init: VaxTypes.Symbol;
   BEGIN
-    IF forVax & ~VaxTypes.MakeInitSymbol(module.name, init) THEN
+    IF forVax & ~VaxTypes.MakeInitSymbol(module.name^, init) THEN
       Diagnostics.Error(module.line, module.column,
         "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol")
     END
@@ -1205,7 +1207,7 @@ MODULE Poc;
      already put them), which the caller has also made ReadSource*'s
      first place to look. Errors in an imported module's source are
      reported here, the same way DiscoverModule would have later. *)
-  PROCEDURE RegenerateInterfaces(name: SyntaxTree.Ident; outputDir: ARRAY OF CHAR;
+  PROCEDURE RegenerateInterfaces(moduleName: ARRAY OF CHAR; outputDir: ARRAY OF CHAR;
                                  VAR visited: VisitedModule; VAR ok: BOOLEAN);
     VAR
       v: VisitedModule;
@@ -1220,8 +1222,10 @@ MODULE Poc;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
       sourcePath: ModuleLists.SourcePath;
       errorCountBefore: INTEGER; savedStrict: BOOLEAN; member: LibraryMember;
+      name: SyntaxTree.Ident;
   BEGIN
     IF ~ok THEN RETURN END;
+    COPY(moduleName, name);
     IF name = "SYSTEM" THEN RETURN END; (* a pseudo-module: no source, no .sym *)
     v := visited;
     WHILE (v # NIL) & (v.name # name) DO v := v.next END;
@@ -1246,7 +1250,7 @@ MODULE Poc;
         IF Diagnostics.errorCount = errorCountBefore THEN
           imp := module.imports;
           WHILE (imp # NIL) & ok DO
-            RegenerateInterfaces(imp.moduleName, outputDir, visited, ok);
+            RegenerateInterfaces(imp.moduleName^, outputDir, visited, ok);
             imp := imp.next
           END
         END
@@ -1262,7 +1266,7 @@ MODULE Poc;
     IF Diagnostics.errorCount = errorCountBefore THEN
       imp := module.imports;
       WHILE (imp # NIL) & ok DO
-        RegenerateInterfaces(imp.moduleName, outputDir, visited, ok);
+        RegenerateInterfaces(imp.moduleName^, outputDir, visited, ok);
         imp := imp.next
       END;
       IF ok THEN
@@ -1290,7 +1294,7 @@ MODULE Poc;
     VAR m, previous: ModuleLists.ModuleList;
   BEGIN
     previous := NIL; m := modules;
-    WHILE (m # NIL) & (m.module.name # name) DO previous := m; m := m.next END;
+    WHILE (m # NIL) & (~Names.Equals(m.module.name, name)) DO previous := m; m := m.next END;
     IF m # NIL THEN
       IF previous = NIL THEN modules := m.next ELSE previous.next := m.next END;
       m.next := NIL
@@ -1401,7 +1405,7 @@ MODULE Poc;
     ok := TRUE; modules := NIL; tail := NIL;
     imp := topModule.imports;
     WHILE (imp # NIL) & ok DO
-      DiscoverModule(imp.moduleName, modules, tail, ok);
+      DiscoverModule(imp.moduleName^, modules, tail, ok);
       imp := imp.next
     END;
     IF ok THEN
@@ -1424,7 +1428,7 @@ MODULE Poc;
   BEGIN
     m := modules;
     WHILE m.next # NIL DO m := m.next END;
-    COPY(m.module.name, name)
+    COPY(m.module.name^, name)
   END ProgramTopName;
 
 
@@ -1462,7 +1466,7 @@ MODULE Poc;
         visited := NIL;
         imp := module.imports;
         WHILE (imp # NIL) & regenerated DO
-          RegenerateInterfaces(imp.moduleName, outputDir, visited, regenerated);
+          RegenerateInterfaces(imp.moduleName^, outputDir, visited, regenerated);
           imp := imp.next
         END;
         IF regenerated THEN
@@ -1528,7 +1532,7 @@ MODULE Poc;
           m := modules;
           WHILE m # NIL DO
             IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
-              LLVMBackEnd.ModuleFilePath(outputDir, m.module.name, ".ll", path);
+              LLVMBackEnd.ModuleFilePath(outputDir, m.module.name^, ".ll", path);
               Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
             END;
             m := m.next
@@ -1567,7 +1571,7 @@ MODULE Poc;
      source, and for -compile (onlyMembers) one of the files named *)
   PROCEDURE IsVaxUnit(m: ModuleLists.ModuleList; onlyMembers: BOOLEAN): BOOLEAN;
   BEGIN
-    RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (~onlyMembers OR (FindMember(m.module.name) # NIL))
+    RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (~onlyMembers OR (FindMember(m.module.name^) # NIL))
   END IsVaxUnit;
 
   (* Each unit of modules written in outputDir as VaxToolchainDriver's
@@ -1598,9 +1602,9 @@ MODULE Poc;
     WHILE m # NIL DO
       n := m.next;
       WHILE n # NIL DO
-        IF VaxTypes.MakeInitSymbol(m.module.name, a) & VaxTypes.MakeInitSymbol(n.module.name, b) & (a = b) THEN
+        IF VaxTypes.MakeInitSymbol(m.module.name^, a) & VaxTypes.MakeInitSymbol(n.module.name^, b) & (a = b) THEN
           failed := TRUE;
-          Err.String("poc: modules "); Err.String(m.module.name); Err.String(" and "); Err.String(n.module.name);
+          Err.String("poc: modules "); Err.String(m.module.name^); Err.String(" and "); Err.String(n.module.name^);
           Err.String(" differ only in case, and VMS does not tell their files or symbols apart"); Err.Ln;
           RETURN FALSE
         END;
@@ -1615,7 +1619,7 @@ MODULE Poc;
     VaxCodeGenerator.withModules := FALSE;
     m := modules;
     WHILE m # NIL DO
-      IF m.module.name = "Modules" THEN VaxCodeGenerator.withModules := TRUE END;
+      IF Names.Equals(m.module.name, "Modules") THEN VaxCodeGenerator.withModules := TRUE END;
       m := m.next
     END;
     VaxCodeGenerator.programNames := VaxTypes.NewNameTable();
@@ -1641,14 +1645,14 @@ MODULE Poc;
     MemoryCensus.Take("every module checked");
     WHILE m # NIL DO
       IF IsVaxUnit(m, onlyMembers) THEN
-        IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
+        IF ~ModuleInterface.KeyOf(m.module.name^, key) THEN key[0] := 0X END;
         (* what the generator reports is in the module's own file *)
         COPY(m.fileName, Diagnostics.fileName);
         (* the program's main module is the last, as on LLVM *)
         IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, ~onlyMembers & (m.next = NIL), path) THEN
           written := FALSE
         END;
-        MemoryCensus.Take(m.module.name)
+        MemoryCensus.Take(m.module.name^)
       END;
       m := m.next
     END;
@@ -1658,10 +1662,10 @@ MODULE Poc;
     WHILE m # NIL DO
       IF IsVaxUnit(m, onlyMembers) THEN
         IF written & (Diagnostics.errorCount = errorsBefore) THEN
-          VaxToolchainDriver.ModuleOutputPath(outputDir, m.module.name, path);
+          VaxToolchainDriver.ModuleOutputPath(outputDir, m.module.name^, path);
           IF announce THEN Out.String("semantic OK, wrote "); Out.String(path); Out.Ln END
         ELSE
-          VaxToolchainDriver.RemoveModuleFiles(outputDir, m.module.name)
+          VaxToolchainDriver.RemoveModuleFiles(outputDir, m.module.name^)
         END
       END;
       m := m.next
@@ -1823,7 +1827,7 @@ MODULE Poc;
     first := NIL; last := NIL; m := modules;
     WHILE m # NIL DO
       IF IsVaxUnit(m, onlyMembers) THEN
-        NEW(u); COPY(m.module.name, u.name); u.next := NIL;
+        NEW(u); COPY(m.module.name^, u.name); u.next := NIL;
         IF last = NIL THEN first := u ELSE last.next := u END;
         last := u
       END;
@@ -1858,7 +1862,7 @@ MODULE Poc;
     WHILE m # NIL DO
       IF ~m.inLibrary & ~IsVaxUnit(m, FALSE) THEN
         failed := TRUE;
-        Err.String("poc: module "); Err.String(m.module.name);
+        Err.String("poc: module "); Err.String(m.module.name^);
         Err.String(" is compiled already; a program for "); Err.String(VaxToolchainDriver.triple);
         Err.String(" takes a module from source or from a library"); Err.Ln;
         RETURN
@@ -2004,19 +2008,19 @@ MODULE Poc;
         module := Parser.ParseModule(parser);
         IF Diagnostics.errorCount > 0 THEN
           Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln; ok := FALSE
-        ELSIF FindMember(module.name) # NIL THEN
-          failed := TRUE; Err.String("poc: two files declare module "); Err.String(module.name); Err.Ln;
+        ELSIF FindMember(module.name^) # NIL THEN
+          failed := TRUE; Err.String("poc: two files declare module "); Err.String(module.name^); Err.Ln;
           ok := FALSE
         ELSE
-          IF forLibrary THEN owner := Libraries.FindModule(module.name) ELSE owner := NIL END;
+          IF forLibrary THEN owner := Libraries.FindModule(module.name^) ELSE owner := NIL END;
           IF owner # NIL THEN
             failed := TRUE;
-            Err.String("poc: module "); Err.String(module.name); Err.String(" is in library ");
+            Err.String("poc: module "); Err.String(module.name^); Err.String(" is in library ");
             Err.String(owner.name); Err.String(" ("); Err.String(owner.dir);
             Err.String(") already; a module belongs to one library"); Err.Ln;
             ok := FALSE
           ELSE
-            NEW(member); COPY(module.name, member.name); COPY(file, member.path); member.next := NIL;
+            NEW(member); COPY(module.name^, member.name); COPY(file, member.path); member.next := NIL;
             member.compiled := compiled; COPY(objectFile, member.objectPath); COPY(irFile, member.irPath);
             IF tail = NIL THEN members := member ELSE tail.next := member END;
             tail := member
@@ -2103,7 +2107,7 @@ MODULE Poc;
     (* only the modules named are generated; the rest are declared *)
     m := modules;
     WHILE m # NIL DO
-      IF ~m.inLibrary & (FindMember(m.module.name) = NIL) THEN m.compiled := TRUE; m.irPath[0] := 0X END;
+      IF ~m.inLibrary & (FindMember(m.module.name^) = NIL) THEN m.compiled := TRUE; m.irPath[0] := 0X END;
       m := m.next
     END;
     IF ~LLVMBackEnd.Compile(modules, members.name, triple, outputDir) THEN
@@ -2247,12 +2251,12 @@ MODULE Poc;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
-        IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
-        libMember := Libraries.AddMember(lib, m.module.name, key);
+        IF ~ModuleInterface.KeyOf(m.module.name^, key) THEN key[0] := 0X END;
+        libMember := Libraries.AddMember(lib, m.module.name^, key);
         IF ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
         imp := m.module.imports;
         WHILE imp # NIL DO
-          IF ModuleInterface.KeyOf(imp.moduleName, key) THEN Libraries.AddImport(libMember, imp.moduleName, key) END;
+          IF ModuleInterface.KeyOf(imp.moduleName^, key) THEN Libraries.AddImport(libMember, imp.moduleName^, key) END;
           imp := imp.next
         END
       END;
@@ -2347,12 +2351,12 @@ MODULE Poc;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
-        IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
-        libMember := Libraries.AddMember(lib, m.module.name, key);
+        IF ~ModuleInterface.KeyOf(m.module.name^, key) THEN key[0] := 0X END;
+        libMember := Libraries.AddMember(lib, m.module.name^, key);
         IF ~m.compiled & (m.irPath[0] = 0X) & ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
         imp := m.module.imports;
         WHILE imp # NIL DO
-          IF ModuleInterface.KeyOf(imp.moduleName, key) THEN Libraries.AddImport(libMember, imp.moduleName, key) END;
+          IF ModuleInterface.KeyOf(imp.moduleName^, key) THEN Libraries.AddImport(libMember, imp.moduleName^, key) END;
           imp := imp.next
         END
       END;
@@ -2418,8 +2422,8 @@ MODULE Poc;
       ELSIF module.declarations # NIL THEN
         d := module.declarations.typeDecls;
         WHILE d # NIL DO
-          obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
-          PrintLayoutLine(d.name.name, obj.type);
+          obj := SymbolTable.FindLocal(scope, d.name.name);
+          PrintLayoutLine(d.name.name^, obj.type);
           IF (obj.type # NIL) & (obj.type IS Types.RecordType) THEN
             PrintFieldLines(obj.type(Types.RecordType))
           END;
@@ -2469,8 +2473,8 @@ MODULE Poc;
       ELSIF module.declarations # NIL THEN
         d := module.declarations.typeDecls;
         WHILE d # NIL DO
-          obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
-          PrintLLVMTypeLine(d.name.name, obj.type);
+          obj := SymbolTable.FindLocal(scope, d.name.name);
+          PrintLLVMTypeLine(d.name.name^, obj.type);
           d := d.next
         END
       END
@@ -2506,12 +2510,12 @@ MODULE Poc;
       bodyScope: SymbolTable.Scope;
   BEGIN
     IF pd.receiver = NIL THEN
-      obj := SymbolTable.FindLocal(scope, Names.Intern(pd.name.name));
+      obj := SymbolTable.FindLocal(scope, pd.name.name);
       pt := obj.type(Types.ProcedureType);
       bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, NIL, pt)
     ELSE
-      typeObj := SymbolTable.FindLocal(scope, Names.Intern(pd.receiver.typeName));
-      method := Types.FindOwnMethod(ReceiverRecord(typeObj.type), pd.name.name);
+      typeObj := SymbolTable.FindLocal(scope, pd.receiver.typeName);
+      method := Types.FindOwnMethod(ReceiverRecord(typeObj.type), pd.name.name^);
       bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, typeObj.type, method.procType)
     END;
     root := NestedProcedures.Analyze(pd, bodyScope);
@@ -2618,8 +2622,8 @@ MODULE Poc;
       ELSIF module.declarations # NIL THEN
         d := module.declarations.typeDecls;
         WHILE d # NIL DO
-          obj := SymbolTable.FindLocal(scope, Names.Intern(d.name.name));
-          PrintVaxTypeLine(d.name.name, obj.type);
+          obj := SymbolTable.FindLocal(scope, d.name.name);
+          PrintVaxTypeLine(d.name.name^, obj.type);
           d := d.next
         END
       END
@@ -2650,7 +2654,7 @@ MODULE Poc;
     d := pd.declarations.procDecls;
     WHILE d # NIL DO
       IF ~d.isForward & ~d.isExternal THEN
-        COPY(outer, full); Strcat(full, "."); Strcat(full, d.name.name);
+        COPY(outer, full); Strcat(full, "."); Strcat(full, d.name.name^);
         PrintVaxName(table, full);
         PrintNestedVaxNames(table, d, full)
       END;
@@ -2698,11 +2702,11 @@ MODULE Poc;
         Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln
       ELSE
         table := VaxTypes.NewNameTable();
-        IF VaxTypes.MakeInitSymbol(module.name, init) THEN
-          Out.String(module.name); Out.String(" init "); Out.String(init); Out.Ln
+        IF VaxTypes.MakeInitSymbol(module.name^, init) THEN
+          Out.String(module.name^); Out.String(" init "); Out.String(init); Out.Ln
         ELSE
           failed := TRUE;
-          Err.String("poc: module name "); Err.String(module.name);
+          Err.String("poc: module name "); Err.String(module.name^);
           Err.String(" is longer than "); Err.Int(VaxTypes.moduleNameLength, 0);
           Err.String(" characters, the most a VAX module's <MODULE>_INIT symbol allows"); Err.Ln
         END;
@@ -2711,7 +2715,7 @@ MODULE Poc;
           WHILE v # NIL DO
             id := v.names;
             WHILE id # NIL DO
-              COPY(module.name, full); Strcat(full, "."); Strcat(full, id.name);
+              COPY(module.name^, full); Strcat(full, "."); Strcat(full, id.name^);
               PrintVaxName(table, full);
               id := id.next
             END;
@@ -2720,9 +2724,9 @@ MODULE Poc;
           p := module.declarations.procDecls;
           WHILE p # NIL DO
             IF p.isExternal THEN
-              COPY(module.name, full); Strcat(full, "."); Strcat(full, p.name.name);
+              COPY(module.name^, full); Strcat(full, "."); Strcat(full, p.name.name^);
               Out.String(full); Out.String(" external ");
-              IF p.externalName # "" THEN COPY(p.externalName, full) ELSE COPY(p.name.name, full) END;
+              IF p.externalName # NIL THEN COPY(p.externalName^, full) ELSE COPY(p.name.name^, full) END;
               Out.String(full); Out.Ln;
               IF ~VaxTypes.IsValidExternalName(full) THEN
                 failed := TRUE;
@@ -2731,14 +2735,14 @@ MODULE Poc;
                 Err.Ln
               END
             ELSIF ~p.isForward THEN
-              COPY(module.name, full); Strcat(full, ".");
+              COPY(module.name^, full); Strcat(full, ".");
               IF p.receiver # NIL THEN
-                typeObj := SymbolTable.FindLocal(scope, Names.Intern(p.receiver.typeName)); rec := NIL;
+                typeObj := SymbolTable.FindLocal(scope, p.receiver.typeName); rec := NIL;
                 IF typeObj # NIL THEN rec := ReceiverRecord(typeObj.type) END;
-                IF rec # NIL THEN Strcat(full, rec.name) ELSE Strcat(full, p.receiver.typeName) END;
+                IF rec # NIL THEN Strcat(full, rec.name) ELSE Strcat(full, p.receiver.typeName^) END;
                 Strcat(full, ".")
               END;
-              Strcat(full, p.name.name);
+              Strcat(full, p.name.name^);
               PrintVaxName(table, full);
               PrintNestedVaxNames(table, p, full)
             END;

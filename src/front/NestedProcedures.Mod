@@ -125,7 +125,7 @@ MODULE NestedProcedures;
     IF parent = NIL THEN
       np.depth := 0; np.root := np; np.lastCreated := np;
       IF decl.receiver # NIL THEN
-        AppendText(np.pathName, decl.receiver.typeName); AppendText(np.pathName, ".")
+        AppendText(np.pathName, decl.receiver.typeName^); AppendText(np.pathName, ".")
       END
     ELSE
       np.depth := parent.depth + 1; np.root := root;
@@ -136,7 +136,7 @@ MODULE NestedProcedures;
       IF parent.firstChild = NIL THEN parent.firstChild := np ELSE parent.lastChild.nextSibling := np END;
       parent.lastChild := np
     END;
-    AppendText(np.pathName, decl.name.name);
+    AppendText(np.pathName, decl.name.name^);
     RETURN np
   END NewProc;
 
@@ -153,7 +153,7 @@ MODULE NestedProcedures;
       d := np.decl.declarations.procDecls;
       WHILE d # NIL DO
         IF ~d.isForward & ~d.isExternal & (d.receiver = NIL) THEN
-          obj := SymbolTable.FindLocal(np.scope, Names.Intern(d.name.name));
+          obj := SymbolTable.FindLocal(np.scope, d.name.name);
           pt := obj.type(Types.ProcedureType);
           child := NewProc(np.root, np, d, obj, pt, SemanticActions.OpenProcedureBodyScope(d, np.scope, NIL, pt));
           BuildChildren(child)
@@ -215,12 +215,12 @@ MODULE NestedProcedures;
      becomes one of np's direct needs, a nested procedure becomes an edge to
      it. Anything else (a constant, a type, a module-level variable or
      procedure, a name np declares itself) needs nothing. *)
-  PROCEDURE NoteUnqualifiedName(np: NestedProc; name: SyntaxTree.Ident);
+  PROCEDURE NoteUnqualifiedName(np: NestedProc; name: Names.Name);
     VAR scope: SymbolTable.Scope; obj: SymbolTable.Object; owner, callee: NestedProc;
   BEGIN
     scope := np.scope; obj := NIL;
     WHILE (scope # NIL) & (obj = NIL) DO
-      obj := SymbolTable.FindLocal(scope, Names.Intern(name));
+      obj := SymbolTable.FindLocal(scope, name);
       IF obj = NIL THEN scope := scope.outer END
     END;
     IF obj # NIL THEN
@@ -236,9 +236,9 @@ MODULE NestedProcedures;
   END NoteUnqualifiedName;
 
   (* A use of qualifier.name; only an unqualified one can be a local thing. *)
-  PROCEDURE NoteName(np: NestedProc; qualifier, name: SyntaxTree.Ident);
+  PROCEDURE NoteName(np: NestedProc; qualifier, name: Names.Name);
   BEGIN
-    IF qualifier[0] = 0X THEN NoteUnqualifiedName(np, name) END
+    IF qualifier = NIL THEN NoteUnqualifiedName(np, name) END
   END NoteName;
 
   PROCEDURE ^ WalkExpr(np: NestedProc; e: SyntaxTree.ExprNode);

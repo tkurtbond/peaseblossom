@@ -20,7 +20,7 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, Directories, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator, ModuleInterface, ModuleLists;
+  IMPORT Names, Files, Platform, Directories, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator, ModuleInterface, ModuleLists;
 
   CONST
     dirBufferLength = 1024;
@@ -192,7 +192,7 @@ MODULE LLVMToolchainDriver;
       name, bodyName: ARRAY pathBufferLength OF CHAR;
       f, bodyFile: Files.File; w, body: Files.Rider; deleteResult: INTEGER;
   BEGIN
-    ModuleFilePath(outputDir, target.module.name, ".ll", name);
+    ModuleFilePath(outputDir, target.module.name^, ".ll", name);
     COPY(name, bodyName); Strcat(bodyName, ".body");
     f := Files.New(name);
     Files.Set(w, f, 0);
@@ -245,7 +245,7 @@ MODULE LLVMToolchainDriver;
         m := modules;
         WHILE m # NIL DO
           IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
-            ModuleFilePath(outputDir, m.module.name, ".ll", name);
+            ModuleFilePath(outputDir, m.module.name^, ".ll", name);
             deleteResult := Platform.Unlink(name) (* not Files.Delete: voc's renames to a temp name *)
           END;
           m := m.next
@@ -372,9 +372,9 @@ MODULE LLVMToolchainDriver;
      is called that) *)
   PROCEDURE ObjectFilePath(outputDir: ARRAY OF CHAR; m: ModuleLists.ModuleList; VAR path: ARRAY OF CHAR);
   BEGIN
-    ModuleFilePath(outputDir, m.module.name, ".ll", path);
-    IF (m.irPath[0] # 0X) & (m.irPath # path) THEN ModuleFilePath(outputDir, m.module.name, ".ir.o", path)
-    ELSE ModuleFilePath(outputDir, m.module.name, ".o", path)
+    ModuleFilePath(outputDir, m.module.name^, ".ll", path);
+    IF (m.irPath[0] # 0X) & (m.irPath # path) THEN ModuleFilePath(outputDir, m.module.name^, ".ir.o", path)
+    ELSE ModuleFilePath(outputDir, m.module.name^, ".o", path)
     END
   END ObjectFilePath;
 
@@ -442,7 +442,7 @@ MODULE LLVMToolchainDriver;
     VAR source, given: ARRAY pathBufferLength OF CHAR; suffix: ARRAY 8 OF CHAR;
   BEGIN
     IF CompanionSource(m, source, cxx) THEN
-      CompanionSuffix(cxx, suffix); ModuleFilePath(outputDir, m.module.name, suffix, path); RETURN TRUE
+      CompanionSuffix(cxx, suffix); ModuleFilePath(outputDir, m.module.name^, suffix, path); RETURN TRUE
     END;
     IF m.compiled THEN COPY(m.objectPath, given)
     ELSIF m.irPath[0] # 0X THEN COPY(m.irPath, given)
@@ -633,7 +633,7 @@ MODULE LLVMToolchainDriver;
         Strcat(command, " -fPIC");
         IF lto THEN Strcat(command, " -flto") END;
         IF m.irPath[0] # 0X THEN AppendPath(m.irPath) (* a module given as its .sym and .ll *)
-        ELSE ModuleFilePath(outputDir, m.module.name, ".ll", ir); AppendPath(ir)
+        ELSE ModuleFilePath(outputDir, m.module.name^, ".ll", ir); AppendPath(ir)
         END;
         ObjectFilePath(outputDir, m, path);
         Strcat(command, " -o"); AppendPath(path);
@@ -643,7 +643,7 @@ MODULE LLVMToolchainDriver;
           ModuleInterface.HashStart(hash); ModuleInterface.HashText(hash, command);
           IF HashPath(hash, ir) THEN
             StampOf(hash, stamp);
-            COPY(m.module.name, symbol); Strcat(symbol, ".-build."); Strcat(symbol, stamp);
+            COPY(m.module.name^, symbol); Strcat(symbol, ".-build."); Strcat(symbol, stamp);
             line := "@"; Strcat(line, symbol); Strcat(line, " = constant i8 0");
             stamped := AppendLine(ir, line)
           END
@@ -652,12 +652,12 @@ MODULE LLVMToolchainDriver;
         IF ~ok & (m.irPath[0] # 0X) THEN
           (* IR from a newer LLVM than this clang's does not parse *)
           Err.String("poc: clang cannot compile "); Err.String(m.irPath);
-          Err.String(" (written for another version of LLVM?); compile "); Err.String(m.module.name);
+          Err.String(" (written for another version of LLVM?); compile "); Err.String(m.module.name^);
           Err.String(" again"); Err.Ln
         END;
         IF ok & CompanionSource(m, source, cxx) & ~cxx
            & ReplaceExtension(m.fileName, ".cpp", other) & FileExists(other) THEN
-          Err.String("poc: "); Err.String(m.module.name); Err.String(" has a part in both ");
+          Err.String("poc: "); Err.String(m.module.name^); Err.String(" has a part in both ");
           Err.String(source); Err.String(" and "); Err.String(other); Err.Ln;
           ok := FALSE
         ELSIF ok & CompanionSource(m, source, cxx) THEN
@@ -666,7 +666,7 @@ MODULE LLVMToolchainDriver;
           Strcat(command, " -fPIC"); Strcat(command, cFlags);
           IF lto THEN Strcat(command, " -flto") END;
           AppendPath(source);
-          CompanionSuffix(cxx, suffix); ModuleFilePath(outputDir, m.module.name, suffix, path);
+          CompanionSuffix(cxx, suffix); ModuleFilePath(outputDir, m.module.name^, suffix, path);
           IF ~reuse OR lto THEN Strcat(command, " -o"); AppendPath(path); ok := RunCommand()
           ELSE
             COPY(path, deps); Strcat(deps, ".d");

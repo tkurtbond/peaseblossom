@@ -2500,18 +2500,18 @@ MODULE LLVMCodeGenerator;
      unreachable in a module that already passed CheckModule cleanly,
      the same "re-deriving a already-checked result" safety argument
      OpenProcedureBodyScope's own header comment makes. *)
-  PROCEDURE ResolveQualifiedObject(VAR cg: Codegen; qualifier, name: SyntaxTree.Ident;
+  PROCEDURE ResolveQualifiedObject(VAR cg: Codegen; qualifier, name: Names.Name;
                                    VAR homeModule: SyntaxTree.Ident): SymbolTable.Object;
     VAR modObj: SymbolTable.Object;
   BEGIN
-    IF qualifier[0] = 0X THEN
+    IF qualifier = NIL THEN
       COPY(cg.moduleName, homeModule);
-      RETURN SymbolTable.Find(cg.scope, Names.Intern(name))
+      RETURN SymbolTable.Find(cg.scope, name)
     END;
-    modObj := SymbolTable.Find(cg.scope, Names.Intern(qualifier));
+    modObj := SymbolTable.Find(cg.scope, qualifier);
     IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
     COPY(modObj.realModuleName^, homeModule);
-    RETURN SymbolTable.FindLocal(modObj.moduleScope, Names.Intern(name))
+    RETURN SymbolTable.FindLocal(modObj.moduleScope, name)
   END ResolveQualifiedObject;
 
   PROCEDURE ResolveVarAddress(VAR cg: Codegen; obj: SymbolTable.Object; VAR addrText: ValueText);
@@ -2955,7 +2955,7 @@ MODULE LLVMCodeGenerator;
           END;
           IF (t = NIL) OR ~(t IS Types.RecordType) THEN RETURN NIL END;
           rec := t(Types.RecordType);
-          field := Types.FindField(rec, sel.name);
+          field := Types.FindField(rec, sel.name^);
           IF field = NIL THEN RETURN NIL END;
           t := field.type
       | sel: SyntaxTree.IndexSelector DO
@@ -3207,7 +3207,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF (e = NIL) OR ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
     de := e(SyntaxTree.DesignatorExprNode);
-    IF de.hasParens OR (de.designator.selectors # NIL) OR (de.designator.qualifier[0] # 0X) THEN RETURN FALSE END;
+    IF de.hasParens OR (de.designator.selectors # NIL) OR (de.designator.qualifier # NIL) THEN RETURN FALSE END;
     obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
     binding := FindLocalBinding(cg, obj);
@@ -3513,7 +3513,7 @@ MODULE LLVMCodeGenerator;
      a base. FALSE if the name is not a data field (a type-bound
      procedure is called through GenerateMethodCall, never addressed). *)
   PROCEDURE GenerateFieldAddress(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
-                                 VAR addrType: Types.Type; name: SyntaxTree.Ident): BOOLEAN;
+                                 VAR addrType: Types.Type; name: ARRAY OF CHAR): BOOLEAN;
     VAR rec, owner, current: Types.RecordType; field: Types.Field; pointeeType: LongText; idxText: ValueText;
         position: INTEGER;
   BEGIN
@@ -3575,7 +3575,7 @@ MODULE LLVMCodeGenerator;
       StructuredConstGlobal(cg, obj.value, obj.type, addrText)
     ELSIF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       RETURN FALSE
-    ELSIF d.qualifier[0] = 0X THEN
+    ELSIF d.qualifier = NIL THEN
       ResolveVarAddress(cg, obj, addrText);
       binding := FindLocalBinding(cg, obj);
       IF (binding # NIL) & (binding.tagText[0] # 0X) THEN
@@ -3597,7 +3597,7 @@ MODULE LLVMCodeGenerator;
           wasPointer := (addrType # NIL) & (addrType IS Types.PointerType);
           IF ~AutoDereference(w, cg, addrText, addrType, dyn.dope) THEN RETURN FALSE END;
           IF wasPointer THEN dyn.kind := dynBlock; COPY(addrText, dyn.text) END;
-          IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name) THEN RETURN FALSE END;
+          IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name^) THEN RETURN FALSE END;
           dyn.kind := dynStatic; ClearDope(dyn.dope)
       | sel: SyntaxTree.IndexSelector DO
           idx := sel.indices;
@@ -3720,7 +3720,7 @@ MODULE LLVMCodeGenerator;
     ELSIF obj.class = SymbolTable.constClass THEN
       GenerateConstValue(w, cg, obj, result)
     ELSIF obj.class = SymbolTable.varClass THEN
-      IF d.qualifier[0] = 0X THEN
+      IF d.qualifier = NIL THEN
         LoadVar(w, cg, obj, result)
       ELSE
         QualifiedName(homeModule, obj.name^, addrText);
@@ -4670,8 +4670,8 @@ MODULE LLVMCodeGenerator;
     IF (t # NIL) & (t IS Types.PointerType) THEN ptr := t(Types.PointerType); t := ptr.base END;
     IF (t = NIL) OR ~(t IS Types.RecordType) THEN RETURN FALSE END;
     rec := t(Types.RecordType);
-    IF Types.FindField(rec, nameNode.name) # NIL THEN RETURN FALSE END;
-    method := Types.FindMethod(rec, nameNode.name);
+    IF Types.FindField(rec, nameNode.name^) # NIL THEN RETURN FALSE END;
+    method := Types.FindMethod(rec, nameNode.name^);
     RETURN method # NIL
   END FindMethodTarget;
 
@@ -4727,7 +4727,7 @@ MODULE LLVMCodeGenerator;
       called := NIL;
       IF rec.baseType # NIL THEN
         baseRec := rec.baseType(Types.RecordType);
-        called := Types.FindMethod(baseRec, nameNode.name);
+        called := Types.FindMethod(baseRec, nameNode.name^);
         IF called # NIL THEN owner := Types.MethodOwner(baseRec, called) END
       END;
       IF called = NIL THEN
@@ -5753,7 +5753,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     nested := NIL;
     IF el.value IS SyntaxTree.StructuredLiteralNode THEN nested := el.value(SyntaxTree.StructuredLiteralNode) END;
-    IF (nested # NIL) & (nested.name[0] = 0X) THEN
+    IF (nested # NIL) & (nested.name = NIL) THEN
       BuildLiteralAt(w, cg, addrText, t, nested)
     ELSE
       AssignToAddress(w, cg, addrText, t, el.value, el.copiesArray)
@@ -5817,7 +5817,7 @@ MODULE LLVMCodeGenerator;
       IF el.line > 0 THEN cg.currentLine := el.line; cg.currentColumn := el.column END;
       COPY(addrText, elementAddr); elementType := t;
       IF t IS Types.RecordType THEN
-        IF GenerateFieldAddress(w, cg, elementAddr, elementType, el.field) THEN
+        IF GenerateFieldAddress(w, cg, elementAddr, elementType, el.field^) THEN
           StoreLiteralElement(w, cg, elementAddr, elementType, el)
         ELSE
           WriteStr(w, "  ; unsupported: a field this backend cannot address"); WriteLn(w)
@@ -6245,7 +6245,7 @@ MODULE LLVMCodeGenerator;
     IF (obj # NIL) & (obj.class = SymbolTable.varClass) THEN
       GenerateProcedureValueCall(w, cg, d, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type = Types.PredeclaredProcedureType) THEN
-      GeneratePredeclaredCall(w, cg, obj.name^, args, d.qualifier[0] # 0X, result)
+      GeneratePredeclaredCall(w, cg, obj.name^, args, d.qualifier # NIL, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention # NIL) THEN
       GenerateExternalCall(w, cg, obj, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
@@ -6295,8 +6295,8 @@ MODULE LLVMCodeGenerator;
         IF IsGuardExpr(cg, expr) THEN
           GenerateGuardExpr(w, cg, expr, result)
         ELSIF expr.hasParens THEN
-          IF ~(((expr.designator.name = "ASH") OR (expr.designator.name = "LEN")
-                OR ConstantEvaluator.IsIntegerValueFunctionName(expr.designator.name))
+          IF ~(((Names.Equals(expr.designator.name, "ASH")) OR (Names.Equals(expr.designator.name, "LEN"))
+                OR ConstantEvaluator.IsIntegerValueFunctionName(expr.designator.name^))
                & GenerateFoldedInteger(w, cg, expr, result)) THEN
             GenerateCall(w, cg, expr.designator, expr.args, result)
           END
@@ -6358,7 +6358,7 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "  ; unsupported: assignment target is not a plain module VAR"); WriteLn(w);
       RETURN
     END;
-    IF s.target.qualifier[0] = 0X THEN
+    IF s.target.qualifier = NIL THEN
       ResolveVarAddress(cg, obj, addrText);
       binding := FindLocalBinding(cg, obj);
       IF (binding # NIL) & (binding.tagText[0] # 0X) THEN (* a VAR record parameter *)
@@ -6642,7 +6642,7 @@ MODULE LLVMCodeGenerator;
       stepAmount: LONGINT; width: INTEGER; stepText, stepSizeText, condText, distance, lastStep: ValueText;
       headLabel, bodyLabel, latchLabel, stepLabel, endLabel: ValueText; pred: ARRAY 16 OF CHAR;
   BEGIN
-    obj := SymbolTable.Find(cg.scope, Names.Intern(s.variable));
+    obj := SymbolTable.Find(cg.scope, s.variable);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       WriteStr(w, "  ; unsupported: FOR control variable is not a plain module VAR"); WriteLn(w);
       RETURN
@@ -6878,7 +6878,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
         IF (obj # NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
         nm := nm.next
       END;
@@ -6889,7 +6889,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
         IF (obj # NIL) & Types.NeedsInit(obj.type) THEN
           ResolveVarAddress(cg, obj, addrText);
           InitializeAt(w, cg, addrText, obj.type)
@@ -6929,9 +6929,9 @@ MODULE LLVMCodeGenerator;
       WHILE vd # NIL DO
         nm := vd.names;
         WHILE nm # NIL DO
-          obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
+          obj := SymbolTable.FindLocal(cg.scope, nm.name);
           LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
-          WriteStr(w, "@"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, nm.name);
+          WriteStr(w, "@"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, nm.name^);
           WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer");
           WriteDebugGlobal(w, obj); WriteLn(w);
           nm := nm.next
@@ -6985,7 +6985,7 @@ MODULE LLVMCodeGenerator;
     pd := module.declarations.procDecls;
     WHILE pd # NIL DO
       IF pd.isExternal THEN
-        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(pd.name.name));
+        obj := SymbolTable.FindLocal(cg.scope, pd.name.name);
         IF Names.Equals(obj.externalConvention, "VMS") THEN
           (* the VMS Calling Standard is the VAX backend's (Phase 15); called as
              a C function here it would link against a symbol nothing defines
@@ -7277,7 +7277,7 @@ MODULE LLVMCodeGenerator;
     IF module.declarations = NIL THEN RETURN END;
     td := module.declarations.typeDecls;
     WHILE td # NIL DO
-      obj := SymbolTable.FindLocal(cg.scope, Names.Intern(td.name.name));
+      obj := SymbolTable.FindLocal(cg.scope, td.name.name);
       IF obj # NIL THEN CollectRecordTypes(cg, obj.type) END;
       td := td.next
     END;
@@ -7285,7 +7285,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
         IF obj # NIL THEN CollectRecordTypes(cg, obj.type) END;
         nm := nm.next
       END;
@@ -7322,7 +7322,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
         IF obj # NIL THEN total := total + CountPointerSlots(obj.type) END;
         nm := nm.next
       END;
@@ -7333,7 +7333,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE RootTableName(module: SyntaxTree.ModuleNode; VAR text: ARRAY OF CHAR);
   BEGIN
-    COPY("@.roots.", text); Strcat(text, module.name)
+    COPY("@.roots.", text); Strcat(text, module.name^)
   END RootTableName;
 
   PROCEDURE EmitRootTable(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
@@ -7356,7 +7356,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(cg.scope, Names.Intern(nm.name));
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
         IF (obj # NIL) & (CountPointerSlots(obj.type) > 0) THEN
           ModuleQualifiedName(cg, obj.name^, global);
           EmitPointerOffsets(w, wordInt, global, obj.type, 0, first)
@@ -7391,7 +7391,7 @@ MODULE LLVMCodeGenerator;
     VAR m: ModuleLists.ModuleList;
   BEGIN
     m := modules;
-    WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
+    WHILE (m # NIL) & (~Names.Equals(m.module.name, name)) DO m := m.next END;
     RETURN m # NIL
   END HasModuleNamed;
 
@@ -7491,7 +7491,7 @@ MODULE LLVMCodeGenerator;
         IF ~cg.collectingTemps & (expr.literalKind = Lexer.string) THEN EmitStringConstantGlobal(w, cg, expr) END
     | expr: SyntaxTree.StructuredLiteralNode DO
         (* one without a type name is made in its element (BuildLiteralAt) *)
-        IF cg.collectingTemps & (expr.name[0] # 0X) THEN temp := AllocateLiteralTemp(w, cg, expr) END;
+        IF cg.collectingTemps & (expr.name # NIL) THEN temp := AllocateLiteralTemp(w, cg, expr) END;
         CollectLiteralElements(w, cg, expr.elements)
     | expr: SyntaxTree.DesignatorExprNode DO CollectStringConstantsList(w, cg, expr.args)
     | expr: SyntaxTree.UnaryExprNode DO child1 := expr.operand
@@ -7649,7 +7649,7 @@ MODULE LLVMCodeGenerator;
       (* the receiver is always the first parameter, a bare "ptr": the
          record's address for a VAR receiver (then followed by its hidden
          tag), the pointer for a pointer receiver *)
-      ParamName(receiver.name, argName);
+      ParamName(receiver.name^, argName);
       WriteStr(w, "ptr "); WriteStr(w, argName);
       IF receiver.isVar THEN WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ".tag") END;
       first := FALSE
@@ -7825,8 +7825,8 @@ MODULE LLVMCodeGenerator;
                          receiver: SyntaxTree.ReceiverNode);
     VAR obj: SymbolTable.Object; argName, tagName, addrText: ValueText;
   BEGIN
-    obj := SymbolTable.FindLocal(bodyScope, Names.Intern(receiver.name));
-    ParamName(receiver.name, argName);
+    obj := SymbolTable.FindLocal(bodyScope, receiver.name);
+    ParamName(receiver.name^, argName);
     IF receiver.isVar THEN
       DeclareDebugVariable(w, obj, argName, 1, TRUE);
       COPY(argName, tagName); Strcat(tagName, ".tag");
@@ -7861,7 +7861,7 @@ MODULE LLVMCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        obj := SymbolTable.FindLocal(bodyScope, Names.Intern(nm.name));
+        obj := SymbolTable.FindLocal(bodyScope, nm.name);
         LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
         NewTemp(cg, addrText);
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
@@ -7975,7 +7975,7 @@ MODULE LLVMCodeGenerator;
                                   pd: SyntaxTree.ProcDeclNode);
     VAR obj: SymbolTable.Object; fnSymbol: ValueText; pt: Types.ProcedureType;
   BEGIN
-    obj := SymbolTable.FindLocal(moduleScope, Names.Intern(pd.name.name));
+    obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
     ModuleQualifiedName(cg, obj.name^, fnSymbol);
     pt := obj.type(Types.ProcedureType);
     GenerateProcedureBody(w, cg, SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt), pd, pt, fnSymbol)
@@ -7993,9 +7993,9 @@ MODULE LLVMCodeGenerator;
     VAR
       typeObj: SymbolTable.Object; owner: Types.RecordType; method: Types.Method; sym: LongText;
   BEGIN
-    typeObj := SymbolTable.FindLocal(moduleScope, Names.Intern(pd.receiver.typeName));
+    typeObj := SymbolTable.FindLocal(moduleScope, pd.receiver.typeName);
     owner := TargetRecord(typeObj.type);
-    method := Types.FindOwnMethod(owner, pd.name.name);
+    method := Types.FindOwnMethod(owner, pd.name.name^);
     MethodSymbol(owner, method.name, sym);
     GenerateProcedureBody(w, cg, SemanticActions.OpenProcedureBodyScope(pd, moduleScope, typeObj.type, method.procType),
                           pd, method.procType, sym)
@@ -8395,7 +8395,7 @@ MODULE LLVMCodeGenerator;
     VAR m: ModuleLists.ModuleList;
   BEGIN
     m := program;
-    WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
+    WHILE (m # NIL) & (~Names.Equals(m.module.name, name)) DO m := m.next END;
     RETURN m
   END FindProgramModule;
 
@@ -8493,20 +8493,20 @@ MODULE LLVMCodeGenerator;
     obj := x.scope.objects;
     WHILE obj # NIL DO
       IF obj.class = SymbolTable.varClass THEN
-        QualifiedName(x.module.name, obj.name^, symbol); EmitDataDeclaration(w, cg, symbol);
-        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
+        QualifiedName(x.module.name^, obj.name^, symbol); EmitDataDeclaration(w, cg, symbol);
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name^)
       ELSIF obj.class = SymbolTable.procClass THEN
         pt := obj.type(Types.ProcedureType);
         p := pt.params;
-        WHILE p # NIL DO DeclareTypeSymbols(w, cg, p.type, x.module.name); p := p.next END;
+        WHILE p # NIL DO DeclareTypeSymbols(w, cg, p.type, x.module.name^); p := p.next END;
         IF obj.externalConvention = NIL THEN
-          QualifiedName(x.module.name, obj.name^, symbol);
+          QualifiedName(x.module.name^, obj.name^, symbol);
           EmitProcDeclaration(w, cg, pt, symbol, FALSE, FALSE)
         ELSIF ~Names.Equals(obj.externalConvention, "VMS") THEN
           EmitExternalDeclare(w, cg, obj)
         END
       ELSIF obj.class = SymbolTable.typeClass THEN
-        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name^)
       END;
       obj := obj.next
     END
@@ -8571,10 +8571,10 @@ MODULE LLVMCodeGenerator;
       c := c.next
     END;
     (* none in the module that defines it *)
-    IF (target.module.name # "ModuleTable") & (CountRootSlots(cg, target.module) > 0) THEN
+    IF (~Names.Equals(target.module.name, "ModuleTable")) & (CountRootSlots(cg, target.module) > 0) THEN
       EmitRuntimeDeclaration(w, cg, "@ModuleTable.Register", 1, TRUE)
     END;
-    IF withArguments & (target.module.name # "ModuleTable") THEN
+    IF withArguments & (~Names.Equals(target.module.name, "ModuleTable")) THEN
       EmitRuntimeDeclaration(w, cg, "@ModuleTable.RegisterModule", 1, FALSE)
     END;
     IF isMain & withArguments THEN EmitRuntimeDeclaration(w, cg, "@Modules.Init", 2, FALSE) END;
@@ -8627,15 +8627,15 @@ MODULE LLVMCodeGenerator;
                            triple: ARRAY OF CHAR);
     VAR symbol: LongText; imports: ARRAY 16384 OF CHAR; import: SyntaxTree.ImportNode; count: INTEGER; text: ValueText;
   BEGIN
-    IF KeySymbol(module.name, symbol) THEN
+    IF KeySymbol(module.name^, symbol) THEN
       WriteStr(w, symbol); WriteStr(w, " = constant i8 0"); WriteLn(w)
     END;
-    WriteStr(w, "@"); WriteStr(w, module.name); WriteStr(w, ".-target."); WriteStr(w, triple);
+    WriteStr(w, "@"); WriteStr(w, module.name^); WriteStr(w, ".-target."); WriteStr(w, triple);
     WriteStr(w, " = constant i8 0"); WriteLn(w);
     imports[0] := 0X; count := 0;
     import := module.imports;
     WHILE import # NIL DO
-      IF KeySymbol(import.moduleName, symbol) & ~HasDeclaredExternal(cg, symbol) THEN
+      IF KeySymbol(import.moduleName^, symbol) & ~HasDeclaredExternal(cg, symbol) THEN
         EmitDataDeclaration(w, cg, symbol);
         IF count > 0 THEN Strcat(imports, ", ") END;
         Strcat(imports, "ptr "); Strcat(imports, symbol);
@@ -8645,9 +8645,9 @@ MODULE LLVMCodeGenerator;
     END;
     IF count > 0 THEN
       text[0] := 0X; AppendLongInt(text, count);
-      WriteStr(w, "@"); WriteStr(w, module.name); WriteStr(w, ".-imports = internal constant [");
+      WriteStr(w, "@"); WriteStr(w, module.name^); WriteStr(w, ".-imports = internal constant [");
       WriteStr(w, text); WriteStr(w, " x ptr] ["); WriteStr(w, imports); WriteStr(w, "]"); WriteLn(w);
-      WriteStr(w, "@llvm.used = appending global [1 x ptr] [ptr @"); WriteStr(w, module.name);
+      WriteStr(w, "@llvm.used = appending global [1 x ptr] [ptr @"); WriteStr(w, module.name^);
       WriteStr(w, '.-imports], section "llvm.metadata"'); WriteLn(w)
     END
   END EmitModuleKeys;
@@ -8672,7 +8672,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE ModuleDescriptorName(module: SyntaxTree.ModuleNode; VAR text: ARRAY OF CHAR);
   BEGIN
-    COPY("@.module.", text); Strcat(text, module.name)
+    COPY("@.module.", text); Strcat(text, module.name^)
   END ModuleDescriptorName;
 
   (* "<wordInt> ptrtoint (ptr <global> to <wordInt>)" *)
@@ -8689,12 +8689,12 @@ MODULE LLVMCodeGenerator;
   BEGIN
     WordIntType(wordInt);
     ModuleDescriptorName(module, name);
-    COPY(name, text); Strcat(text, ".name"); EmitStringGlobalText(w, text, module.name, FALSE);
+    COPY(name, text); Strcat(text, ".name"); EmitStringGlobalText(w, text, module.name^, FALSE);
     imports := 0; import := module.imports;
     WHILE import # NIL DO
-      IF FindProgramModule(program, import.moduleName) # NIL THEN
-        COPY(name, text); Strcat(text, ".import."); Strcat(text, import.moduleName);
-        EmitStringGlobalText(w, text, import.moduleName, FALSE);
+      IF FindProgramModule(program, import.moduleName^) # NIL THEN
+        COPY(name, text); Strcat(text, ".import."); Strcat(text, import.moduleName^);
+        EmitStringGlobalText(w, text, import.moduleName^, FALSE);
         INC(imports)
       END;
       import := import.next
@@ -8704,8 +8704,8 @@ MODULE LLVMCodeGenerator;
       pd := module.declarations.procDecls;
       WHILE pd # NIL DO
         IF IsCommand(pd) THEN
-          COPY(name, text); Strcat(text, ".command."); Strcat(text, pd.name.name);
-          EmitStringGlobalText(w, text, pd.name.name, FALSE);
+          COPY(name, text); Strcat(text, ".command."); Strcat(text, pd.name.name^);
+          EmitStringGlobalText(w, text, pd.name.name^, FALSE);
           INC(commands)
         END;
         pd := pd.next
@@ -8729,9 +8729,9 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "["); first := TRUE;
       import := module.imports;
       WHILE import # NIL DO
-        IF FindProgramModule(program, import.moduleName) # NIL THEN
+        IF FindProgramModule(program, import.moduleName^) # NIL THEN
           IF ~first THEN WriteStr(w, ", ") END; first := FALSE;
-          COPY(name, text); Strcat(text, ".import."); Strcat(text, import.moduleName);
+          COPY(name, text); Strcat(text, ".import."); Strcat(text, import.moduleName^);
           WriteAddressWord(w, wordInt, text)
         END;
         import := import.next
@@ -8741,9 +8741,9 @@ MODULE LLVMCodeGenerator;
         WHILE pd # NIL DO
           IF IsCommand(pd) THEN
             IF ~first THEN WriteStr(w, ", ") END; first := FALSE;
-            COPY(name, text); Strcat(text, ".command."); Strcat(text, pd.name.name);
+            COPY(name, text); Strcat(text, ".command."); Strcat(text, pd.name.name^);
             WriteAddressWord(w, wordInt, text); WriteStr(w, ", ");
-            QualifiedName(module.name, pd.name.name, symbol);
+            QualifiedName(module.name^, pd.name.name^, symbol);
             WriteAddressWord(w, wordInt, symbol)
           END;
           pd := pd.next
@@ -8804,7 +8804,7 @@ MODULE LLVMCodeGenerator;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.initRecords := NIL; cg.anonymousInitCount := 0; cg.declaredRecords := NIL;
     cg.literalTemps := NIL; cg.structuredConsts := NIL; cg.structuredConstCount := 0; cg.collectingTemps := FALSE;
-    cg.heapPresent := target.module.name = "GarbageCollectedHeap";
+    cg.heapPresent := Names.Equals(target.module.name, "GarbageCollectedHeap");
     IF LLVMTypes.DataLayout(triple, layout) THEN
       WriteStr(w, 'target datalayout = "'); WriteStr(w, layout); WriteStr(w, '"'); WriteLn(w)
     END;
@@ -8843,14 +8843,14 @@ MODULE LLVMCodeGenerator;
     END;
     WriteLn(w);
     m := target;
-    cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-    IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
+    COPY(m.module.name^, cg.moduleName); cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+    IF debugInfo THEN EnterDebugUnit(m.module.name^, m.fileName) END;
     EmitImportDeclarations(body, cg, program, target, withHeap, withArguments, isMain);
     (* the _init procedures this module's calls: its imports', and in the
        main module the runtime modules' *)
     import := m.module.imports;
     WHILE import # NIL DO
-      IF FindProgramModule(program, import.moduleName) # NIL THEN EmitInitDeclaration(body, cg, import.moduleName) END;
+      IF FindProgramModule(program, import.moduleName^) # NIL THEN EmitInitDeclaration(body, cg, import.moduleName^) END;
       import := import.next
     END;
     IF isMain THEN
@@ -8858,7 +8858,7 @@ MODULE LLVMCodeGenerator;
       IF withHeap THEN EmitInitDeclaration(body, cg, "GarbageCollectedHeap") END
     END;
     WriteLn(body);
-    COPY("@", flag); Strcat(flag, m.module.name); Strcat(flag, ".-initialized");
+    COPY("@", flag); Strcat(flag, m.module.name^); Strcat(flag, ".-initialized");
     WriteStr(body, flag); WriteStr(body, " = internal global i1 false"); WriteLn(body);
     EmitModuleKeys(body, cg, m.module, triple);
     EmitGlobals(body, cg, m.module);
@@ -8887,10 +8887,10 @@ MODULE LLVMCodeGenerator;
       END
     END;
     IF debugInfo THEN
-      COPY(m.module.name, symbol); Strcat(symbol, "_init");
+      COPY(m.module.name^, symbol); Strcat(symbol, "_init");
       BeginDebugFunction(symbol, cg.currentFile, m.module.line, m.module.column)
     END;
-    WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()");
+    WriteStr(body, "define void @"); WriteStr(body, m.module.name^); WriteStr(body, "_init()");
     WriteDebugAttachment(body); WriteStr(body, " {"); WriteLn(body);
     EmitEntryLabel(body, cg);
     cg.literalTemps := NIL; CollectLiteralTemps(body, cg, m.module.statements);
@@ -8904,7 +8904,7 @@ MODULE LLVMCodeGenerator;
     (* in the order of the IMPORT list (voc's is alphabetical) *)
     import := m.module.imports;
     WHILE import # NIL DO
-      IF FindProgramModule(program, import.moduleName) # NIL THEN EmitInitCall(body, import.moduleName) END;
+      IF FindProgramModule(program, import.moduleName^) # NIL THEN EmitInitCall(body, import.moduleName^) END;
       import := import.next
     END;
     EmitRootTableRegistration(body, cg, m.module);
@@ -8920,13 +8920,13 @@ MODULE LLVMCodeGenerator;
     IF m.module.declarations # NIL THEN
       td := m.module.declarations.typeDecls;
       WHILE td # NIL DO
-        typeObj := SymbolTable.FindLocal(m.scope, Names.Intern(td.name.name));
+        typeObj := SymbolTable.FindLocal(m.scope, td.name.name);
         IF typeObj # NIL THEN CollectInitRecords(cg, typeObj.type) END;
         td := td.next
       END
     END;
     EmitInitProcedures(body, cg);
-    cg.moduleName := m.module.name;
+    COPY(m.module.name^, cg.moduleName);
     EmitStructuredConstants(body, cg); cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
     IF isMain THEN
       (* A program that contains rtl/llvm/Modules.Mod gets the command line:
@@ -8964,7 +8964,7 @@ MODULE LLVMCodeGenerator;
       END;
       IF withRootTables THEN EmitInitCall(body, "ModuleTable") END;
       IF withHeap THEN EmitInitCall(body, "GarbageCollectedHeap") END;
-      EmitInitCall(body, m.module.name);
+      EmitInitCall(body, m.module.name^);
       WriteStr(body, "  ret i32 0"); WriteLn(body);
       WriteStr(body, "}"); WriteLn(body)
     END;

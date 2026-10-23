@@ -88,21 +88,21 @@ MODULE PredeclaredProcedures;
        ConstantEvaluator.FindQualifiedConst do - see this procedure's own
        header comment on why that lookup is duplicated here rather than
        injected. *)
-    IF de.designator.qualifier[0] = 0X THEN
-      obj := SymbolTable.Find(scope, Names.Intern(de.designator.name))
+    IF de.designator.qualifier = NIL THEN
+      obj := SymbolTable.Find(scope, de.designator.name)
     ELSE
-      modObj := SymbolTable.Find(scope, Names.Intern(de.designator.qualifier));
+      modObj := SymbolTable.Find(scope, de.designator.qualifier);
       IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
-      obj := SymbolTable.FindLocal(modObj.moduleScope, Names.Intern(de.designator.name))
+      obj := SymbolTable.FindLocal(modObj.moduleScope, de.designator.name)
     END;
     IF (obj # NIL) & obj.isExtension THEN (* -strict: MAX(HUGEINT), SIZE(SYSTEM.INT32) *)
-      IF de.designator.qualifier[0] # 0X THEN
-        COPY(de.designator.qualifier, what); i := 0;
+      IF de.designator.qualifier # NIL THEN
+        COPY(de.designator.qualifier^, what); i := 0;
         WHILE what[i] # 0X DO INC(i) END;
         what[i] := "."; INC(i); j := 0;
         WHILE de.designator.name[j] # 0X DO what[i] := de.designator.name[j]; INC(i); INC(j) END;
         what[i] := 0X
-      ELSE COPY(de.designator.name, what)
+      ELSE COPY(de.designator.name^, what)
       END;
       Diagnostics.NotInReport(de.line, de.column, what)
     END;
@@ -853,7 +853,7 @@ MODULE PredeclaredProcedures;
     END
   END CheckSystemNew;
 
-  PROCEDURE CheckCall*(scope: SymbolTable.Scope; name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
+  PROCEDURE CheckCall*(scope: SymbolTable.Scope; name: ARRAY OF CHAR; args: SyntaxTree.ExprNode;
                        line, column: INTEGER;
                        checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc;
                        qualified: BOOLEAN; VAR isProperProcedure: BOOLEAN): Types.Type;
