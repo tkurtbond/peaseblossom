@@ -373,7 +373,8 @@ The proposals:
    POLICY") says why the twins differ: hosts have the memory, and their
    CPU is what poc's tests wait for. Measured first in a scratch build
    (cymoril's `rtl/llvm` and the guest), with 1.25 too, and the factor
-   chosen with you from the figures.
+   chosen with you from the figures. Chosen: 1.5 (2026-10-23; "Step 7,
+   item 1" in the results).
 2. **The start map as bits, considered: not proposed now.** A bit for
    each granule instead of a byte would save about 0.8 MB at the peak,
    5%, but `FindBlock`, which every conservative word and traced pointer
@@ -788,3 +789,44 @@ smaller part of its time. The rise in memory is not the sort's, which
 allocates nothing: it is when the collector runs, which moves with any
 change in what poc allocates and in its own source (4d's section), and
 it is what item 1 is about. These figures are item 1's baseline.
+
+### Step 7, item 1: the growth factor (2026-10-23)
+
+Measured first in scratch builds, the factor patched into `rtl/vax`'s
+`GrowAfterCollection` for the guest and into `rtl/llvm`'s for cymoril.
+On the guest, `vax-stages -to v2`, one run each, item 5's tree; the
+fixed point holds in each:
+
+| measure                          | factor 2          | factor 1.5        | factor 1.25       |
+|----------------------------------|------------------:|------------------:|------------------:|
+| compilation, elapsed             | 12.9 min          | 13.3 min          | 13.5 min          |
+| CPU                              | 765 s             | 794 s             | 803 s             |
+| page faults                      | 77,356            | 49,764            | 43,800            |
+| peak virtual memory (pages)      | 39,202            | 30,560            | 28,337            |
+| peak working set (pages)         | 34,694            | 25,727            | 22,990            |
+| the guest's run, transfers too   | 13 min            | 14 min            | 14 min            |
+
+On cymoril (OpenBSD i386, the VAX's pointer size), Stage 2 rebuilt with
+each factor, `tools/bench/poc-memory.sh`, peak resident size:
+
+| poc writing                      | factor 2          | factor 1.5        | factor 1.25       |
+|----------------------------------|------------------:|------------------:|------------------:|
+| all of poc                       | 18.6 MB           | 14.8 MB           | 13.6 MB           |
+| `VaxCodeGenerator` alone         | 16.6 MB           | 13.8 MB           | 12.9 MB           |
+| `Poc` alone                      | 11.9 MB           | 10.9 MB           | 10.1 MB           |
+
+1.5 cuts the guest's peak virtual memory by 22%, its working set by 26%
+and its page faults by 36%, for 4% more CPU; 1.25 saves only 7% more
+virtual memory, for 1% more CPU, and leaves less room before the next
+collection. The CPU cost is smaller than the design's estimate, which
+counted collections at the peak only. Chosen with the user: 1.5, as
+`growthDivisor` in `rtl/vax/GarbageCollectedHeap.Mod`; `rtl/llvm` keeps 2.
+
+With it in the tree, `vax-stages -to v2` gives 791 s of CPU, a peak
+virtual memory of 31,791 pages, a peak working set of 26,924 and 52,507
+page faults, in 13.3 minutes (the guest's run 14); the fixed point holds.
+That is a little above the scratch run's, as when the collector runs moves
+with poc's source (item 5's section): against item 5, 19% less virtual
+memory, 22% less working set and 32% fewer faults, for 3% more CPU. The
+collector's code is 13 bytes shorter (`vax-collector` and `vax-files`
+have its reviewed MACRO-32 and image).

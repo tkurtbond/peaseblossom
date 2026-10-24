@@ -96,20 +96,30 @@ MODULE GarbageCollectedHeap;
      nothing - slow, but exact.
 
      THE POLICY. A collection runs when neither the free list nor a bump
-     pointer can supply a request. If it leaves less than half of the
+     pointer can supply a request. If it leaves less than a third of the
      block area free, the heap grows by one chunk big enough to make the
-     block area twice the live data (GrowAfterCollection); if the request
-     is still unsatisfied, by a chunk that holds it - either up to a
-     ceiling (SetHeapLimit), and Allocate answers 0 only when the ceiling
-     stops it. So the heap grows geometrically, and between two
-     collections the program allocates at least as much as survived the
-     first one: the tracing, which costs in proportion to the live data,
-     is paid for by that allocation. Until 2026-09-26 (Phase 11 D14) the
+     block area half as big again as the live data (GrowAfterCollection,
+     growthDivisor); if the request is still unsatisfied, by a chunk that
+     holds it - either up to a ceiling (SetHeapLimit), and Allocate
+     answers 0 only when the ceiling stops it. So the heap grows
+     geometrically, and between two collections the program allocates at
+     least half as much as survived the first one: the tracing, which
+     costs in proportion to the live data, is paid for by that
+     allocation. Until 2026-09-26 (Phase 11 D14) the
      heap grew by one default chunk whenever a collection left under a
      quarter free, so a program whose live data kept growing was traced
      once for every 256 KB it grew - 172 full collections for the Stage 1
      poc compiling itself, 69% of their time spent tracing. Nothing moves,
      and chunks are never given back.
+
+     rtl/llvm's twin grows the block area to twice the live data: hosts
+     have the memory, and their CPU is what poc's tests wait for. Here it
+     is 1.5 times (2026-10-23, doc/developer/vms-memory.md, "Step 7,
+     item 1"), because a VAX has little memory and the process's paging
+     file quota bounds the heap: for poc compiling itself on the guest it
+     cut the peak virtual memory by 22% and the page faults by 36%, for 4%
+     more CPU time. 1.25 saved only 7% more, with less room left before
+     the next collection.
 
      FINDING A CHUNK. Every word the marker looks at - each conservative
      stack word and each pointer a traced block holds - needs the chunk it
@@ -168,6 +178,9 @@ MODULE GarbageCollectedHeap;
     sizeUnit = 4;
     markFlag = 1;
     inUseFlag = 2;
+    (* after a collection the block area grows to the live data plus the
+       live data DIV growthDivisor (THE POLICY) *)
+    growthDivisor = 2;
     maxObjectSize = 134217728; (* 2^27; keeps size * sizeUnit inside a signed 32-bit word *)
     defaultChunkBytes = 262144;
     maxChunkBytes = 268435456; (* 2^28; keeps a whole free block's size * sizeUnit in range too *)
@@ -880,15 +893,17 @@ MODULE GarbageCollectedHeap;
     RunPending
   END Collect;
 
-  (* After a collection: if less than half of the block area is free, one
-     more chunk, enough to make the block area twice the live data - or a
-     default chunk if the ceiling refuses that. Nothing if both are
-     refused: the collection may still have freed enough. *)
+  (* After a collection: if less than a third of the block area is free,
+     one more chunk, enough to make the block area 1.5 times the live
+     data (growthDivisor) - or a default chunk if the ceiling refuses
+     that. Nothing if both are refused: the collection may still have
+     freed enough. *)
   PROCEDURE GrowAfterCollection;
     VAR target: SYSTEM.ADDRESS; grown: BOOLEAN;
   BEGIN
-    IF blockAreaBytes - liveBytesAtLastCollection < blockAreaBytes DIV 2 THEN
-      target := 2 * liveBytesAtLastCollection - blockAreaBytes;
+    target := liveBytesAtLastCollection + liveBytesAtLastCollection DIV growthDivisor
+      - blockAreaBytes;
+    IF target > 0 THEN
       grown := AddChunk(target);
       IF ~grown & (target > chunkBytes) THEN grown := AddChunk(0) END
     END
