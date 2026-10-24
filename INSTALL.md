@@ -49,12 +49,12 @@ A release is `peaseblossom-<version>.tar.gz`, from
 own LLVM IR, its *seed*, so clang alone builds poc from it: no other Oberon
 compiler is needed.
 
-    sha256sum -c peaseblossom-0.8.0.tar.gz.sha256   # Linux, FreeBSD
-    cksum -a sha256 peaseblossom-0.8.0.tar.gz       # OpenBSD, NetBSD: compare
+    sha256sum -c peaseblossom-0.9.0.tar.gz.sha256   # Linux, FreeBSD
+    cksum -a sha256 peaseblossom-0.9.0.tar.gz       # OpenBSD, NetBSD: compare
                                                     # with the .sha256 file
-    gpg --verify peaseblossom-0.8.0.tar.gz.asc      # if there is one
-    tar xzf peaseblossom-0.8.0.tar.gz
-    cd peaseblossom-0.8.0
+    gpg --verify peaseblossom-0.9.0.tar.gz.asc      # if there is one
+    tar xzf peaseblossom-0.9.0.tar.gz
+    cd peaseblossom-0.9.0
     make installable             # builds everything make install copies
     make check-install           # optional: installs a copy in a scratch
                                  # directory, builds and runs programs
@@ -229,12 +229,12 @@ tarball (section 2), then install it as root:
 
 | System | Install |
 |---|---|
-| Fedora 44, x86_64 | `dnf install ./peaseblossom-0.8.0-1.fc44.x86_64.rpm` |
-| FreeBSD 15.1, amd64 | `pkg add ./peaseblossom-0.8.0-freebsd15.1-amd64.pkg` |
-| FreeBSD 15.1, arm64 | `pkg add ./peaseblossom-0.8.0-freebsd15.1-arm64.pkg` |
-| OpenBSD 7.9, i386 or amd64 | `pkg_add -D unsigned ./peaseblossom-0.8.0.tgz`, under that name (below) |
-| NetBSD 11.0, amd64 | `pkg_add ./peaseblossom-0.8.0-netbsd11.0-amd64.tgz`, with pkgsrc's clang for 11.0 installed first (`pkgin install clang`; section 1) |
-| NetBSD 11.0, i386 | `pkg_add ./peaseblossom-0.8.0-netbsd11.0-i386.tgz`, with pkgsrc's clang for 11.0 installed first, as for amd64 |
+| Fedora 44, x86_64 | `dnf install ./peaseblossom-0.9.0-1.fc44.x86_64.rpm` |
+| FreeBSD 15.1, amd64 | `pkg add ./peaseblossom-0.9.0-freebsd15.1-amd64.pkg` |
+| FreeBSD 15.1, arm64 | `pkg add ./peaseblossom-0.9.0-freebsd15.1-arm64.pkg` |
+| OpenBSD 7.9, i386 or amd64 | `pkg_add -D unsigned ./peaseblossom-0.9.0.tgz`, under that name (below) |
+| NetBSD 11.0, amd64 | `pkg_add ./peaseblossom-0.9.0-netbsd11.0-amd64.tgz`, with pkgsrc's clang for 11.0 installed first (`pkgin install clang`; section 1) |
+| NetBSD 11.0, i386 | `pkg_add ./peaseblossom-0.9.0-netbsd11.0-i386.tgz`, with pkgsrc's clang for 11.0 installed first, as for amd64 |
 
 OpenBSD's `pkg_add` refuses a package file not named for the package
 itself, `peaseblossom-<version>.tgz` ("Package name is not consistent"),
@@ -242,9 +242,9 @@ and the release's name has the system in it so that the files can be
 told apart. So give the file the package's name as you download it,
 the `i386` one or the `amd64` one:
 
-    ftp -o peaseblossom-0.8.0.tgz \
-      https://github.com/tkurtbond/peaseblossom/releases/download/v0.8.0/peaseblossom-0.8.0-openbsd7.9-i386.tgz
-    pkg_add -D unsigned ./peaseblossom-0.8.0.tgz
+    ftp -o peaseblossom-0.9.0.tgz \
+      https://github.com/tkurtbond/peaseblossom/releases/download/v0.9.0/peaseblossom-0.9.0-openbsd7.9-i386.tgz
+    pkg_add -D unsigned ./peaseblossom-0.9.0.tgz
 
 `-D unsigned` is needed because the package is not signed with
 `signify(1)`; the release's `SHA256SUMS` is signed with GPG instead. On

@@ -25,7 +25,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.8.0
+Version:        0.9.0
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -110,6 +110,14 @@ test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-
 %{_docdir}/%{name}-vax/
 
 %changelog
+* Sat Oct 24 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.9.0-1
+- Update to 0.9.0: poc needs far less memory, most of all for VAX/VMS:
+  identifiers and literals are held once and sized to fit, the VAX back
+  end encodes each procedure and checks each module as it writes it,
+  and the VAX runtime's collector grows its heap to 1.5 times the live
+  data; poc compiling itself on VAX/VMS peaks at 15.5 MB of virtual
+  memory instead of 103.7 MB and takes about half the CPU time.
+
 * Wed Oct 21 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.8.0-1
 - Update to 0.8.0: for VAX/VMS, poc writes each module's object file
   itself (-vax-objects, -emit-vax-object), with traceback records and,
