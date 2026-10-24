@@ -431,12 +431,42 @@ MODULE VaxImage;
     END
   END AddVariable;
 
-  (* Sorting the lists for printing, by insertion: they are short, and
-     their order as made differs between the encoder and an object *)
+  (* Sorting the lists for printing, by insertion: their order as made
+     differs between the encoder and an object. A list already in order
+     is returned as it is, which is what the sort would make of it: the
+     object writer asks for a section's relocations twice, and insertion
+     of a sorted list walks to its end for each element, which for
+     VaxCodeGenerator's code was a third of poc's time (vms-memory.md,
+     "Step 7's design") *)
+
+  PROCEDURE RelocationsInOrder(list: Relocation): BOOLEAN;
+  BEGIN
+    WHILE (list # NIL) & (list.next # NIL) & (list.offset <= list.next.offset) DO
+      list := list.next
+    END;
+    RETURN (list = NIL) OR (list.next = NIL)
+  END RelocationsInOrder;
+
+  PROCEDURE SymbolsInOrder(list: Symbol): BOOLEAN;
+  BEGIN
+    WHILE (list # NIL) & (list.next # NIL) & (list.name <= list.next.name) DO
+      list := list.next
+    END;
+    RETURN (list = NIL) OR (list.next = NIL)
+  END SymbolsInOrder;
+
+  PROCEDURE ReferencesInOrder(list: Reference): BOOLEAN;
+  BEGIN
+    WHILE (list # NIL) & (list.next # NIL) & (list.name <= list.next.name) DO
+      list := list.next
+    END;
+    RETURN (list = NIL) OR (list.next = NIL)
+  END ReferencesInOrder;
 
   PROCEDURE SortRelocations(list: Relocation): Relocation;
     VAR sorted, r, p: Relocation;
   BEGIN
+    IF RelocationsInOrder(list) THEN RETURN list END;
     sorted := NIL;
     WHILE list # NIL DO
       r := list; list := list.next;
@@ -454,6 +484,7 @@ MODULE VaxImage;
   PROCEDURE SortSymbols(list: Symbol): Symbol;
     VAR sorted, y, p: Symbol;
   BEGIN
+    IF SymbolsInOrder(list) THEN RETURN list END;
     sorted := NIL;
     WHILE list # NIL DO
       y := list; list := list.next;
@@ -471,6 +502,7 @@ MODULE VaxImage;
   PROCEDURE SortReferences(list: Reference): Reference;
     VAR sorted, r, p: Reference;
   BEGIN
+    IF ReferencesInOrder(list) THEN RETURN list END;
     sorted := NIL;
     WHILE list # NIL DO
       r := list; list := list.next;

@@ -104,7 +104,8 @@ step 1's figures, and recorded here.
    writer allows it (`vax-object-language.md`, the one-pass displacement
    rule).
 7. **The collector's growth factor, granule and mark bits on VMS** (item
-   4, the rest), as step 1's figures say they are worth it.
+   4, the rest), as step 1's figures say they are worth it ("Step 7's
+   design").
 
 ## Step 4's design: identifiers interned (decided, 2026-10-22)
 
@@ -330,6 +331,71 @@ counted once per importer.
    regenerate the `.sym` files of the module's whole import closure from
    source, checking them again: for poc's 44 modules, many times the CPU
    of one `-build`.
+
+## Step 7's design: the collector on VMS (decided, 2026-10-23)
+
+After step 5, measured on cymoril (32-bit, the VAX's word, header and
+granule; its collector is `rtl/llvm`'s twin of `rtl/vax`'s, of the same
+design) and atla (`perf`, all of poc for the VAX):
+
+- **The heap is most of the memory.** All of poc peaks at a 15.3 MB heap
+  (the census's `HeapBytes`), reached while `VaxCodeGenerator` is
+  written; on the guest the peak virtual memory is 18.1 MB, so the image,
+  the run-time libraries and the stack are about 3 MB of it. After that
+  module 6.0 MB is live, so the collection that grew the heap found about
+  7.7 MB (the heap is twice the live data after a collection that leaves
+  less than half free).
+- **What a block costs beyond its data.** At that census, 88,419 blocks
+  hold 4.79 MB of data in 6.00 MB: the two header words are 0.71 MB
+  (12%), rounding to the 16-byte granule 0.50 MB (8%, under 6 bytes a
+  block). Each chunk's start map, a byte for each granule, is a
+  sixteenth of the block area, about 0.9 MB of the 15.3.
+- **What the collector costs.** Of atla's samples, collecting
+  (`MarkCandidate`, `DrainMarkStack`, `SweepChunk`) is 8.4%, allocating
+  (`TakeFromFreeList`, `Allocate`, `SplitOff`) 10.9%.
+- **And what costs most, not the collector:** `VaxImage.FirstRelocation`
+  is 35% of all of poc's samples. It sorts a section's relocations, by
+  insertion, each time it is called; they are made last first, so the
+  first sort (from `VaxObjectWriter.HasText`) takes each one at the head
+  of the list, but the second (`WriteText`), of the list already sorted,
+  walks the whole list for each one: quadratic in a module's relocations.
+
+The proposals:
+
+1. **The growth factor: 1.5 instead of 2, in `rtl/vax` only.** After a
+   collection that leaves less than a third of the block area free, the
+   heap grows to one and a half times the live data. At the peak above
+   that is a heap of about 11.5 MB for 15.3, a fifth of the guest's
+   virtual memory; between collections the program allocates half the
+   live data instead of all of it, so there are about twice as many, and
+   collecting goes from about 8% to about 17% of the CPU. A named
+   constant in `GrowAfterCollection`, and the module's comment ("THE
+   POLICY") says why the twins differ: hosts have the memory, and their
+   CPU is what poc's tests wait for. Measured first in a scratch build
+   (cymoril's `rtl/llvm` and the guest), with 1.25 too, and the factor
+   chosen with you from the figures.
+2. **The start map as bits, considered: not proposed now.** A bit for
+   each granule instead of a byte would save about 0.8 MB at the peak,
+   5%, but `FindBlock`, which every conservative word and traced pointer
+   passes through, would scan bits instead of bytes, and both twins
+   would change, or part. Worth it only if item 1 is not enough.
+3. **An 8-byte granule: dropped.** It would save part of the 0.50 MB of
+   rounding, a few bytes a block, but double the start map (+0.9 MB), so
+   it gains nothing unless item 2 is made too; and every size class and
+   the chunk arithmetic would change.
+4. **Mark bits in a bitmap: dropped.** Item 4's reason was that marking
+   writes to every page holding a live object. But the sweep reads every
+   block's header and writes every free one, so it touches those pages
+   anyway, and since step 5 the working set (30,275 pages) is well inside
+   `WSEXTENT`: nothing is paged out for it to save.
+5. **The relocation sort: fixed, its own commit, before item 1.** Not
+   memory, but most of poc's CPU on hosts, and very likely on the guest
+   too, which item 1 spends some of. `SortRelocations` returns a list
+   already in order as it is (one walk to see it), so `WriteText`'s call
+   costs a walk; `SortSymbols`, the same pattern for `FirstSymbol`, gets
+   the same. The output does not change: `make check`'s objects byte for
+   byte and the fixed points, then `vax-stages -to v2` measured, to give
+   item 1 its baseline.
 
 ## Results
 
@@ -697,3 +763,28 @@ parsed and checked twice, once for its interface and once to be written.
 Against the start of the work (before step 4), poc on VMS now needs 17%
 of the virtual memory, 15% of the working set, 3.5% of the page faults
 and 55% of the CPU.
+
+### Step 7, item 5: the relocation sort (2026-10-23)
+
+`VaxImage`'s three sorts return a list already in order as it is. The
+output does not change: the poc before and the poc after write the same
+objects and MACRO-32 for all of poc and for `-compile` of `Parser` and
+`Poc`, but for `BuildInfo`'s time. On atla, all of poc for the VAX takes
+0.37 s of user time where it took 0.58 (three runs each), and peaks at
+41.0 MB resident where it peaked at 47.6. On the guest, `vax-stages -to
+v2`, against step 5; the fixed point holds:
+
+| measure                          | after step 5      | after item 5      |
+|----------------------------------|------------------:|------------------:|
+| compilation, elapsed             | 14.0 min          | 12.9 min          |
+| CPU                              | 832 s             | 765 s             |
+| page faults                      | 62,303            | 77,356            |
+| peak virtual memory (pages)      | 35,412            | 39,202            |
+| peak working set (pages)         | 30,275            | 34,694            |
+| the guest's run, transfers too   | 15 min            | 13 min            |
+
+The guest gains 8% of its CPU, not the third atla does: the sort was a
+smaller part of its time. The rise in memory is not the sort's, which
+allocates nothing: it is when the collector runs, which moves with any
+change in what poc allocates and in its own source (4d's section), and
+it is what item 1 is about. These figures are item 1's baseline.
