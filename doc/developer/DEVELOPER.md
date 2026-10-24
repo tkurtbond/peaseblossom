@@ -515,8 +515,9 @@ the names, and the variables that give them to the tools, are yours.
    package: `Version` in the spec (with `Release` back to 1),
    `DISTVERSION` in the FreeBSD ports, `V` in the OpenBSD port and
    `DISTNAME` in pkgsrc's packages (`peaseblossom-vax` is a port of its
-   own for FreeBSD and pkgsrc, a subpackage for Fedora and OpenBSD), and in `INSTALL.md`'s example and the
-   Reference Guide's "describes poc <major.minor>". It removes any
+   own for FreeBSD and pkgsrc, a subpackage for Fedora and OpenBSD), and in `INSTALL.md`'s example, the
+   Reference Guide's "describes poc <major.minor>" and the VAX/VMS
+   Guide's example of unpacking the kits. It removes any
    `PORTREVISION`, `REVISION` or `PKGREVISION`, and adds a `%changelog` entry that says only "Update to
    <x.y.z>.", for you to fill in. A library records the version that
    built it, and poc refuses one from another version, so libraries are
