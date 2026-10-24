@@ -496,7 +496,10 @@ external procedure and the runtime module `Directories` were released as
 kits; the record is in `PLAN.md`, "Peaseblossom 0.7.0"). Phase 18, the
 `-emit-` options given together and `make check-o2` were released as
 **Peaseblossom 0.8.0 on 2026-10-21** (tag `v0.8.0`, with the kits; the
-record is in `PLAN.md`, "Peaseblossom 0.8.0"). Bugs found by using
+record is in `PLAN.md`, "Peaseblossom 0.8.0"). poc in far less
+memory, most of all on VAX/VMS (`doc/developer/vms-memory-results.md`),
+was released as **Peaseblossom 0.9.0 on 2026-10-24** (tag `v0.9.0`, with
+the kits; the record is in `PLAN.md`, "Peaseblossom 0.9.0"). Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library

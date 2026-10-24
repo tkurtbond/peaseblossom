@@ -823,6 +823,51 @@ them. It was made as `doc/developer/DEVELOPER.md` section 7 says:
   against `SHA256SUMS` and the signatures, the RPMs' with the key in a
   scratch rpm database.
 
+## Peaseblossom 0.9.0
+
+What `main` had gained since 0.8.0 was released as **Peaseblossom 0.9.0**
+on 2026-10-24: poc needing far less memory, most of all on VAX/VMS
+(`doc/developer/vms-memory.md`, with the results in
+`doc/developer/vms-memory-results.md`). Identifiers are interned in the
+symbol table, the syntax tree and the types, and literals' text is sized
+to fit (`f8cd832`..`321be40`); the VAX back end encodes each procedure
+and checks each module as it writes it (`27f64bd`, `b7596fb`), and its
+object writer's sorts skip a list already in order (`a0aa73f`); and the
+VAX runtime's collector grows its heap to 1.5 times the live data
+(`bf4af40`). poc compiling itself on the guest peaks at 15.5 MB of
+virtual memory instead of 103.7 MB, with 52,507 page faults instead of
+about 1.8 million and 791 s of CPU instead of about 1,510; on Unix it
+peaks at 18.6 MB instead of 162.8 (OpenBSD i386) and 21.0 MB instead of
+170.5 (Fedora). It was made as `doc/developer/DEVELOPER.md` section 7
+says:
+
+- **The version** was set in `d29a2a5` by `make set-version`, after the
+  gate passed on atla, cymoril, artos and alerik (483 fixtures at each
+  stage, the fixed point, `check-strict`, `check-install` and
+  `check-seed` on each, and `check-opt2` and `check-o2` on atla).
+  rackhir passed `d29a2a5`, and `make check-vax-kit
+  CHECK_VAX_KIT_FLAGS=-full` passed on the guest.
+- **The tarball** came from `make distcheck` (SHA-256 `64ae4e32...`,
+  13113764 bytes). It is signed, with the signed tag `v0.9.0`, and
+  published as a GitHub release with the kits `POC-0-9-0.COM` and
+  `POC-VMS-0-9-0.COM`.
+- **Each package** was made from the published tarball (`makesum`; only
+  the `distinfo` files changed, packing lists unchanged), then built and
+  checked on its system: FreeBSD amd64 (alerik) and arm64 (rackhir),
+  OpenBSD i386 (cymoril) and amd64 (jherek), NetBSD amd64 (artos) and
+  i386 (yishana). Each replaced 0.8.0, installed as root (both 0.8.0
+  packages deleted first: `pkg add` of 0.9.0 over them left the 0.8.0
+  kits behind, unowned, on alerik, removed by hand), `peaseblossom`
+  before the FreeBSD and pkgsrc `peaseblossom-vax` ports were built, and
+  was checked with `check.sh` and `check-vax.sh` against the installed
+  poc from a fresh unpack of the tarball. `mock` built and checked the
+  RPMs, and on atla 0.9.0 replaces 0.8.0, with `peaseblossom-vax`.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (20 files) and attached to the release; every
+  file was downloaded again, compared with the local copy and checked
+  against `SHA256SUMS` and the signatures, the RPMs' with the key in a
+  scratch rpm database.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
