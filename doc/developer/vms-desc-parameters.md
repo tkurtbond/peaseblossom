@@ -1,7 +1,7 @@
 # `DESC`: an array passed by a `CLASS_A` descriptor
 
 A proposal (2026-10-26), **not approved and not built**. It came out of
-the POISE SPL binding (`~/Repos/Oberon/Peaseblossom-POISE`, Phase 0),
+the POISE SPL binding (`~/Repos/Oberon/oPOISE-DMS`, Phase 0),
 whose BASIC routines take arrays by a `CLASS_A` descriptor that the
 caller now has to build by hand. It extends the table in
 `language-extensions.md`, "How a `["VMS"]` procedure takes its
