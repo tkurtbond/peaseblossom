@@ -951,6 +951,17 @@ Those done while Phase 18 was current, 5-7, are in
     and the plan to reduce it in seven steps, measuring first, are in
     `doc/developer/vms-memory.md`.
 
+9.  Linking what poc did not compile (the user, 2026-10-27;
+    `000-todo.org`): a program or library can be linked with objects and
+    libraries of other languages on every target.
+    - `-link <line>` for vax-dec-vms [done]: each argument a line of the
+      Linker's options file, in programs' and libraries' links, and
+      recorded in a library's manifest as on LLVM
+      (`doc/developer/vax-macro32-backend.md`, section 13). Fixture
+      `vax-link`, run on the guest.
+    - Object files named on the command line, `.o` on Unix and `.obj` on
+      VMS, linked into the program or put in the library: next.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on

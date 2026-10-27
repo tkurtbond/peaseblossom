@@ -1,0 +1,8 @@
+; poc -link's guest test (guest-link.com): FORSHR_THRICE, made universal
+; in the shareable image FORSHR.EXE
+        .TITLE  FORSHR
+        .PSECT  $CODE,PIC,SHR,NOWRT,EXE
+        .ENTRY  FORSHR_THRICE,^M<>
+        MULL3   #3,4(AP),R0
+        RET
+        .END

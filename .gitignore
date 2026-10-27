@@ -254,6 +254,9 @@ test/conformance/vax-library/main/
 test/conformance/vax-library/inst/
 # the same built from poc's objects (Phase 18 step 6b)
 test/conformance/vax-library/objects/
+# vax-link's libraries and programs (poc -link for vax-dec-vms)
+test/conformance/vax-link/libs/
+test/conformance/vax-link/main/
 # vax-vmsdef's libraries, programs and listings (Phase 17 step 5)
 test/conformance/vax-vmsdef/work/
 # the AST and condition fixtures' libraries and programs, and

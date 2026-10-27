@@ -1,0 +1,34 @@
+== poc -target vax-dec-vms -link FOREIGN.OLB/LIBRARY -link FORSHR/SHAREABLE -link PSECT_ATTR=NO_SUCH_PSECT,NOSHR -link FOREIGN.OLB/LIBRARY -build VaxLink.mod
+exit 0
+VaxLink.com matches expected-VaxLink.com
+== poc -target vax-dec-vms -output-dir libs -library POCRTL ../../../rtl/vax/Args.Mod ../../../rtl/vax/AsynchronousTraps.Mod ../../../rtl/vax/CardinalTypes.Mod ../../../rtl/vax/Console.Mod ../../../rtl/vax/DecimalToReal.Mod ../../../rtl/vax/Directories.Mod ../../../rtl/vax/Err.Mod ../../../rtl/vax/Files.Mod ../../../rtl/vax/FormattedInput.Mod ../../../rtl/vax/FormattedOutput.Mod ../../../rtl/vax/FormattedText.Mod ../../../rtl/vax/GarbageCollectedHeap.Mod ../../../rtl/vax/In.Mod ../../../rtl/vax/InStr.Mod ../../../rtl/vax/LineOutput.Mod ../../../rtl/vax/Math.Mod ../../../rtl/vax/MathL.Mod ../../../rtl/vax/Modules.Mod ../../../rtl/vax/Oberon.Mod ../../../rtl/vax/Out.Mod ../../../rtl/vax/OutStr.Mod ../../../rtl/vax/Platform.Mod ../../../rtl/vax/RealDigits.Mod ../../../rtl/vax/Reals.Mod ../../../rtl/vax/RecordFiles.Mod ../../../rtl/vax/Strings.Mod ../../../rtl/vax/Texts.Mod ../../../rtl/vax/VT100.Mod ../../../rtl/vax/VmsArguments.Mod ../../../rtl/vax/PocRtl.mar
+exit 0
+== poc -target vax-dec-vms -output-dir libs -library-path libs -link FOREIGN.OLB/LIBRARY -link PSECT_ATTR=NO_SUCH_PSECT,NOSHR ! twice -library VAXLINK VaxLinkLib.mod
+exit 0
+libs/vax-dec-vms/O2/VAXLINK_build.com matches expected-VAXLINK_build.com
+in the manifest: link FOREIGN.OLB/LIBRARY
+in the manifest: link PSECT_ATTR=NO_SUCH_PSECT,NOSHR ! twice
+== poc -target vax-dec-vms -library-path libs -output-dir main -o useolb -link SYS$LIBRARY:STARLET.OLB/LIBRARY -link FOREIGN.OLB/LIBRARY -build VaxLinkUse.mod
+exit 0
+useolb.com matches expected-useolb.com
+== poc -target vax-dec-vms -library-path libs -shared-libraries -output-dir main -o useshr -build VaxLinkUse.mod
+exit 0
+useshr.com matches expected-useshr.com
+== poc -target vax-dec-vms -link $ DELETE *.*;* -build VaxLink.mod
+poc: the -link argument $ DELETE *.*;* starts with $, which would end the options file in the procedure for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -link <512 characters> -build VaxLink.mod
+exit 0
+512-character lines in VaxLink.com: 1
+== poc -target vax-dec-vms -link <513 characters> -build VaxLink.mod
+poc: the -link argument is longer than the 512 characters of a line of the options file in the procedure for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -output-dir libs -library-path libs -link <513 characters> -library LONG VaxLinkLib.mod
+poc: the -link argument is longer than the 512 characters of a line of the options file in the procedure for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -link <2043 characters> -build VaxLink.mod
+poc: a -link argument is longer than 2042 characters
+exit 1
+== poc -target vax-dec-vms -library-path libs -output-dir main -o useolb -build VaxLinkUse.mod
+poc: library VAXLINK's link line $ EXIT starts with $, which would end the options file in the procedure for vax-dec-vms
+exit 1

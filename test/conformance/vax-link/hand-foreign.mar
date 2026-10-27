@@ -1,0 +1,10 @@
+; poc -link's guest test (guest-link.com): FOREIGN_TWICE, put in the
+; object library FOREIGN.OLB, which poc's program reaches only through
+; its -link lines
+        .TITLE  FOREIGN
+        .PSECT  $CODE,PIC,SHR,NOWRT,EXE
+        .ENTRY  FOREIGN_TWICE,^M<>
+        MOVL    4(AP),R0
+        ADDL2   R0,R0
+        RET
+        .END

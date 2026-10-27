@@ -41,6 +41,7 @@ options, before or after the command (the last one counts, except those that add
   -vax-objects               for vax-dec-vms: build from poc's objects (on VMS)
   -vax-macro32               for vax-dec-vms: build from MACRO-32 (elsewhere)
   -link <arg>                add <arg> to the link (-lz, -L<dir>)
+  -link <line>               for vax-dec-vms: add <line> to the link's options file
   -c-flag <arg>              add <arg> to clang's flags for a module's C part
   -target <triple>           compile for another target (vax-dec-vms: the VAX)
   -verbose                   print the commands poc runs

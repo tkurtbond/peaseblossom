@@ -21,6 +21,10 @@ MODULE VaxToolchainDriver;
        and program for the VAX links (section 18, proposal 4) *)
     runtimeLibrary* = "POCRTL";
     pathBufferLength* = 1400;
+    (* the longest line of an options file a procedure can make: CREATE
+       reads a data line of at most 512 characters (found on the
+       development system, 2026-10-27), and LINK takes one that long *)
+    optionLineLength* = 512;
 
   TYPE
     (* a module of a build procedure, in the order MACRO takes them *)
@@ -28,6 +32,14 @@ MODULE VaxToolchainDriver;
     UnitDesc* = RECORD
       name*: ARRAY 64 OF CHAR;
       next*: Unit
+    END;
+
+    (* a line of an options file, from poc -link (PLAN.md, "Ongoing
+       implementation enhancements"), in the order given *)
+    OptionLine* = POINTER TO OptionLineDesc;
+    OptionLineDesc* = RECORD
+      text*: ARRAY optionLineLength + 1 OF CHAR;
+      next*: OptionLine
     END;
 
     (* a module encoded in this run, and the global symbols it defines, in
@@ -361,12 +373,13 @@ MODULE VaxToolchainDriver;
      them, the runtime is its, and POCRTL.OBJ is not linked. With tables,
      command tables (Phase 17 step 5, section 23), each <TABLE>.CLD is
      compiled by SET COMMAND/OBJECT into <TABLE>.OBJ, listed after the
-     modules. With debugging (poc -g) it links /DEBUG, and assembles
-     /DEBUG too (section 17, proposal 5). FALSE if the file could not be
-     written. *)
+     modules. With options, lines for the options file (poc -link), they
+     follow the libraries. With debugging (poc -g) it links /DEBUG, and
+     assembles /DEBUG too (section 17, proposal 5). FALSE if the file
+     could not be written. *)
   PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries, tables: Unit;
-                                 shared, objects, debugging: BOOLEAN): BOOLEAN;
-    VAR f: Files.File; w: Files.Rider; u, main: Unit; name, imageName: ARRAY 64 OF CHAR;
+                                 options: OptionLine; shared, objects, debugging: BOOLEAN): BOOLEAN;
+    VAR f: Files.File; w: Files.Rider; u, main: Unit; o: OptionLine; name, imageName: ARRAY 64 OF CHAR;
         line: ARRAY 200 OF CHAR; label: ARRAY 16 OF CHAR; count: INTEGER; rtlLibrary: BOOLEAN;
   BEGIN
     rtlLibrary := FALSE; u := libraries;
@@ -454,6 +467,8 @@ MODULE VaxToolchainDriver;
         WriteLine(w, line);
         u := u.next
       END;
+      o := options;
+      WHILE o # NIL DO WriteLine(w, o.text); o := o.next END;
       IF ~rtlLibrary THEN
         WriteLine(w, '$ RTL = "POCRTL.OBJ"');
         WriteLine(w, '$ IF F$TRNLNM("POC$RTL") .NES. "" THEN RTL = "POC$RTL:POCRTL.OBJ"')
@@ -596,8 +611,9 @@ MODULE VaxToolchainDriver;
   (* The DCL procedures of the VAX library name in the directory dir (its
      tuple directory, section 18, proposal 1), units its modules, in the
      order MACRO takes them, parts its hand-written .MAR files, needs the
-     libraries it needs, in link order, and symbols the global symbols of
-     them all. <name>_build.com, run on VMS in the directory that holds the
+     libraries it needs, in link order, options lines for its image's
+     options file (poc -link), and symbols the global symbols of them
+     all. <name>_build.com, run on VMS in the directory that holds the
      library's files, assembles them - with objects, the modules are each
      <UNIT>.OBJ poc wrote, converted first when convertObjects, and only
      the parts are assembled (PLAN.md Phase 18 step 6; doc/developer/
@@ -619,9 +635,9 @@ MODULE VaxToolchainDriver;
      RMS takes a file specification without punctuation as a logical name
      (found on the development system, 2026-10-12). FALSE if a file could
      not be written. *)
-  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs, symbols: Unit;
-                                    objects: BOOLEAN): BOOLEAN;
-    VAR f: Files.File; w: Files.Rider; u: Unit; libName, unitName: ARRAY 64 OF CHAR;
+  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs: Unit; options: OptionLine;
+                                    symbols: Unit; objects: BOOLEAN): BOOLEAN;
+    VAR f: Files.File; w: Files.Rider; u: Unit; o: OptionLine; libName, unitName: ARRAY 64 OF CHAR;
         line: ARRAY 300 OF CHAR; label: ARRAY 16 OF CHAR; file: ARRAY 64 OF CHAR;
         path: ARRAY pathBufferLength OF CHAR; count: INTEGER;
   BEGIN
@@ -695,6 +711,8 @@ MODULE VaxToolchainDriver;
     WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, ".OBJ"); WriteLine(w, line); u := u.next END;
     u := needs;
     WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, "/SHAREABLE"); WriteLine(w, line); u := u.next END;
+    o := options;
+    WHILE o # NIL DO WriteLine(w, o.text); o := o.next END;
     u := symbols;
     WHILE u # NIL DO COPY("UNIVERSAL=", line); Append(line, u.name); WriteLine(w, line); u := u.next END;
     COPY("$ LINK/SHAREABLE=", line); Append(line, libName); Append(line, ".EXE ");

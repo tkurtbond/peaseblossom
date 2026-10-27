@@ -1899,6 +1899,76 @@ MODULE Poc;
     RETURN first
   END VaxUnits;
 
+  (* Whether arg, a -link argument, or a link line of the manifest of
+     the library owner when that is not empty, can be a line of the
+     options file a procedure makes with $ CREATE: none that starts with
+     "$", which would end CREATE's data, and none longer than CREATE reads
+     (VaxToolchainDriver.optionLineLength); said why when not *)
+  PROCEDURE IsVaxOptionLine(arg, owner: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0; WHILE arg[i] # 0X DO INC(i) END;
+    IF (arg[0] = "$") OR (i > VaxToolchainDriver.optionLineLength) THEN
+      failed := TRUE; Err.String("poc: ");
+      IF owner[0] = 0X THEN Err.String("the -link argument ")
+      ELSE Err.String("library "); Err.String(owner); Err.String("'s link line ")
+      END;
+      IF arg[0] = "$" THEN
+        Err.String(arg); Err.String(" starts with $, which would end the options file in the procedure")
+      ELSE
+        Err.String("is longer than the "); Err.Int(VaxToolchainDriver.optionLineLength, 0);
+        Err.String(" characters of a line of the options file in the procedure")
+      END;
+      Err.String(" for "); Err.String(VaxToolchainDriver.triple); Err.Ln;
+      RETURN FALSE
+    END;
+    RETURN TRUE
+  END IsVaxOptionLine;
+
+  (* Whether every -link argument can be a line of an options file for the
+     VAX (IsVaxOptionLine), said why when not *)
+  PROCEDURE VaxLinkArgumentsOk(): BOOLEAN;
+    VAR a: Libraries.LinkArgument;
+  BEGIN
+    a := linkArguments;
+    WHILE (a # NIL) & IsVaxOptionLine(a.arg, "") DO a := a.next END;
+    RETURN a = NIL
+  END VaxLinkArgumentsOk;
+
+  (* The lines a VAX link's options file takes besides its objects and
+     libraries (PLAN.md, "Ongoing implementation enhancements"): the link
+     lines of the manifests of the libraries of Libraries.linkOrder, in
+     link order, then each -link argument, each line once, as
+     LLVMBackEnd.PrepareLibraries has them for clang. FALSE, said why,
+     when one cannot be a line of it (IsVaxOptionLine). *)
+  PROCEDURE VaxOptionLines(VAR options: VaxToolchainDriver.OptionLine): BOOLEAN;
+    VAR
+      lib: Libraries.Library; a: Libraries.LinkArgument; o, tail: VaxToolchainDriver.OptionLine;
+      owner: Libraries.Name; ok, done: BOOLEAN;
+  BEGIN
+    options := NIL; tail := NIL; ok := TRUE; done := FALSE; lib := Libraries.linkOrder;
+    WHILE ok & ~done DO
+      (* each library's lines, then the -link arguments *)
+      IF lib # NIL THEN a := lib.links; COPY(lib.name, owner); lib := lib.linkNext
+      ELSE a := linkArguments; owner := ""; done := TRUE
+      END;
+      WHILE ok & (a # NIL) DO
+        IF ~IsVaxOptionLine(a.arg, owner) THEN ok := FALSE
+        ELSE
+          o := options;
+          WHILE (o # NIL) & (o.text # a.arg) DO o := o.next END;
+          IF o = NIL THEN
+            NEW(o); COPY(a.arg, o.text); o.next := NIL;
+            IF tail = NIL THEN options := o ELSE tail.next := o END;
+            tail := o
+          END
+        END;
+        a := a.next
+      END
+    END;
+    RETURN ok
+  END VaxOptionLines;
+
   (* poc -target vax-dec-vms -build (PLAN.md Phase 16 step 2; doc/developer/
      vax-macro32-backend.md, section 13): every module of the program, each
      compiled from source, written as <Module>.mar in outputDir, and the
@@ -1908,16 +1978,18 @@ MODULE Poc;
      come from a VAX library (Phase 17 step 1, section 18): the procedure
      links each library the program uses, its object library or, with
      -shared-libraries, its shareable image, and POCRTL's whenever POCRTL
-     is on the library path. Silent on success, as a build is. *)
+     is on the library path; then the lines VaxOptionLines gives, the
+     libraries' recorded ones and the -link arguments. Silent on success,
+     as a build is. *)
   PROCEDURE BuildVax(name, outputDir, exePath: ARRAY OF CHAR);
     VAR
-      modules, m: ModuleLists.ModuleList; ok: BOOLEAN;
+      modules, m: ModuleLists.ModuleList; ok: BOOLEAN; options: VaxToolchainDriver.OptionLine;
       lib: Libraries.Library; libraries, librariesTail, u, units, tables, tablesTail: VaxToolchainDriver.Unit;
       topName: SyntaxTree.Ident; table: VaxPart;
       comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR; path: Libraries.Path;
   BEGIN
     IF ~SetVaxTarget("-build", VaxToolchainDriver.triple) THEN RETURN END;
-    IF (exePath[0] # 0X) & ~VaxImagePaths(exePath, comPath, image) THEN RETURN END;
+    IF (exePath[0] # 0X) & ~VaxImagePaths(exePath, comPath, image) OR ~VaxLinkArgumentsOk() THEN RETURN END;
     CheckAndDiscoverProgram(name, outputDir, modules, ok);
     AddVaxCollector(outputDir, modules, ok);
     IF ~ok THEN RETURN END;
@@ -1936,7 +2008,7 @@ MODULE Poc;
        library's (section 18, proposal 4) *)
     lib := Libraries.FindLibrary(VaxToolchainDriver.runtimeLibrary);
     IF lib # NIL THEN Libraries.Use(lib) END;
-    IF ~CheckLibraries(modules) THEN RETURN END;
+    IF ~CheckLibraries(modules) OR ~VaxOptionLines(options) THEN RETURN END;
     libraries := NIL; librariesTail := NIL; lib := Libraries.linkOrder;
     WHILE lib # NIL DO
       NEW(u); COPY(lib.name, u.name); u.next := NIL;
@@ -1973,7 +2045,7 @@ MODULE Poc;
     END;
     SetVaxWay;
     IF WriteVaxModules(modules, outputDir, FALSE, FALSE)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, units, libraries, tables,
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, units, libraries, tables, options,
                                                  sharedLibraries, vaxObjects, VaxToolchainDriver.debug) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
@@ -2129,7 +2201,7 @@ MODULE Poc;
     (* with objects there is nothing to assemble, so a procedure only to
        convert them (section 17, proposals 3 and 4) *)
     IF WriteVaxModules(modules, outputDir, TRUE, FALSE) & (~vaxObjects OR VaxToolchainDriver.convertObjects)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, FALSE,
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, NIL, FALSE,
                                                  vaxObjects, VaxToolchainDriver.debug) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
@@ -2193,7 +2265,9 @@ MODULE Poc;
      part copied there, the manifest and the .owner files,
      and the DCL procedures VaxToolchainDriver.WriteLibraryProcedures
      writes, <name>_build.com, which makes <NAME>.OLB and <NAME>.EXE on
-     VMS, and <name>_setup.com. Silent on success. *)
+     VMS, its image linked with the lines VaxOptionLines gives, and
+     <name>_setup.com; the manifest records the -link arguments, as on
+     LLVM, for every program that links the library. Silent on success. *)
   PROCEDURE BuildLibraryVax(name: ARRAY OF CHAR; firstFile: INTEGER; outputDir: ARRAY OF CHAR);
     VAR
       dir: Libraries.Path;
@@ -2201,9 +2275,9 @@ MODULE Poc;
       modules, modulesTail, m: ModuleLists.ModuleList; visited: VisitedModule; ok: BOOLEAN;
       imp: SyntaxTree.ImportNode; key: Libraries.Key;
       units, parts, partsTail, needs, needsTail, symbols, u: VaxToolchainDriver.Unit;
-      path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
+      options: VaxToolchainDriver.OptionLine; path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
   BEGIN
-    IF ~SetVaxTarget("-library", VaxToolchainDriver.triple) THEN RETURN END;
+    IF ~SetVaxTarget("-library", VaxToolchainDriver.triple) OR ~VaxLinkArgumentsOk() THEN RETURN END;
     SetVaxWay;
     IF ~VaxToolchainDriver.IsLibraryName(name) THEN
       failed := TRUE; Err.String("poc: "); Err.String(name);
@@ -2278,7 +2352,9 @@ MODULE Poc;
       END;
       Libraries.Use(lib)
     END;
-    IF ~CheckLibraries(modules) OR ~WriteVaxModules(modules, dir, TRUE, FALSE) THEN RETURN END;
+    IF ~CheckLibraries(modules) OR ~VaxOptionLines(options) OR ~WriteVaxModules(modules, dir, TRUE, FALSE) THEN
+      RETURN
+    END;
     (* every global symbol of its modules and parts, for UNIVERSAL= *)
     units := VaxUnits(modules, TRUE); symbols := NIL;
     u := units;
@@ -2304,13 +2380,13 @@ MODULE Poc;
       needsTail := u;
       owner := owner.linkNext
     END;
-    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, symbols, vaxObjects) THEN
+    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, options, symbols, vaxObjects) THEN
       failed := TRUE; Err.String("poc: cannot write library "); Err.String(name); Err.String("'s procedures in ");
       Err.String(dir); Err.Ln;
       RETURN
     END;
     (* the manifest, as on LLVM *)
-    lib := Libraries.NewLibrary(name, dir); lib.objects := vaxObjects;
+    lib := Libraries.NewLibrary(name, dir); lib.objects := vaxObjects; lib.links := linkArguments;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
@@ -3133,6 +3209,7 @@ MODULE Poc;
     HelpLine("  -vax-objects               for vax-dec-vms: build from poc's objects (on VMS)");
     HelpLine("  -vax-macro32               for vax-dec-vms: build from MACRO-32 (elsewhere)");
     LLVMHelpLine("  -link <arg>                add <arg> to the link (-lz, -L<dir>)");
+    HelpLine("  -link <line>               for vax-dec-vms: add <line> to the link's options file");
     LLVMHelpLine("  -c-flag <arg>              add <arg> to clang's flags for a module's C part");
     HelpLine("  -target <triple>           compile for another target (vax-dec-vms: the VAX)");
     LLVMHelpLine("  -verbose                   print the commands poc runs");
@@ -3225,7 +3302,7 @@ MODULE Poc;
   BEGIN
     RETURN (option = "-emit-llvm-ir") OR (option = "-dump-llvm-types")
       OR (option = "-opt") OR (option = "-lto") OR (option = "-rebuild") OR (option = "-static")
-      OR (option = "-link") OR (option = "-c-flag") OR (option = "-verbose")
+      OR (option = "-c-flag") OR (option = "-verbose")
   END IsLLVMOption;
 
   (* whether option is one of the commands that write a VAX module's files,
@@ -3332,7 +3409,7 @@ MODULE Poc;
     VAR
       i, start, k, command, parameters: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
       targetTriple: ARRAY tripleLength OF CHAR;
-      exePath: ARRAY 256 OF CHAR;
+      exePath: ARRAY 256 OF CHAR; link: ARRAY Libraries.linkLength OF CHAR;
       done, onVms, ok, optionsOnly, isCommand, finished: BOOLEAN;
       isOption: ArgumentMarks;
   BEGIN
@@ -3543,18 +3620,26 @@ MODULE Poc;
               done := TRUE
             END
           ELSIF arg = "-link" THEN
-            (* Phase 12 step 1: voc's LDFLAGS/LDLIBS *)
-            IF i + 1 < argumentCount THEN
-              GetArgument(i + 1, param);
-              IF ~LLVMBackEnd.AddLinkArgument(param) THEN
+            (* Phase 12 step 1: voc's LDFLAGS/LDLIBS; for the VAX, a line
+               of the link's options file (PLAN.md, "Ongoing
+               implementation enhancements"), which a poc without the
+               LLVM back end takes too *)
+            IF (i + 1 < argumentCount) & (LEN(argumentList[i + 1]^) > LEN(link)) THEN
+              (* a library's manifest records it on a line of its own *)
+              failed := TRUE; Err.String("poc: a -link argument is longer than ");
+              Err.Int(LEN(link) - 1, 0); Err.String(" characters"); Err.Ln;
+              done := TRUE
+            ELSIF i + 1 < argumentCount THEN
+              GetArgument(i + 1, link);
+              IF LLVMBackEnd.Available() & ~LLVMBackEnd.AddLinkArgument(link) THEN
                 failed := TRUE; Err.String("poc: too many -link arguments"); Err.Ln;
                 done := TRUE
-              ELSIF HasLineBreak(param) THEN
+              ELSIF HasLineBreak(link) THEN
                 (* a library's manifest records it on a line of its own *)
                 failed := TRUE; Err.String("poc: a -link argument cannot hold a line break"); Err.Ln;
                 done := TRUE
               END;
-              Libraries.AddLinkArgument(linkArguments, param);
+              Libraries.AddLinkArgument(linkArguments, link);
               INC(i, 2)
             ELSE
               failed := TRUE; Err.String("poc: -link requires an argument"); Err.Ln;

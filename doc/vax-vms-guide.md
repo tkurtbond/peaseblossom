@@ -316,6 +316,27 @@ logical name `<NAME>`, which the library's setup procedure defines.
 Such a program runs only where the libraries' images are, set up, and
 built from the same interface (chapter 4 shows what happens otherwise).
 
+### Linking other objects and libraries
+
+`-link <line>`, repeatable, adds `<line>` to the options file of the
+link, after the program's objects and libraries, in the order given:
+an object library of your own, a shareable image, an object, or any
+other line the Linker takes in an options file.
+
+    $ POC -LINK MYLIB.OLB/LIBRARY -LINK "MYSHR/SHAREABLE" PROG.MOD
+
+The Linker finds each file from the directory the procedure runs in, so
+name one elsewhere by a logical name or a full specification. A
+shareable image is found at run time as VMS finds any: by a logical
+name that is its name, else in `SYS$SHARE`. A line may be up to 512 characters, the most
+`CREATE` reads, and may not start with `$`, which would end the options
+file; poc refuses either. The same line given twice is linked once.
+
+A library built with `-link` links its shareable image with the lines,
+and its manifest records them: every program that links the library, its
+object library or its image, gets them too, before its own, so name a
+file there by a logical name the program's link can also find.
+
 ### Where poc finds modules
 
 A module named in an `IMPORT` is found as on Unix (the *User's Guide*,
@@ -346,7 +367,7 @@ wildcards, `*` and `%`, itself, since DCL does not.
 
 poc on VMS has no LLVM back end. It compiles for VAX/VMS only, and refuses
 the options that only the LLVM back end has: `-lto`, `-opt`,
-`-static`, `-link`, `-c-flag`, `-rebuild`, `-verbose`, `-emit-llvm-ir` and
+`-static`, `-c-flag`, `-rebuild`, `-verbose`, `-emit-llvm-ir` and
 `-dump-llvm-types`. On Unix, `-target vax-dec-vms` refuses them too. `-g`
 gives the VMS debugger's records to the objects poc writes itself.
 
@@ -945,6 +966,8 @@ Write one when VMSDEF lacks the routine, or when a narrower declaration
 reads better in your program: here `GetSymbol` leaves out no argument, so
 it needs no `NIL`. The Oberon name is yours; the linker sees only
 `LIB$GET_SYMBOL`. Any number of declarations may name the same routine.
+A routine of your own, or of a product's library, is linked by `-link`
+(chapter 3).
 
 ### How each argument is passed
 

@@ -483,6 +483,18 @@ With
 also recorded in the library's manifest, so that every program that
 links the library is linked with
 .Ar arg .
+For vax-dec-vms,
+.Ar arg
+is a line of the link's options file, after the objects and libraries,
+such as
+.Li MYLIB.OLB/LIBRARY
+or
+.Li MYSHR/SHAREABLE :
+at most 512 characters, not starting with
+.Li $ ,
+and each line linked once; with
+.Fl library
+it is also in the options file of the library's shareable image.
 .It Fl c-flag Ar arg
 Pass
 .Ar arg

@@ -987,6 +987,32 @@ VMS libraries are Phase 17's.
   runtime has `Out`, the program shows what it computed in its exit
   status, which DCL's `$STATUS` shows. The `.mar` files poc writes there
   are not compared: the run checks them.
+- **`-link <line>`** (the user, 2026-10-27; `PLAN.md`, "Ongoing
+  implementation enhancements", item 9): each argument is a line of
+  `<IMAGE>.OPT`, after the libraries' lines and before the runtime's, as
+  `-link`'s arguments follow the libraries in clang's command. Before it,
+  a program could link nothing poc had not compiled (section 23.2). A
+  library built with `-link` (section 18) has the lines in its shareable
+  image's options file, before its `UNIVERSAL=` lines, and its manifest
+  records them as `link <line>`, as on LLVM: a program that links the
+  library, its `.OLB` or its `.EXE`, gets them before its own, each line
+  once (`Poc.VaxOptionLines`, after `LLVMBackEnd.PrepareLibraries`).
+  An image linked against the library's `.EXE` does not need them, but
+  they are harmless there, and one rule for both keeps it simple. poc
+  checks no line's syntax, which the Linker does, but refuses two that
+  would break the procedure, found on the development system
+  (2026-10-27): one starting with `$`, which ends `CREATE`'s data (only
+  a `$` in column 1 does), and one over 512 characters, the longest data
+  line `CREATE` reads (513 gives `%CREATE-E-READERR`, `RMS-W-RTB`; LINK
+  takes 512). A line in a library's manifest is checked when a program
+  uses it. The Linker manual (`AA-LA62A`, section 3.2) has the rest: one
+  option a line, `-` continuing it, `!` a comment, and no `/OPTIONS`
+  inside an options file, so no including one. A line naming a psect
+  no object has, `PSECT_ATTR=NO_SUCH_PSECT,NOSHR`, links with no
+  warning, so a library may record one for every program. Fixture
+  `vax-link` builds a program whose externals only the lines resolve,
+  an object library's routine and a shareable image's, and runs it on
+  the guest.
 
 ## 14. Widening the backend to poc's own source (Phase 16 step 3)
 
@@ -5655,7 +5681,8 @@ chapter CLI).
   plus a hash (section 5), so a `.CLD` cannot name an Oberon procedure.
 - **Link an extra object into a program.** `-build`'s options file lists
   the program's modules and libraries only (section 13), and `-link` is an
-  LLVM option.
+  LLVM option. (Since 2026-10-27 `-link` adds a line to the options file,
+  section 13.)
 
 ### 23.3 Proposals
 
@@ -5777,7 +5804,8 @@ changes, approved by the user the same day.
    error: "a command table is linked only by -build for vax-dec-vms".
    Leaving `-link` LLVM-only keeps section 21's split and needs no VMS
    options-file syntax on the host. `-help` and the User's Guide's chapter 12
-   mention it.
+   mention it. (Changed by the user, 2026-10-27: `-link` is a line of the
+   options file for vax-dec-vms too, section 13.)
 
 6. **A program run as a verb needs nothing more.** The `.CLD` defines
    the verb with `IMAGE`. The user, or the program's setup procedure, runs

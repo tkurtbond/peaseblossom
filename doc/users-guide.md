@@ -178,7 +178,8 @@ LONGINT: 8 bytes, MAX 9223372036854775807
 - `-link <arg>`: passes `<arg>` to the link, for a C library a program calls
   (section 9): `-link -lz`, `-link -L/opt/lib`. Repeatable. A library built
   with `-link` records the arguments, and every program that links the
-  library gets them.
+  library gets them. For `vax-dec-vms` each is a line of the Linker's
+  options file instead (the *VAX/VMS Guide*, chapter 3).
 - `-verbose`: prints each command poc runs.
 - `-target <triple>`: builds for another target than the host's, as far as
   clang can (it needs that target's C library to link).
