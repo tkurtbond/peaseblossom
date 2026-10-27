@@ -1,5 +1,6 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * General Improvements
+** TODO Have poc link object files listed on the poc command line (.o on Unix, .obj on VMS) into the resulting executable or put them in the object library when producing a library.
 ** TODO Should poc use go's approach of rebuilding by content rather than timestamps?
 
 What do you mean when you say go rebuilds by content rather than timestamp.
