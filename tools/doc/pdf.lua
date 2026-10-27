@@ -132,3 +132,13 @@ function Str(str)
   end
   return pieces
 end
+
+-- but not inside strikeout: pandoc sets it with soul's \st, whose
+-- reconstruction fails on an \allowbreak (~~**`FL_REDIM`.**~~)
+function Strikeout(strike)
+  return pandoc.Strikeout(pandoc.walk_inline(pandoc.Span(strike.content), {
+    RawInline = function(raw)
+      if raw.format == "latex" and raw.text == "\\allowbreak{}" then return {} end
+    end
+  }).content)
+end
