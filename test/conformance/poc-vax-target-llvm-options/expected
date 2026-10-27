@@ -1,0 +1,46 @@
+== poc -target vax-dec-vms -opt 1 -build Empty.mod
+poc: -opt is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -lto -build Empty.mod
+poc: -lto is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -rebuild -build Empty.mod
+poc: -rebuild is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -static -build Empty.mod
+poc: -static is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -c-flag -g -build Empty.mod
+poc: -c-flag is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -verbose -build Empty.mod
+poc: -verbose is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -build Empty.mod -target vax-dec-vms -lto
+poc: -lto is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -lto Empty.mod -target vax-dec-vms
+poc: -lto is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -verbose -compile Empty.mod
+poc: -verbose is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -static -library Lib Empty.mod
+poc: -static is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -opt 2 -emit-macro32 Empty.mod
+poc: -opt is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -emit-vax-object Empty.mod -lto
+poc: -lto is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -emit-vax-image -static Empty.mod
+poc: -static is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -dump-llvm-types Empty.mod
+poc: -dump-llvm-types has no vax-dec-vms target, LLVM does not generate VAX code; -dump-vax-types prints the VAX types
+exit 1
+== poc -target vax-dec-vms -emit-llvm-ir Empty.mod
+poc: -emit-llvm-ir has no vax-dec-vms target, LLVM does not generate VAX code; -emit-macro32 writes the .mar
+exit 1
+written: 

@@ -959,6 +959,9 @@ Those done while Phase 18 was current, 5-7, are in
       recorded in a library's manifest as on LLVM
       (`doc/developer/vax-macro32-backend.md`, section 13). Fixture
       `vax-link`, run on the guest.
+    - `-target vax-dec-vms` on Unix refuses the options only the LLVM
+      back end has, as poc on VMS does, rather than ignoring them (the
+      user, 2026-10-27) [done]. Fixture `poc-vax-target-llvm-options`.
     - Object files named on the command line, `.o` on Unix and `.obj` on
       VMS, linked into the program or put in the library: next.
 

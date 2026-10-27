@@ -156,13 +156,17 @@ check-stage1:
 # poc-rtl built optimized in its own ../lib/poc (Phase 12 steps 2d, 2e), as
 # make builds it for build/bin/poc: the Stage 0 poc is copied to
 # build/opt2/stage0/bin for that, so that its library path does not also
-# have build/lib/poc's.
+# have build/lib/poc's. The fixtures that compile for the VAX are left out
+# too (VAX_TARGET_TESTS): -target vax-dec-vms refuses -opt and -lto, which
+# only the LLVM back end has (2026-10-27).
+VAX_TARGET_TESTS := $(filter vax-%,$(ALL_TESTS)) doc-vax-guide poc-vax-runtime-missing \
+  poc-vax-target-llvm-options semantic-vms-arguments
 OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
 OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
 OPT2_HOST_BSD := $(filter-out Linux,$(shell uname -s))
 OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-usage poc-options-after-file \
   $(if $(OPT2_HOST_X87),llvm-out-extra llvm-math-extra) \
-  $(if $(OPT2_HOST_X87)$(OPT2_HOST_BSD),llvm-i686-runtime)
+  $(if $(OPT2_HOST_X87)$(OPT2_HOST_BSD),llvm-i686-runtime) $(VAX_TARGET_TESTS)
 OPT2_TESTS := $(filter-out $(OPT2_SKIP),$(ALL_TESTS))
 check-opt2: build
 	@rm -rf $(OPT2_DIR); mkdir -p $(OPT2_DIR)/stage0/bin $(OPT2_DIR)/wrap0 $(OPT2_DIR)/wrap1; \
@@ -196,11 +200,12 @@ check-opt2: build
 # lines a backtrace shows), and llvm-libraries-i686 (on NetBSD its 32-bit
 # builds print -lto's warning), and llvm-lto, which tests -lto itself
 # against builds without it, and llvm-object-reuse (-lto reuses no object),
-# and llvm-gc-compiled-roots (its .sym and .o pair would be bitcode).
+# and llvm-gc-compiled-roots (its .sym and .o pair would be bitcode), and
+# the fixtures that compile for the VAX (VAX_TARGET_TESTS, above).
 LTO_DIR := $(abspath $(BUILD_DIR)/lto)
 LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
   poc-usage poc-options-after-file llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
-  llvm-lto llvm-object-reuse llvm-gc-compiled-roots
+  llvm-lto llvm-object-reuse llvm-gc-compiled-roots $(VAX_TARGET_TESTS)
 LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
 check-lto: build
 	@rm -rf $(LTO_DIR); mkdir -p $(LTO_DIR)/bin $(LTO_DIR)/wrap; \

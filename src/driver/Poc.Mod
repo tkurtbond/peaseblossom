@@ -168,6 +168,11 @@ MODULE Poc;
     (* -clear-library-path given: POC_LIBRARY_PATH and poc's own lib/poc are
        left out of the library path too *)
     libraryPathCleared: BOOLEAN;
+    (* the first option given that only the LLVM back end takes (-opt,
+       -lto, ...), refused with -target vax-dec-vms as on VAX/VMS (PLAN.md,
+       "Ongoing implementation enhancements"; the user, 2026-10-27); "" if
+       none *)
+    llvmOption: ARRAY 32 OF CHAR;
     (* each -link <arg>, which -library records in its manifest (Ongoing
        implementation enhancements, item 1) *)
     linkArguments: Libraries.LinkArgument;
@@ -3352,6 +3357,10 @@ MODULE Poc;
       Check(fileName, targetTriple)
     ELSIF option = "-dump-layout" THEN
       DumpLayout(fileName)
+    ELSIF (option = "-dump-llvm-types") & VaxToolchainDriver.IsVaxTriple(targetTriple) THEN
+      failed := TRUE;
+      Err.String("poc: -dump-llvm-types has no "); Err.String(VaxToolchainDriver.triple);
+      Err.String(" target, LLVM does not generate VAX code; -dump-vax-types prints the VAX types"); Err.Ln
     ELSIF option = "-dump-llvm-types" THEN
       DumpLLVMTypes(fileName)
     ELSIF option = "-dump-nested" THEN
@@ -3445,6 +3454,12 @@ MODULE Poc;
             failed := TRUE; Err.String("poc: "); Err.String(arg);
             Err.String(" is not available on VAX/VMS, where poc has no LLVM back end"); Err.Ln;
             done := TRUE
+          ELSIF IsLLVMOption(arg) & ~IsCommand(arg, parameters) & (llvmOption[0] = 0X) THEN
+            (* remembered, and applied below *)
+            COPY(arg, llvmOption)
+          END;
+          IF done THEN
+            (* reported *)
           ELSIF optionsOnly & IsVaxEmit(arg) & (command >= 0) THEN
             (* another of them, given with the first: an option to it *)
             SetVaxEmit(arg);
@@ -3713,6 +3728,13 @@ MODULE Poc;
           (* options and no command (Phase 12 step 1): say so, not succeed
              having done nothing *)
           BadUsage("no file or command among the options", ""); finished := TRUE
+        ELSIF (llvmOption[0] # 0X)
+            & (VaxToolchainDriver.IsVaxTriple(targetTriple) OR emitMacro OR emitObject OR emitImage) THEN
+          (* on Unix as on VAX/VMS (above): it would do nothing; the -emit-
+             commands for the VAX imply its target *)
+          failed := TRUE; Err.String("poc: "); Err.String(llvmOption);
+          Err.String(" is for the LLVM back end, which has no -target "); Err.String(VaxToolchainDriver.triple);
+          Err.Ln; finished := TRUE
         ELSIF (emitMacro OR emitObject OR emitImage) & ~IsVaxEmitArgument(command, onVms) THEN
           GetArgument(command, arg);
           BadUsage("-emit-macro32, -emit-vax-object and -emit-vax-image are commands, not options to ", arg);
@@ -3725,7 +3747,7 @@ MODULE Poc;
   END Run;
 
 BEGIN
-  vaxObjects := FALSE; vaxWayGiven := FALSE; runningOnVms := FALSE;
+  vaxObjects := FALSE; vaxWayGiven := FALSE; runningOnVms := FALSE; llvmOption := "";
   emitMacro := FALSE; emitObject := FALSE; emitImage := FALSE;
   failed := FALSE; forVax := FALSE; helpToErr := FALSE; vaxRuntimeExplained := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
   Run;

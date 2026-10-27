@@ -322,7 +322,17 @@ is the VAX/VMS target, which takes
 .Fl compile ,
 .Fl library
 and
-.Fl install-library .
+.Fl install-library ,
+and refuses those only the LLVM back end has:
+.Fl emit-llvm-ir ,
+.Fl dump-llvm-types ,
+.Fl opt ,
+.Fl lto ,
+.Fl rebuild ,
+.Fl static ,
+.Fl c-flag
+and
+.Fl verbose .
 For it,
 .Fl build
 writes every module's
