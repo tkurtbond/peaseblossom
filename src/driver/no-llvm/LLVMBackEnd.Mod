@@ -63,6 +63,11 @@ MODULE LLVMBackEnd;
     RETURN FALSE
   END AddLinkArgument;
 
+  PROCEDURE AddObjectFile*(path: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN FALSE
+  END AddObjectFile;
+
   PROCEDURE Lto*(): BOOLEAN;
   BEGIN
     RETURN FALSE

@@ -271,6 +271,8 @@ targets and both size models. A program finds it through the *library
 path*: `-library-path <dir>`, repeatable, then `POC_LIBRARY_PATH`, then poc's
 own `../lib/poc`. A module a library on the path has is always taken from
 it, never compiled.
+An object file named among a library's files goes into it as well
+(section 9).
 
 <!-- example: library/greet/Greet.Mod -->
 ```
@@ -580,6 +582,19 @@ arguments that native library needs, `poc -link -lfltk -library fltk
 ...`; its manifest records them, so a program that uses the library,
 directly or through another library, is linked with them without naming
 them, and with clang++ if the library has a C++ part.
+
+**An object file.** An object compiled some other way, from C, assembly
+or anything else, is named among the files of a build or a library:
+`poc Main.Mod twice.o`, `poc -library twice Twice.Mod twice.o`. A file
+ending in `.o` with no `.sym` beside it is one. A program links it after
+its modules' objects and before the libraries and `-link`'s arguments; a
+library puts it in its archive and its shared library, so it must be
+compiled position-independent (`clang -c -fPIC`), and a C++ one needs
+`-link -lstdc++`. An archive keeps one member of a name, so a library
+refuses an object named like one of its modules' objects (`Twice.o`,
+`Twice.c.o`) or like another object. Other commands refuse an object, and
+`-build` refuses a module's own `.o`, which it finds through the import
+path.
 
 <!-- example: cpart/hash/Hash.Mod -->
 ```

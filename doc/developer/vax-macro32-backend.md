@@ -1014,6 +1014,71 @@ VMS libraries are Phase 17's.
   an object library's routine and a shareable image's, and runs it on
   the guest.
 
+### 13.1 Object files on the command line (proposed 2026-10-27)
+
+`PLAN.md`, "Ongoing implementation enhancements", item 9. Proposals 1-4
+and 7, what an object is, which commands take one and what LLVM does
+with it, are in `llvm-toolchain.md`, "Object files on the command line";
+these are the VAX's. An object is a `.obj` in any case among `-build`'s
+or `-library`'s files (proposal 1), and its name without `.obj` must be
+a VMS file name (1 to 39 letters, digits, `_`, `$` and `-`) and not a
+module's, a command table's or another object's, as for a `.cld` or a
+library's `.mar` part (`Poc.AddVaxPart`). `-link` already reaches an
+object that is on VMS by its file specification (`-link
+DISK:[DIR]FOO.OBJ`); these are for one poc copies, so the procedure is
+whole in one directory, as with the modules' own.
+
+5. *`-build`.* Each object is copied beside the modules' `.mar` or
+   `.obj`, as a `.cld` is, and listed in `<IMAGE>.OPT` after the modules
+   and the command tables, before the libraries and `-link`'s lines. On
+   VMS the copy keeps the records whole (`ObjectRecords.Copy`, as a
+   library's objects are installed). On Linux or a BSD poc copies the
+   bytes, and the file must be in the counted form poc's own objects
+   have there (a 2-byte count, the record, a pad byte after an odd one:
+   `vax-object-language.md`, section 15.3), so that the procedure's
+   `OBJCONVERT` step converts it as it does those, when it arrives as
+   fixed 512-byte records; the procedure converts a foreign object
+   whether the modules are objects or MACRO-32 (`-vax-macro32`).
+6. *`-library`.* The same copy and names. Each object is inserted in
+   `<NAME>.OLB` and listed in the shareable image's options file after
+   the modules and the `.mar` parts, its global entry points made
+   `UNIVERSAL=` as a part's `.ENTRY` routines are, and the manifest
+   gets an `object <name>` line (`part <name>`'s twin), so that
+   `-install-library` copies it. The entry points come from the object's
+   GSD records: the entry point definitions, `GSD$C_EPM` (2) and
+   `GSD$C_EPMW` (5), and the procedures with formal arguments, `GSD$C_PRO`
+   (3) and `GSD$C_PROW` (6) (`AA-LA62A`, section 7.3), the first as
+   `tools/vax-image/ObjectImage.Mod` reads them, by a
+   small reader of records: `ObjectRecords.Open` and `Get` in both
+   versions, the host's of the counted form, VMS's over a new
+   `RecordFiles.Open` and `Get` (`POC_RECORD_OPEN` and `POC_RECORD_GET`
+   in `PocRtl.mar`, `$GET` in record mode). VMS's `Files` cannot read
+   them: it reads a variable-length file a record at a time with an LF
+   after each, and an object's records hold LF bytes.
+
+Proposal 7's fixtures for the VAX: `-build`'s and `-library`'s
+procedures and the manifest compared, and the refusals, on every host;
+on the guest, a hand-written `.MAR` assembled there into the object a
+program and a library link, and the program run.
+
+**Open questions, settled.** (a) *Answered on the guest, 2026-10-27:* a VMS
+object fetched by FTP in binary mode (`TYPE I`) arrives as its records
+run together with no counts and no pad bytes (a 13-record `FTPCHK.OBJ`
+of 253 bytes, `MACRO/OBJECT` of a one-routine `.MAR`, fetched with
+curl), so its record boundaries are lost, as `vax-object-language.md`,
+section 17 found for `test-vax-guest-poc`. Proposal 5 therefore takes,
+on Linux or a BSD, only an object in the counted form (one poc wrote,
+or one another host tool wrote in it), and poc checks it before copying:
+its counts must walk exactly to the end of the file, each record's
+first byte a record type (`OBJ$C_HDR` .. `OBJ$C_EOMW`, 0..7), else poc refuses
+it ("<file> is not a VAX object in the counted form"). An object made
+on VMS is named there instead: by poc running on VMS, which copies it
+with `ObjectRecords.Copy`, or by its file specification with `-link`
+from any host. (b) *Decided (the user, 2026-10-27): a library reads
+an object's global symbols* (proposal 6), so that an object behaves as
+a `.mar` part, its entry points universal, rather than usable only from
+inside the library.
+
 ## 14. Widening the backend to poc's own source (Phase 16 step 3)
 
 **Decided (the user, 2026-10-09): the VAX takes `-OC` as well as

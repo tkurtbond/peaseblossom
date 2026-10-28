@@ -85,6 +85,11 @@ MODULE LLVMBackEnd;
     RETURN LLVMToolchainDriver.AddLinkArgument(arg)
   END AddLinkArgument;
 
+  PROCEDURE AddObjectFile*(path: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN LLVMToolchainDriver.AddObjectFile(path)
+  END AddObjectFile;
+
   (* -lto in force, which a module's .ll is chosen by, over its .o *)
   PROCEDURE Lto*(): BOOLEAN;
   BEGIN

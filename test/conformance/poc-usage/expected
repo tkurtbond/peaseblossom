@@ -7,9 +7,11 @@ on VMS poc itself expands a file name's wildcards, * and %
 commands:
   -build <file>              build a program, as poc <file> does
   -build <file> <t>.cld...   for vax-dec-vms: and link command tables
+  -build <file> <o>.o...     and link object files, each with no .sym beside it
   -check <file>              check a module, writing nothing
   -compile <file>...         compile modules to .sym, .ll and .o, not linked
   -library <name> <file>...  build the library <name> of the modules
+                             (and object files, .o with no .sym beside it)
   -install-library <name>    install the library <name> from the library path
   -emit-interface <file>     write the module's interface, <Module>.sym
   -show-interface <file>     print the module's interface

@@ -1,0 +1,37 @@
+== -build
+42
+== a bare file
+42
+== -lto
+42
+== -library
+library quad
+poc <version>
+triple <triple>
+model O2
+object twice.o
+module Quad <key>
+source Quad <key>
+Quad.o
+twice.o
+== a program using it
+20
+20
+== -check and -compile
+poc: an object file is linked only by -build or -library
+exit=1
+poc: an object file is linked only by -build or -library
+exit=1
+== a missing object
+poc: cannot open missing.o
+exit=1
+== a module's object
+poc: Quad.o is a module's object, found through the import path; it is not linked again
+exit=1
+== a member's name
+poc: the object file other/Quad.o would replace the member Quad.o of libquad2.a, which keeps one member of a name
+exit=1
+poc: the object file other/twice.o would replace the member twice.o of libquad2.a, which keeps one member of a name
+exit=1
+poc: the object file other/a b.o has a space in its name, which a library's manifest cannot record
+exit=1

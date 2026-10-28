@@ -59,6 +59,10 @@ MODULE LLVMToolchainDriver;
        module compiled, no object reused (CompileModules) *)
     rebuild*: BOOLEAN;
     linkArguments: ARRAY linkArgumentsLength OF CHAR;
+    (* the object files named on the command line (AddObjectFile), for the
+       link after the modules' objects: doc/developer/llvm-toolchain.md,
+       "Object files on the command line" *)
+    objectFiles: ARRAY linkArgumentsLength OF CHAR;
     (* Phase 13 step 2 (decided with the user 2026-10-02): each poc -c-flag
        <arg>, for clang when it compiles a module's C part (AddCFlag) *)
     cFlags: ARRAY linkArgumentsLength OF CHAR;
@@ -293,6 +297,13 @@ MODULE LLVMToolchainDriver;
   BEGIN
     RETURN AppendArgument(linkArguments, arg)
   END AddLinkArgument;
+
+  (* an object file named on poc -build's or poc -library's command line,
+     linked (or archived) after the modules' objects and their C parts' *)
+  PROCEDURE AddObjectFile*(path: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN AppendArgument(objectFiles, path)
+  END AddObjectFile;
 
   (* a link argument a library's manifest records, for the program or
      shared library that links it (Ongoing implementation enhancements,
@@ -709,7 +720,7 @@ MODULE LLVMToolchainDriver;
 
   (* appends the object of each module that is not from a library: the
      one compiled, or the one given with its .sym; and its C part's
-     (CompanionObject) *)
+     (CompanionObject); then the object files of the command line *)
   PROCEDURE AppendObjects(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR);
     VAR path: ARRAY pathBufferLength OF CHAR; m: ModuleLists.ModuleList; cxx: BOOLEAN;
   BEGIN
@@ -720,7 +731,8 @@ MODULE LLVMToolchainDriver;
       END;
       IF ~m.inLibrary & CompanionObject(outputDir, m, path, cxx) THEN AppendPath(path) END;
       m := m.next
-    END
+    END;
+    Strcat(command, objectFiles)
   END AppendObjects;
 
   (* The file name of library name's shared library for triple:

@@ -1,0 +1,4 @@
+/* A C function for poc-object-files, compiled by its test.sh to an object. */
+#include <stdint.h>
+
+int32_t twice(int32_t x) { return 2 * x; }

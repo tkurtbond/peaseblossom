@@ -201,11 +201,13 @@ check-opt2: build
 # builds print -lto's warning), and llvm-lto, which tests -lto itself
 # against builds without it, and llvm-object-reuse (-lto reuses no object),
 # and llvm-gc-compiled-roots (its .sym and .o pair would be bitcode), and
-# the fixtures that compile for the VAX (VAX_TARGET_TESTS, above).
+# poc-object-files (its manifest gains a line, lto, and it builds with -lto
+# itself), and the fixtures that compile for the VAX (VAX_TARGET_TESTS,
+# above).
 LTO_DIR := $(abspath $(BUILD_DIR)/lto)
 LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
   poc-usage poc-options-after-file llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
-  llvm-lto llvm-object-reuse llvm-gc-compiled-roots $(VAX_TARGET_TESTS)
+  llvm-lto llvm-object-reuse llvm-gc-compiled-roots poc-object-files $(VAX_TARGET_TESTS)
 LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
 check-lto: build
 	@rm -rf $(LTO_DIR); mkdir -p $(LTO_DIR)/bin $(LTO_DIR)/wrap; \

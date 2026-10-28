@@ -963,7 +963,17 @@ Those done while Phase 18 was current, 5-7, are in
       back end has, as poc on VMS does, rather than ignoring them (the
       user, 2026-10-27) [done]. Fixture `poc-vax-target-llvm-options`.
     - Object files named on the command line, `.o` on Unix and `.obj` on
-      VMS, linked into the program or put in the library: next.
+      VMS, linked into the program or put in the library: next, designed
+      (2026-10-27) in seven proposals, 1-4 and 7 in
+      `doc/developer/llvm-toolchain.md`, "Object files on the command
+      line", 5 and 6, the VAX's, in `doc/developer/vax-macro32-backend.md`,
+      section 13.1. The guest showed (2026-10-27) that a VMS object
+      fetched by FTP in binary loses its record boundaries, so on Unix
+      poc takes only a counted-form object and refuses others; and a
+      VAX library reads an object's global symbols to make them
+      universal (the user, 2026-10-27). LLVM first, then the VAX. The
+      LLVM side, 1-4 and 7, is done (2026-10-27; fixture
+      `poc-object-files`); the VAX's, 5 and 6, next.
 
 ## Open design questions
 

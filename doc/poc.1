@@ -9,6 +9,7 @@
 .Op Ar option ...
 .Op Fl build
 .Ar file
+.Op Ar object ...
 .Nm
 .Op Ar option ...
 .Fl check Ar file
@@ -112,6 +113,23 @@ and
 .Pa Module.o ,
 and link them with the libraries into an executable named after the
 module, in the current directory.
+Each
+.Ar object
+after
+.Ar file ,
+a
+.Pa .o
+file with no
+.Pa .sym
+beside it, is linked too, after the modules' objects and before the
+libraries and
+.Fl link Ns 's
+arguments; a module's own
+.Pa .o
+is refused, since the module is found through the import path.
+No other command but
+.Fl library
+takes an object.
 .It Fl check Ar file
 Check the module against the interfaces of the modules it imports, and
 write nothing but
@@ -152,6 +170,14 @@ and
 .Pa .owner ,
 and the manifest
 .Ar name Ns Pa .library .
+An object among the files, a
+.Pa .o
+file with no
+.Pa .sym
+beside it, goes into the archive and the shared library too, so it must be
+position-independent; one with the file name of a module's object, its
+C part's, or another object's is refused, since an archive keeps one
+member of a name.
 .It Fl install-library Ar name
 Copy the library
 .Ar name

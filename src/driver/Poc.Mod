@@ -139,6 +139,15 @@ MODULE Poc;
       next: VaxPart
     END;
 
+    (* an object file named on the command line, which poc did not compile,
+       for the program's link or the library (doc/developer/
+       llvm-toolchain.md, "Object files on the command line") *)
+    ObjectFile = POINTER TO ObjectFileDesc;
+    ObjectFileDesc = RECORD
+      path: Libraries.Path;
+      next: ObjectFile
+    END;
+
   VAR
     (* the arguments, argument 0 the program's own name (ReadArguments) *)
     argumentList: ArgumentList;
@@ -148,6 +157,9 @@ MODULE Poc;
     (* -build for vax-dec-vms: its command tables, .cld files (section 23,
        proposal 5); NIL for every other command *)
     commandTables: VaxPart;
+    (* -build's and -library's object files, in the order given; NIL for
+       every other command *)
+    objectFiles: ObjectFile;
     (* Phase 12 step 2c: poc -library's modules, and poc -compile's (step
        2f); NIL for every other command *)
     members: LibraryMember;
@@ -1826,24 +1838,71 @@ MODULE Poc;
     Err.Ln
   END NotForCommandTables;
 
-  (* the .cld files among the arguments from first on, in commandTables:
-     -build's command tables (section 23, proposal 5) *)
-  PROCEDURE CollectCommandTables(first: INTEGER; VAR ok: BOOLEAN);
+  (* Whether file's name ends in ".o" *)
+  PROCEDURE IsDotO(file: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0; WHILE file[i] # 0X DO INC(i) END;
+    RETURN (i > 2) & (file[i - 2] = ".") & (file[i - 1] = "o")
+  END IsDotO;
+
+  (* Whether file is an object file poc did not compile, for the LLVM back
+     end: a .o with no .sym beside it, which a module's has (PairFiles) *)
+  PROCEDURE IsObjectFile(file: ARRAY OF CHAR): BOOLEAN;
+    VAR symFile: Libraries.Path;
+  BEGIN
+    RETURN IsDotO(file) & PairFiles(file, symFile) & ~FileExists(symFile)
+  END IsObjectFile;
+
+  (* file, an object file, added at the end of objectFiles *)
+  PROCEDURE AddObjectFile(file: ARRAY OF CHAR; VAR ok: BOOLEAN);
+    VAR object, p: ObjectFile;
+  BEGIN
+    IF ~FileExists(file) THEN
+      failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE; RETURN
+    END;
+    NEW(object); COPY(file, object.path); object.next := NIL;
+    p := objectFiles;
+    WHILE (p # NIL) & (p.next # NIL) DO p := p.next END;
+    IF p = NIL THEN objectFiles := object ELSE p.next := object END
+  END AddObjectFile;
+
+  (* an object file given where only -build and -library take one *)
+  PROCEDURE NotForObjectFiles;
+  BEGIN
+    failed := TRUE; Err.String("poc: an object file is linked only by -build or -library"); Err.Ln
+  END NotForObjectFiles;
+
+  (* the files among the arguments from first on, after a command's own
+     file: in commandTables the .cld files, -build's command tables
+     (section 23, proposal 5), and for the LLVM back end (~vax) in
+     objectFiles the object files; a module's .o is refused when building,
+     since -build finds the module through the import path, and would link
+     it twice *)
+  PROCEDURE CollectBuildFiles(first: INTEGER; vax, building: BOOLEAN; VAR ok: BOOLEAN);
     VAR i: INTEGER; file: Libraries.Path; f: Files.File;
   BEGIN
-    ok := TRUE; commandTables := NIL;
+    ok := TRUE; commandTables := NIL; objectFiles := NIL;
     FOR i := first TO argumentCount - 1 DO
       GetArgument(i, file);
-      IF ok & IsCldFile(file) THEN
+      IF ~ok THEN
+        (* reported *)
+      ELSIF IsCldFile(file) THEN
         f := Files.Old(file);
         IF f = NIL THEN
           failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
         ELSE
           Files.Close(f); AddVaxPart(file, commandTables, ok)
         END
+      ELSIF ~vax & IsObjectFile(file) THEN
+        AddObjectFile(file, ok)
+      ELSIF ~vax & building & IsDotO(file) THEN
+        failed := TRUE; Err.String("poc: "); Err.String(file);
+        Err.String(" is a module's object, found through the import path; it is not linked again"); Err.Ln;
+        ok := FALSE
       END
     END
-  END CollectCommandTables;
+  END CollectBuildFiles;
 
   (* Where -build's procedure goes for -o's exePath, and the image's name:
      exePath with ".com" for a last ".exe" (in any case), or added; its
@@ -2056,6 +2115,20 @@ MODULE Poc;
     END
   END BuildVax;
 
+  (* objectFiles, for the LLVM back end's link *)
+  PROCEDURE PassObjectFiles(): BOOLEAN;
+    VAR object: ObjectFile;
+  BEGIN
+    object := objectFiles;
+    WHILE object # NIL DO
+      IF ~LLVMBackEnd.AddObjectFile(object.path) THEN
+        failed := TRUE; Err.String("poc: too many object files"); Err.Ln; RETURN FALSE
+      END;
+      object := object.next
+    END;
+    RETURN TRUE
+  END PassObjectFiles;
+
   PROCEDURE Build(name, outputDir, explicitTriple, exePath: ARRAY OF CHAR);
     VAR
       modules: ModuleLists.ModuleList;
@@ -2065,6 +2138,7 @@ MODULE Poc;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildVax(name, outputDir, exePath); RETURN END;
     IF commandTables # NIL THEN NotForCommandTables; RETURN END;
+    IF ~PassObjectFiles() THEN RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
@@ -2113,21 +2187,24 @@ MODULE Poc;
 
   (* The modules of the command line's files from firstFile on, by the
      names their files declare, in members: poc -library's (forLibrary),
-     where a file may also be a module's .sym or .o (Phase 12 step 2f) and
-     a module a library on the path has is refused, or poc -compile's *)
+     where a file may also be a module's .sym or .o (Phase 12 step 2f) or
+     an object file (IsObjectFile, in objectFiles) and a module a library
+     on the path has is refused, or poc -compile's *)
   PROCEDURE ReadMembers(firstFile: INTEGER; forLibrary: BOOLEAN; VAR ok: BOOLEAN);
     VAR
       file: Libraries.Path; i: INTEGER; member, tail: LibraryMember;
       buffer: Lexer.CharBuffer; length: LONGINT; parser: Parser.Parser; module: SyntaxTree.ModuleNode;
       owner: Libraries.Library; compiled: BOOLEAN; symFile, objectFile, irFile: Libraries.Path;
   BEGIN
-    ok := TRUE; members := NIL; tail := NIL; membersOnly := forLibrary; vaxParts := NIL;
+    ok := TRUE; members := NIL; tail := NIL; membersOnly := forLibrary; vaxParts := NIL; objectFiles := NIL;
     FOR i := firstFile TO argumentCount - 1 DO
       GetArgument(i, file); objectFile[0] := 0X; irFile[0] := 0X;
       IF ok & forLibrary & forVax & IsMarFile(file) THEN
         AddVaxPart(file, vaxParts, ok)
       ELSIF ok & IsCldFile(file) THEN
         NotForCommandTables; ok := FALSE
+      ELSIF ok & ~forVax & IsObjectFile(file) THEN
+        IF forLibrary THEN AddObjectFile(file, ok) ELSE NotForObjectFiles; ok := FALSE END
       ELSE
       (* a module compiled already, named by its .sym, its .o (Phase 12
          step 2f) or its .ll (2g): the .sym and what is beside it *)
@@ -2424,6 +2501,58 @@ MODULE Poc;
      file <Module>.sym or <Module>.o names a module compiled already, the
      two together (Phase 12 step 2f): its .sym is copied, its object put in
      the archive and the shared library as it is. *)
+  (* path's last component *)
+  PROCEDURE FileNameOf(path: ARRAY OF CHAR; VAR name: ARRAY OF CHAR);
+    VAR i, j: INTEGER;
+  BEGIN
+    i := Directories.NameStart(path); j := 0;
+    WHILE (path[i] # 0X) & (j < LEN(name) - 1) DO name[j] := path[i]; INC(i); INC(j) END;
+    name[j] := 0X
+  END FileNameOf;
+
+  (* Whether the object files can go into library name's archive, where
+     ar keys a member by its file name, a second of a name replacing the
+     first: none named as a module's object, <M>.o, its C part's, <M>.c.o
+     or <M>.cpp.o, or another object file; and none with a space, which the
+     manifest's object line cannot hold *)
+  PROCEDURE ObjectFilesFit(modules: ModuleLists.ModuleList; name: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      object, other: ObjectFile; m: ModuleLists.ModuleList; file, taken: Libraries.Path;
+      i: INTEGER; clash: BOOLEAN;
+  BEGIN
+    object := objectFiles;
+    WHILE object # NIL DO
+      FileNameOf(object.path, file);
+      i := 0; WHILE (file[i] # 0X) & (file[i] # " ") DO INC(i) END;
+      IF file[i] = " " THEN
+        failed := TRUE; Err.String("poc: the object file "); Err.String(object.path);
+        Err.String(" has a space in its name, which a library's manifest cannot record"); Err.Ln;
+        RETURN FALSE
+      END;
+      clash := FALSE; m := modules;
+      WHILE ~clash & (m # NIL) DO
+        IF ~m.inLibrary THEN
+          COPY(m.module.name^, taken); Strcat(taken, ".o"); clash := file = taken;
+          COPY(m.module.name^, taken); Strcat(taken, ".c.o"); clash := clash OR (file = taken);
+          COPY(m.module.name^, taken); Strcat(taken, ".cpp.o"); clash := clash OR (file = taken)
+        END;
+        m := m.next
+      END;
+      other := objectFiles;
+      WHILE ~clash & (other # object) DO
+        FileNameOf(other.path, taken); clash := file = taken; other := other.next
+      END;
+      IF clash THEN
+        failed := TRUE; Err.String("poc: the object file "); Err.String(object.path);
+        Err.String(" would replace the member "); Err.String(file); Err.String(" of lib");
+        Err.String(name); Err.String(".a, which keeps one member of a name"); Err.Ln;
+        RETURN FALSE
+      END;
+      object := object.next
+    END;
+    RETURN TRUE
+  END ObjectFilesFit;
+
   PROCEDURE BuildLibrary(name: ARRAY OF CHAR; firstFile: INTEGER; outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
       triple: ARRAY tripleLength OF CHAR;
@@ -2431,7 +2560,7 @@ MODULE Poc;
       member: LibraryMember;
       owner, lib: Libraries.Library; libMember: Libraries.Member;
       modules, modulesTail, m: ModuleLists.ModuleList; visited: VisitedModule; ok: BOOLEAN;
-      imp: SyntaxTree.ImportNode; key: Libraries.Key;
+      imp: SyntaxTree.ImportNode; key: Libraries.Key; object: ObjectFile; file: Libraries.Path;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildLibraryVax(name, firstFile, outputDir); RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
@@ -2478,6 +2607,7 @@ MODULE Poc;
       IF Diagnostics.errorCount > 0 THEN Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln END;
       RETURN
     END;
+    IF ~ObjectFilesFit(modules, name) OR ~PassObjectFiles() THEN RETURN END;
     (* the libraries its modules use, as shared ones for its shared library *)
     IF ~PrepareLibraries(modules, TRUE) THEN RETURN END;
     IF ~LLVMBackEnd.BuildLibrary(modules, name, triple, dir) THEN
@@ -2492,6 +2622,10 @@ MODULE Poc;
     lib.lto := LLVMBackEnd.Lto();
     lib.cxx := LLVMBackEnd.HasCxxPart(modules, dir);
     lib.links := linkArguments;
+    object := objectFiles;
+    WHILE object # NIL DO
+      FileNameOf(object.path, file); Libraries.AddObjectFile(lib, file); object := object.next
+    END;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
@@ -3180,9 +3314,11 @@ MODULE Poc;
     HelpLine("commands:");
     HelpLine("  -build <file>              build a program, as poc <file> does");
     HelpLine("  -build <file> <t>.cld...   for vax-dec-vms: and link command tables");
+    LLVMHelpLine("  -build <file> <o>.o...     and link object files, each with no .sym beside it");
     HelpLine("  -check <file>              check a module, writing nothing");
     HelpLine("  -compile <file>...         compile modules to .sym, .ll and .o, not linked");
     HelpLine("  -library <name> <file>...  build the library <name> of the modules");
+    LLVMHelpLine("                             (and object files, .o with no .sym beside it)");
     HelpLine("  -install-library <name>    install the library <name> from the library path");
     HelpLine("  -emit-interface <file>     write the module's interface, <Module>.sym");
     HelpLine("  -show-interface <file>     print the module's interface");
@@ -3694,18 +3830,20 @@ MODULE Poc;
             END
           ELSIF arg[0] # "-" THEN
             (* Phase 13 step 2: a file and no command builds a program, as
-               -build does, its command tables after it *)
-            CollectCommandTables(i + 1, ok);
+               -build does, its command tables and object files after it *)
+            CollectBuildFiles(i + 1, VaxToolchainDriver.IsVaxTriple(targetTriple), TRUE, ok);
             IF ok THEN Build(arg, outputDir, targetTriple, exePath) END;
             done := TRUE
           ELSE
             IF i + 1 < argumentCount THEN
               GetArgument(i + 1, param);
-              CollectCommandTables(i + 2, ok);
+              CollectBuildFiles(i + 2, VaxToolchainDriver.IsVaxTriple(targetTriple), arg = "-build", ok);
               IF ~ok THEN
                 (* reported *)
               ELSIF (commandTables # NIL) & (arg # "-build") THEN
                 NotForCommandTables
+              ELSIF (objectFiles # NIL) & (arg # "-build") THEN
+                NotForObjectFiles
               ELSE
                 RunCommand(arg, param, outputDir, targetTriple, exePath)
               END

@@ -110,6 +110,52 @@ shells out to these rather than linking against LLVM's own C++ API.
   passes `<arg>` to clang as one word, after the objects and before `-lm`
   (`-link -lz`, `-link -L<dir>`); `poc -verbose` prints the clang command on
   stderr. Fixture `poc-link-flags`.
+- **Object files on the command line** (designed and, for LLVM,
+  implemented 2026-10-27, `PLAN.md`,
+  "Ongoing implementation enhancements", item 9; the VAX's part is
+  `vax-macro32-backend.md`, section 13.1). An object poc did not compile,
+  from C, assembly or anything else, named among `-build`'s or
+  `-library`'s files, linked into the program or put in the library.
+  Before, `poc -build Hello.Mod foo.o` silently dropped `foo.o` (after
+  the program's file `-build` looked only for `.cld` files), `poc -library
+  L Hello.Mod foo.o` failed with "cannot open foo.sym", and `-link foo.o`
+  worked for a program but not for a library, whose manifest recorded the
+  relative path `foo.o` for every program while `libL.a` and the shared
+  library lacked it. `Poc.CollectBuildFiles` and `ReadMembers` find the
+  objects, `LLVMToolchainDriver.AddObjectFile` adds them to every link
+  and archive (`AppendObjects`).
+  1. *What is an object.* A file whose name ends in `.o`, with no `.sym`
+     beside it: a `.o` with one stays a compiled module (Phase 12 step
+     2f). For `vax-dec-vms`, a `.obj` in any case (section 13.1).
+  2. *Which commands take one.* `-build`, and a file with no command,
+     after the program's file, mixed with `.cld` files for the VAX; and
+     `-library` among its files. Any other command refuses one, "an object
+     file is linked only by -build or -library", as `.cld` files are
+     refused now. In `-build` a compiled module's `.o` is refused: the
+     module is found through the import path, and would be linked twice.
+  3. *`-build`.* The objects go into clang's link in the order given,
+     after the modules' objects (and their C parts') and before the
+     libraries and `-link`'s arguments, so that they may call into those
+     libraries.
+  4. *`-library`.* Each object goes into `lib<name>.a` and the shared
+     library, after the modules' objects. It must be position-independent
+     for the shared library: that is its maker's job, and the linker says
+     so if it is not. `ar` keys an archive's members by base name, a
+     second member of a name replacing the first, so poc refuses an object
+     whose base name is a module's `<M>.o`, a C part's `<M>.c.o` or
+     `<M>.cpp.o`, or another object's, and one whose name has a space,
+     which the manifest's line cannot hold. The manifest gets an `object
+     <name>` line, a record only: a program needs nothing new, since the
+     object is inside the archive and the shared library, which
+     `-install-library` copies as before. A C++ object
+     still needs `-link -lstdc++`, since poc cannot tell it is C++. Under
+     `-lto` the objects are linked as they are, native code beside
+     bitcode, which the linker's plugin allows.
+  7. *Documents and fixtures.* The User's Guide's `-build`, `-library` and
+     C parts sections, `poc.1` and `-help`; fixtures for a program and a
+     library with an object (a C file compiled by the fixture with
+     `clang -c -fPIC`), and for each refusal: fixture `poc-object-files`.
+     (5 and 6 are the VAX's.)
 - **Whole-program optimization** (Phase 12 step 2g, 2026-09-27): `poc
   -lto` compiles each module to LLVM bitcode (`clang -c -flto`) and links
   with `-flto` (on NetBSD also `-fuse-ld=lld`: its GNU ld cannot), so

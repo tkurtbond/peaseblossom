@@ -19,6 +19,8 @@ MODULE Libraries;
        part <name>                      (each hand-written .mar of a VAX library,
                                          <name>.mar, as PocRtl is POCRTL's)
        c++                              (a module has a part in C++)
+       object <name>                    (each object file of the command line in
+                                         it, by its file name: a record only)
        link <arg>                       (each -link <arg> it was built with)
        module <Module> <key>            (each module, with its key)
        import <Module> <Imported> <key> (each import, with the key compiled against)
@@ -142,6 +144,7 @@ MODULE Libraries;
       lto*: BOOLEAN; (* its objects are LLVM bitcode (Phase 12 step 2g) *)
       objects*: BOOLEAN; (* a VAX library of poc's own objects, not MACRO-32 (Phase 18 step 6) *)
       cxx*: BOOLEAN; (* a module of it has a part in C++, so clang++ links it *)
+      objectFiles*: Need; (* the object files named on -library's command line, by file name *)
       links*: LinkArgument; (* its -link arguments, in order *)
       used*: BOOLEAN; (* linked into the program being built *)
       refused: BOOLEAN; (* its manifest was wrong, said once (Load) *)
@@ -536,6 +539,19 @@ MODULE Libraries;
     END
   END AddPart;
 
+  (* an object file of -library's command line, by its file name, after
+     those it has (doc/developer/llvm-toolchain.md, "Object files on the
+     command line") *)
+  PROCEDURE AddObjectFile*(lib: Library; name: ARRAY OF CHAR);
+    VAR p, last: Need;
+  BEGIN
+    NEW(p); COPY(name, p.name); p.next := NIL;
+    last := lib.objectFiles;
+    IF last = NIL THEN lib.objectFiles := p
+    ELSE WHILE last.next # NIL DO last := last.next END; last.next := p
+    END
+  END AddObjectFile;
+
   (* arg added at the end of list *)
   PROCEDURE AddLinkArgument*(VAR list: LinkArgument; arg: ARRAY OF CHAR);
     VAR a, tail: LinkArgument;
@@ -554,7 +570,7 @@ MODULE Libraries;
   BEGIN
     NEW(lib); COPY(name, lib.name); COPY(dir, lib.dir);
     COPY(triple, lib.triple); COPY(model, lib.model);
-    lib.modules := NIL; lib.needs := NIL; lib.parts := NIL; lib.lto := FALSE; lib.objects := FALSE; lib.cxx := FALSE; lib.links := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
+    lib.modules := NIL; lib.needs := NIL; lib.parts := NIL; lib.lto := FALSE; lib.objects := FALSE; lib.cxx := FALSE; lib.objectFiles := NIL; lib.links := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
     RETURN lib
   END NewLibrary;
 
@@ -601,6 +617,7 @@ MODULE Libraries;
       ELSIF w0 = "lto" THEN lib.lto := TRUE
       ELSIF w0 = "objects" THEN lib.objects := TRUE
       ELSIF w0 = "c++" THEN lib.cxx := TRUE
+      ELSIF w0 = "object" THEN AddObjectFile(lib, w1)
       ELSIF w0 = "link" THEN
         (* the rest of the line, after "link " *)
         ok := (line[4] = " ") & (line[5] # 0X);
@@ -753,6 +770,8 @@ MODULE Libraries;
     n := lib.parts;
     WHILE n # NIL DO WriteLine(w, "part", n.name, "", ""); n := n.next END;
     IF lib.cxx THEN WriteLine(w, "c++", "", "", "") END;
+    n := lib.objectFiles;
+    WHILE n # NIL DO WriteLine(w, "object", n.name, "", ""); n := n.next END;
     a := lib.links;
     WHILE a # NIL DO WriteLine(w, "link", a.arg, "", ""); a := a.next END;
     m := lib.modules;
