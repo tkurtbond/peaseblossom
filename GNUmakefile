@@ -202,12 +202,19 @@ check-opt2: build
 # against builds without it, and llvm-object-reuse (-lto reuses no object),
 # and llvm-gc-compiled-roots (its .sym and .o pair would be bitcode), and
 # poc-object-files (its manifest gains a line, lto, and it builds with -lto
-# itself), and the fixtures that compile for the VAX (VAX_TARGET_TESTS,
+# itself), and llvm-c-part and llvm-cxx-part (they list the .d file of a C
+# or C++ part, which -lto, reusing no object, does not write), and
+# doc-users-guide (a guide example links a module compiled alone, whose .o
+# is bitcode, which poc refuses), and llvm-gc-finalize (the link inlines
+# DropChain into the module's body, whose frame then still holds the chain,
+# so its finalizer runs only when the program ends, after "chain:" is
+# printed), and the fixtures that compile for the VAX (VAX_TARGET_TESTS,
 # above).
 LTO_DIR := $(abspath $(BUILD_DIR)/lto)
 LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
   poc-usage poc-options-after-file llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
-  llvm-lto llvm-object-reuse llvm-gc-compiled-roots poc-object-files $(VAX_TARGET_TESTS)
+  llvm-lto llvm-object-reuse llvm-gc-compiled-roots poc-object-files \
+  llvm-c-part llvm-cxx-part doc-users-guide llvm-gc-finalize $(VAX_TARGET_TESTS)
 LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
 check-lto: build
 	@rm -rf $(LTO_DIR); mkdir -p $(LTO_DIR)/bin $(LTO_DIR)/wrap; \
