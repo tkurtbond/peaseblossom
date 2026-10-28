@@ -879,6 +879,50 @@ says:
   against `SHA256SUMS` and the signatures, the RPMs' with the key in a
   scratch rpm database.
 
+## Peaseblossom 0.10.0
+
+What `main` had gained since 0.9.0 was released as **Peaseblossom
+0.10.0** on 2026-10-28: poc taking object files and external variables,
+for linking with code written in other languages. External variables
+(`9f32fbf`; `AGENTS.md`, "External variables"); object files on the
+command line, linked by `-build` and put in a library by `-library`, for
+LLVM (`4aa4abd`) and for the VAX (`f8a2325`, `088fd3c`), with `OBJCONVERT
+-COUNTED` for an object made on VMS (`f9c309d`); each `-link` argument a
+line of the VAX link's options file, and a `.opt` among the files
+(`9cf0b56`, `088fd3c`); and `-target vax-dec-vms` refusing the LLVM-only
+options (`1fff6e8`, `fe168d0`). One fix: a `-link` argument was cut to
+255 characters (`9cf0b56`). It was made as `doc/developer/DEVELOPER.md`
+section 7 says:
+
+- **The version** was set in `d849a15` by `make set-version`, after the
+  gate passed on atla, cymoril, artos and alerik (493 fixtures at each
+  stage, the fixed point, `check-strict`, `check-install` and
+  `check-seed` on each, and `check-opt2` and `check-o2` on atla). The
+  new version first failed three VAX fixtures on the BSDs, whose
+  expected records left poc's version out of the LNM record but not that
+  record's length, one byte longer with "0.10.0"; they now leave the
+  length out too, in the same commit. rackhir passed `d849a15`, and
+  `make check-vax-kit CHECK_VAX_KIT_FLAGS=-full` passed on the guest.
+- **The tarball** came from `make distcheck` (SHA-256 `9b5834bd...`,
+  13432230 bytes). It is signed, with the signed tag `v0.10.0`, and
+  published as a GitHub release with the kits `POC-0-10-0.COM` and
+  `POC-VMS-0-10-0.COM`.
+- **Each package** was made from the published tarball (`makesum`; only
+  the `distinfo` files changed, packing lists unchanged), then built and
+  checked on its system: FreeBSD amd64 (alerik) and arm64 (rackhir),
+  OpenBSD i386 (cymoril) and amd64 (jherek), NetBSD amd64 (artos) and
+  i386 (yishana). Each replaced 0.9.0, installed as root (both 0.9.0
+  packages deleted first), `peaseblossom` before the FreeBSD and pkgsrc
+  `peaseblossom-vax` ports were built, and was checked with `check.sh`
+  and `check-vax.sh` against the installed poc from a fresh unpack of
+  the tarball. `mock` built and checked the RPMs, and on atla 0.10.0
+  replaces 0.9.0, with `peaseblossom-vax`, checked the same way.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (20 files) and attached to the release; every
+  file was downloaded again, compared with the local copy and checked
+  against `SHA256SUMS` and the signatures, the RPMs' with the key in a
+  scratch rpm database.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
