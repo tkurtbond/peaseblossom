@@ -1128,6 +1128,120 @@ formal parameters, and a call is written as any Oberon call is
   passed as a `SYSTEM.ADDRESS`), results returned through a hidden first
   argument, and JSB entries.
 
+## External variables (decided and implemented, 2026-10-28)
+
+`000-todo.org`: "Need a better way to access external variables than
+declaring them as external procedures and converting the value from a
+procedure." Before these, a program reached data another language
+defines only by declaring its symbol as an external procedure that is never
+called and taking its address with `SYSTEM.VAL(SYSTEM.ADDRESS, P)`
+("External procedures" above), then `SYSTEM.GET`/`PUT` through it, as
+the VAX/VMS Guide's `Shell` did for its CLD table, `SHELL_COMMANDS`, and
+fixture `vax-options-files` for `SEVEN_VALUE`. The proposals below,
+numbered E1-E8, were approved by the user on 2026-10-28 as written, with
+the attribute on each declaration (E1), and are implemented: the parser
+(`ParseVarDecl`), the checker (`SemanticActions.CheckExternalVarDecl`),
+the `.sym` file (`ModuleInterface.PrintVars`) and both backends.
+
+**Survey.** `Oberon2.pdf` and voc have no external variables: voc's C
+macros (`PROCEDURE -err(): INTEGER "errno"`) are expressions, not
+variables. Oakwood 3.5 ("Interfacing to External Libraries") proposes
+an external name as a string after an Oberon identifier, for a whole
+`MODULE ... EXTERNAL` or for a single `PROCEDURE ["C", "lib"]`, and says
+nothing of variables in particular. OOC's `[INTERFACE "C"]` modules
+declare C variables as ordinary `VAR`s, the whole module being foreign
+(`oocX11.Mod`'s `Xdebug*: C.int`, in voc's `src/library/oocX11`).
+BlackBox has none (its list, 2000: exporting variables to or from C "ist
+nicht vorgesehen"). Free Pascal writes `var x: cint; cvar; external
+name 'x';`, Ada `pragma Import (C, X, "x")`. Each puts the foreign name
+on the one declaration, as poc's procedures do.
+
+**E1. Syntax.** In a module's `VAR` section, the attribute external
+procedures take, before an identifier list:
+
+```
+VAR
+  ["C", "environ"] environment-: SYSTEM.ADDRESS;
+  ["VMS", "SHELL_COMMANDS"] commands: SYSTEM.BYTE;
+  ["C"] opterr, optind: SYSTEM.INT32;
+```
+
+Without a second string each identifier is its own linkage name,
+verbatim; with one, the list has exactly one identifier. The name is
+never mangled. An export mark, `*` or `-`, is allowed. Only at module
+level: in a procedure's declarations it is an error ("an external
+variable is declared only at module level"). An initializer, `:= e`, is
+an error: the storage is not the module's. The attribute on the whole
+section (`VAR ["C"] ...`) was considered and not proposed: a section
+mixes the module's own variables with foreign ones, and the form above
+also reads as that for the first declaration.
+
+**E2. Meaning.** The variable is storage another object defines. A
+read, a write, `SYSTEM.ADR` and a `VAR` actual all go to its linkage
+name's address, as to an imported module's variable. poc allocates
+nothing and never zeroes or assigns it: "every variable starts at zero"
+and record field initializers do not apply, since Oberon does not make
+it. The calling convention says which backend takes it, as for a
+procedure: the LLVM backend `"C"`, the VAX one `"VMS"`, and each refuses
+the other's with the message it gives a procedure.
+
+**E3. Types.** Any type poc can declare a variable of, except one that
+holds a traced pointer, a `POINTER TO` anywhere in it ("an external
+variable cannot hold a pointer the collector traces"): the collector's
+roots are the modules' own variables, and it would free what only the
+foreign variable holds. `SYSTEM.PTR`, `SYSTEM.ADDRESS`, untraced
+`SYSTEM.NEW` blocks are allowed, and procedure types, though a value
+foreign code stores there is called as an Oberon procedure is. That the layout
+matches the foreign one is the program's business, as for a procedure's
+parameters (C's `int` is `SYSTEM.INT32`, its `long`/`size_t`
+`SYSTEM.ADDRESS`). A record variable's dynamic type is its static type.
+A foreign array of unknown length (`extern char *names[]`) is declared
+with a length or reached through a pointer to an array.
+
+**E4. Across modules.** An exported one is written to the `.sym` file
+with its attribute (`["C", "environ"] environment-: SYSTEM.ADDRESS`,
+as an external procedure is), and an importer names its linkage name
+directly, not the exporter's.
+
+**E5. LLVM.** `@"name" = external global i8`, as for another module's
+variable (`EmitDataDeclaration`), each use naming its own type. Not
+covered: C's `errno` (a macro over a function, or thread-local) and any
+thread-local variable; a C part (`<M>.c`) gives a function for those.
+Where platforms name a variable differently (`stdin` on Linux, `__stdinp`
+on FreeBSD), the module's C part, again, is the portable way.
+
+**E6. VAX.** `.EXTERNAL name` and `G^name` (`G^name+offset` for a field
+or element), as for another module's variable (`ExternalRef`); in
+objects, the GSD symbol reference and `TIR$C_STO_PICR`. A data symbol
+in a shareable image is reached the same way, the image activator
+fixing up the reference, when the image declares it `UNIVERSAL`. VAX C's
+plain `extern` and FORTRAN's `COMMON` are overlaid program sections,
+not global symbols, and are not covered (E8).
+
+**E7. `-strict`** rejects it ("an external variable"), as the
+declaration of an external procedure.
+
+**E8. Not proposed now**, each a later proposal if wanted: an Oberon
+variable defined under a linkage name for foreign code to use (VAX C's
+`globaldef`, C's definition); a VMS variable in a named overlaid program
+section (VAX C `extern`, FORTRAN `COMMON`), which the earlier
+`PSECT_ATTR` test on the guest touched; thread-local variables. The
+procedure-address form stays, for routines.
+
+**Documents and fixtures.** AGENTS.md and this file have "External
+variables", the User's and Reference Guides a paragraph each, the VAX/VMS
+Guide's `Shell` declares `commands` and passes `SYSTEM.ADR(commands)`, and
+`vax-options-files` reads `SEVEN_VALUE` as a variable, on the guest from
+MACRO's objects and poc's. Fixtures: `llvm-external-variable` (a C part
+defines an `int`, an array and a struct; Oberon reads and writes them,
+takes their addresses, passes them as `VAR` actuals, and a second module
+uses the exported ones, from source and through the `.sym` file),
+`semantic-reject-external-variable` (a local, an initializer, two
+identifiers with one linkage name, an unknown convention, traced
+pointers, `-strict`, `"VMS"` given to LLVM), and `vax-external-variable`
+(the MACRO-32 reviewed, and on the guest data defined by a MACRO-32
+module, read and written, and a symbol from a shareable image).
+
 ## `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
 
 **`poc -strict`** rejects everything beyond `Oberon2.pdf` in the source of the
@@ -1146,6 +1260,8 @@ Each use is an error, "\<construct\> is not in the Oberon-2 report (-strict)"
 - an external procedure (`PROCEDURE ["C", ...]`), and an external
   procedure's address, `SYSTEM.VAL(SYSTEM.ADDRESS, E)` (since 2026-10-15,
   "External procedures" above; fixture `semantic-reject-system-val-external`);
+- an external variable (`VAR ["C"] x: T`; since 2026-10-28, "External
+  variables" above; fixture `semantic-reject-external-variable`);
 - voc's array assignment (an array of another type assigned whole);
 - an integer constant that needs `HUGEINT` (a literal, or where folding first
   goes past `LONGINT` - so it depends on the size model), and a set constant or

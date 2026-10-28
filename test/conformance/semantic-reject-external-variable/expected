@@ -1,0 +1,23 @@
+== external-variable.mod
+external-variable.mod:15:31: error: an external variable with a linkage name declares one identifier
+external-variable.mod:16:5: error: unknown external calling convention
+external-variable.mod:17:5: error: an external variable cannot hold a pointer the collector traces
+external-variable.mod:18:5: error: an external variable cannot hold a pointer the collector traces
+external-variable.mod:25:9: error: an external variable is declared only at module level
+5 error(s)
+exit 1
+== initializer.mod
+initializer.mod:5:35: error: an external variable cannot have an initializer
+1 error(s)
+exit 1
+== strict.mod, -strict
+strict.mod:4:7: error: an external variable is not in the Oberon-2 report (-strict)
+1 error(s)
+exit 1
+== strict.mod
+semantic OK
+exit 0
+== vmsonllvm.mod, LLVM
+vmsonllvm.mod:4:33: error: module VmsOnLlvm: the LLVM backend cannot lower this yet: an external variable with the VMS calling convention
+1 construct(s) the LLVM backend cannot lower yet; nothing written
+exit 1

@@ -1774,8 +1774,9 @@ program finds out which verb it has from `GetVerb`, by the verb's first
 four letters, which are unique in a table.
 
 The table is data, at the address of a global symbol, `SHELL_COMMANDS`.
-Oberon cannot name an external variable, so the program declares the
-symbol as an external procedure, never called, and passes its address:
+The program declares it as an external variable, `["VMS"]` with the
+symbol's name, of a type whose size does not matter, since only its
+address is used, and passes that address:
 
 <!-- example: vax/shell/Shell.Mod -->
 ```
@@ -1788,12 +1789,11 @@ MODULE Shell;
     verb: ARRAY 8 OF CHAR;
     name: ARRAY 64 OF CHAR;
     greetings: INTEGER;
-
-  (* the table's global symbol, named by ShellCommands.cld's MODULE *)
-  PROCEDURE ["VMS", "SHELL_COMMANDS"] Commands;
+    (* the table's global symbol, named by ShellCommands.cld's MODULE *)
+    ["VMS", "SHELL_COMMANDS"] commands: SYSTEM.BYTE;
 
 BEGIN
-  table := SYSTEM.VAL(SYSTEM.ADDRESS, Commands);
+  table := SYSTEM.ADR(commands);
   greetings := 0;
   REPEAT
     status := CommandLanguage.ParsePrompting("SHELL> ", table);

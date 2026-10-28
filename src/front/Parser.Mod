@@ -1015,17 +1015,32 @@ MODULE Parser;
     END
   END ParseFieldInitializers;
 
+  PROCEDURE ^ ParseExternalAttribute(VAR p: Parser; VAR convention, name: Names.Name);
+
+  (* "[conv [, name]] x, y: T" is an external variable's declaration
+     (doc/developer/language-extensions.md, "External variables"), the
+     attribute an external procedure takes (ParseExternalAttribute); what
+     it may be is SemanticActions.ResolveOneVarDecl's to check, except that
+     it has no initializer, the storage not being the module's *)
   PROCEDURE ParseVarDecl(VAR p: Parser): SyntaxTree.VarDeclNode;
     VAR
       names: SyntaxTree.IdentDefNode; type: SyntaxTree.TypeNode; line, column: INTEGER;
-      decl: SyntaxTree.VarDeclNode;
+      decl: SyntaxTree.VarDeclNode; convention, externalName: Names.Name;
   BEGIN
     line := p.current.line; column := p.current.column;
+    convention := NIL; externalName := NIL;
+    IF p.current.kind = Lexer.leftBracket THEN ParseExternalAttribute(p, convention, externalName) END;
     names := ParseIdentList(p);
     ExpectToken(p, Lexer.colon, "expected ':'");
     type := ParseType(p);
     decl := SemanticActions.NewVarDecl(names, type, line, column);
-    IF p.current.kind = Lexer.assign THEN ParseInitializers(p, decl) END;
+    decl.externalConvention := convention; decl.externalName := externalName;
+    IF p.current.kind = Lexer.assign THEN
+      IF convention # NIL THEN
+        Diagnostics.Error(p.current.line, p.current.column, "an external variable cannot have an initializer")
+      END;
+      ParseInitializers(p, decl)
+    END;
     RETURN decl
   END ParseVarDecl;
 
@@ -1200,7 +1215,7 @@ MODULE Parser;
         END
       ELSIF p.current.kind = Lexer.varKeyword THEN
         Advance(p);
-        WHILE p.current.kind = Lexer.ident DO
+        WHILE (p.current.kind = Lexer.ident) OR (p.current.kind = Lexer.leftBracket) DO
           varNode := ParseVarDecl(p);
           ExpectToken(p, Lexer.semicolon, "expected ';'");
           IF varTail = NIL THEN varHead := varNode ELSE varTail.next := varNode END;

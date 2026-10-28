@@ -1,0 +1,7 @@
+; vax-external-variable's guest test (guest-external-variable.com):
+; EXTSHR_LIMIT, made universal in the shareable image EXTSHR.EXE
+        .TITLE  EXTSHR
+        .PSECT  EXTSHR_DATA,PIC,NOSHR,WRT,NOEXE,LONG
+EXTSHR_LIMIT::
+        .LONG   100
+        .END

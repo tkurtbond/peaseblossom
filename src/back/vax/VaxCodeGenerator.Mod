@@ -1482,8 +1482,8 @@ MODULE VaxCodeGenerator;
     m := SymbolTable.Find(scope, qualifier);
     IF (m = NIL) OR (m.class # SymbolTable.moduleClass) THEN RETURN NIL END;
     obj := SymbolTable.FindLocal(m.moduleScope, name);
-    IF (obj # NIL) & ((obj.class = SymbolTable.varClass)
-                      OR (obj.class = SymbolTable.procClass) & (obj.externalConvention = NIL))
+    IF (obj # NIL) & ((obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.procClass))
+       & (obj.externalConvention = NIL)
        & (HomeOf(obj) = NIL) THEN
       NEW(h); h.obj := obj; COPY(m.realModuleName^, h.module); h.next := homes; homes := h;
       COPY(h.module, full); Append(full, "."); Append(full, name^);
@@ -1497,14 +1497,19 @@ MODULE VaxCodeGenerator;
   END Resolve;
 
   (* The symbol of obj, a variable or procedure, as VaxTypes makes it from
-     "Module.name", Module its home *)
+     "Module.name", Module its home; an external variable's linkage name,
+     verbatim (doc/developer/language-extensions.md, "External variables") *)
   PROCEDURE VariableSymbol(obj: SymbolTable.Object; VAR symbol: VaxTypes.Symbol);
     VAR full: ARRAY 2 * 256 + 2 OF CHAR; h: Home;
   BEGIN
-    h := HomeOf(obj);
-    IF h = NIL THEN COPY(module.name^, full) ELSE COPY(h.module, full) END;
-    Append(full, "."); Append(full, obj.name^);
-    VaxTypes.MakeSymbol(full, symbol)
+    IF (obj.class = SymbolTable.varClass) & (obj.externalName # NIL) THEN
+      Uppercase(obj.externalName^, symbol)
+    ELSE
+      h := HomeOf(obj);
+      IF h = NIL THEN COPY(module.name^, full) ELSE COPY(h.module, full) END;
+      Append(full, "."); Append(full, obj.name^);
+      VaxTypes.MakeSymbol(full, symbol)
+    END
   END VariableSymbol;
 
   PROCEDURE FindLocal(obj: SymbolTable.Object): Local;
@@ -1533,14 +1538,15 @@ MODULE VaxCodeGenerator;
   BEGIN
     x := NewOperand(memory, TypeOf(obj));
     l := FindLocal(obj);
-    IF (l = NIL) & (HomeOf(obj) = NIL) & (SymbolTable.FindLocal(moduleScope, obj.name) # obj) THEN
+    IF (l = NIL) & (HomeOf(obj) = NIL) & (obj.externalName = NIL)
+       & (SymbolTable.FindLocal(moduleScope, obj.name) # obj) THEN
       (* a procedure's variable this one has no binding for, which the
          nested procedures' analysis should have made a hidden parameter *)
       Unsupported(line, column, "a variable of an enclosing procedure that is not passed here");
       RETURN x
     ELSIF l = NIL THEN
       VariableSymbol(obj, x.symbol);
-      IF HomeOf(obj) # NIL THEN x.outside := TRUE; AddExternal(x.symbol) END
+      IF (HomeOf(obj) # NIL) OR (obj.externalName # NIL) THEN x.outside := TRUE; AddExternal(x.symbol) END
     ELSIF l.where = inFrameAddress THEN
       (* a copied open-array value parameter: its copy's address in the
          frame, its lengths in the argument list *)
@@ -6350,7 +6356,7 @@ MODULE VaxCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(scope, nm.name);
-        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
+        IF (obj # NIL) & (obj.externalName = NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
         nm := nm.next
       END;
       vd := vd.next
@@ -6361,7 +6367,7 @@ MODULE VaxCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(scope, nm.name);
-        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN
+        IF (obj # NIL) & (obj.externalName = NIL) & Types.NeedsInit(obj.type) THEN
           x := Variable(obj, nm.line, nm.column);
           r := NewRegisterFrom(longword, 2, nm.line, nm.column); r.pinned := TRUE;
           AddressOf(x, r); Release(x);
@@ -6648,7 +6654,7 @@ MODULE VaxCodeGenerator;
     WHILE vd # NIL DO
       nm := vd.names;
       WHILE nm # NIL DO
-        IF nm.exportMark # SyntaxTree.exportNone THEN
+        IF (nm.exportMark # SyntaxTree.exportNone) & (vd.externalConvention = NIL) THEN
           COPY(mod.name^, full); Append(full, "."); Append(full, nm.name^);
           IF ~VaxTypes.Enter(programNames, full, symbol, clash) THEN RETURN FALSE END
         END;
@@ -6896,7 +6902,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE WriteVariables(): BOOLEAN;
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
         full, clash: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol; text: ARRAY 600 OF CHAR;
-        directive: ARRAY 8 OF CHAR; align: LONGINT; ok, header: BOOLEAN;
+        directive: ARRAY 8 OF CHAR; align: LONGINT; ok, header: BOOLEAN; convention: SyntaxTree.Ident;
   BEGIN
     ok := TRUE; header := FALSE;
     IF module.declarations = NIL THEN RETURN TRUE END;
@@ -6906,7 +6912,25 @@ MODULE VaxCodeGenerator;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(scope, nm.name);
         COPY(module.name^, full); Append(full, "."); Append(full, nm.name^);
-        IF (obj = NIL) OR ~IsSliceType(obj.type) THEN
+        IF (obj # NIL) & (obj.externalConvention # NIL) THEN
+          (* another object's storage, named as an external procedure is
+             (Procedures): nothing here but the checks *)
+          IF ~Names.Equals(obj.externalConvention, "VMS") THEN
+            COPY("an external [", text); AppendChar(text, 22X);
+            Names.GetText(obj.externalConvention, convention); Append(text, convention);
+            AppendChar(text, 22X); Append(text, "] variable (VAX/VMS takes ");
+            AppendChar(text, 22X); Append(text, "VMS"); AppendChar(text, 22X); Append(text, ")");
+            Unsupported(nm.line, nm.column, text); ok := FALSE
+          ELSIF ~IsSliceType(obj.type) THEN
+            COPY("a variable of type ", text);
+            Types.Describe(obj.type, text); AppendWhen(obj.type, text);
+            Unsupported(nm.line, nm.column, text); ok := FALSE
+          ELSIF ~VaxTypes.IsValidExternalName(obj.externalName^) THEN
+            COPY(obj.externalName^, full);
+            Append(full, " is not a MACRO-32 symbol (letters, digits, _, $ and ., at most 31, not a digit first)");
+            Diagnostics.Error(nm.line, nm.column, full); ok := FALSE
+          END
+        ELSIF (obj = NIL) OR ~IsSliceType(obj.type) THEN
           COPY("a variable of type ", text);
           IF obj # NIL THEN Types.Describe(obj.type, text); AppendWhen(obj.type, text) END;
           Unsupported(nm.line, nm.column, text); ok := FALSE
@@ -6989,7 +7013,8 @@ MODULE VaxCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(scope, nm.name);
-        IF obj # NIL THEN total := total + PointerCount(obj.type) END;
+        (* an external variable is not a root, as on LLVM (CountRootSlots) *)
+        IF (obj # NIL) & (obj.externalName = NIL) THEN total := total + PointerCount(obj.type) END;
         nm := nm.next
       END;
       vd := vd.next
@@ -7009,7 +7034,7 @@ MODULE VaxCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(scope, nm.name);
-        IF obj # NIL THEN VariableSymbol(obj, symbol); Offsets(obj.type, 0) END;
+        IF (obj # NIL) & (obj.externalName = NIL) THEN VariableSymbol(obj, symbol); Offsets(obj.type, 0) END;
         nm := nm.next
       END;
       vd := vd.next

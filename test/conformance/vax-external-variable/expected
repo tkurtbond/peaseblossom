@@ -1,0 +1,8 @@
+semantic OK, wrote VaxExternalData.mar
+semantic OK, wrote VaxExternalVariable.mar
+exit 0
+VaxExternalVariable.mar matches expected-vax.mar
+VaxExternalData.mar matches expected-vax-VaxExternalData.mar
+VaxExternalVariable.image matches expected-vax.image
+VaxExternalData.image matches expected-vax-VaxExternalData.image
+build exit 0

@@ -407,6 +407,10 @@ MODULE SyntaxTree;
          with its own copy of e, in order; NIL without an initializer.
          Parser.ParseDeclSeq's caller puts them at the front of the body. *)
       initializers*: StatementNode;
+      (* "[conv, name] x: T" (doc/developer/language-extensions.md, "External
+         variables"): storage another language defines; both NIL without
+         the attribute, externalName NIL too when it gives no name *)
+      externalConvention*, externalName*: Names.Name;
       next*: VarDeclNode
     END;
 

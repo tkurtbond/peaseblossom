@@ -1361,7 +1361,14 @@ MODULE ModuleInterface;
         obj := SymbolTable.FindLocal(scope, idents.name);
         IF (obj # NIL) & obj.exported THEN
           IF ~any THEN WriteStr(w, "  VAR"); WriteLn(w) END;
-          WriteStr(w, "    "); WriteStr(w, obj.name^);
+          WriteStr(w, "    ");
+          IF obj.externalConvention # NIL THEN
+            (* an external variable keeps its attribute, the linkage name
+               always written, as an external procedure does (PrintFreeProcs) *)
+            WriteStr(w, '["'); WriteStr(w, obj.externalConvention^);
+            WriteStr(w, '", "'); WriteStr(w, obj.externalName^); WriteStr(w, '"] ')
+          END;
+          WriteStr(w, obj.name^);
           IF obj.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END;
           WriteStr(w, ": "); PrintTypeRef(w, scope, obj.type);
           WriteStr(w, ";"); WriteLn(w);

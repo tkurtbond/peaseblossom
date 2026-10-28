@@ -2480,6 +2480,17 @@ MODULE LLVMCodeGenerator;
     QualifiedName(cg.moduleName, name, text)
   END ModuleQualifiedName;
 
+  (* A module-level variable's symbol: "@Module.name", or "@<linkage
+     name>" for an external variable (doc/developer/language-extensions.md,
+     "External variables"), which another language defines and whose name
+     is never mangled *)
+  PROCEDURE GlobalVariableName(homeModule: ARRAY OF CHAR; obj: SymbolTable.Object; VAR text: ValueText);
+  BEGIN
+    IF obj.externalName # NIL THEN COPY("@", text); Strcat(text, obj.externalName^)
+    ELSE QualifiedName(homeModule, obj.name^, text)
+    END
+  END GlobalVariableName;
+
   (* PLAN.md Phase 8 step 12: resolves a designator's base name - bare or
      qualified alike - to its SymbolTable.Object, exactly mirroring
      SemanticActions.FindQualified's own front-end logic (private there,
@@ -2522,7 +2533,7 @@ MODULE LLVMCodeGenerator;
     IF b # NIL THEN
       COPY(b.addrText, addrText)
     ELSE
-      ModuleQualifiedName(cg, obj.name^, addrText)
+      GlobalVariableName(cg.moduleName, obj, addrText)
     END
   END ResolveVarAddress;
 
@@ -3588,7 +3599,7 @@ MODULE LLVMCodeGenerator;
          ever holds the *current* procedure's own alloca'd params/locals,
          never anything reached through an imported module's own
          moduleScope. *)
-      QualifiedName(homeModule, obj.name^, addrText)
+      GlobalVariableName(homeModule, obj, addrText)
     END;
     IF obj.class = SymbolTable.constClass THEN addrType := obj.type ELSE addrType := EffectiveVarType(cg, obj) END;
     sel := d.selectors;
@@ -3724,7 +3735,7 @@ MODULE LLVMCodeGenerator;
       IF d.qualifier = NIL THEN
         LoadVar(w, cg, obj, result)
       ELSE
-        QualifiedName(homeModule, obj.name^, addrText);
+        GlobalVariableName(homeModule, obj, addrText);
         LoadAtAddress(w, cg, addrText, obj.type, result)
       END
     ELSIF (obj.class = SymbolTable.procClass) & (obj.type # Types.PredeclaredProcedureType)
@@ -6367,7 +6378,7 @@ MODULE LLVMCodeGenerator;
         EmitRecordAssignmentGuard(w, cg, dyn, EffectiveVarType(cg, obj))
       END
     ELSE
-      QualifiedName(homeModule, obj.name^, addrText)
+      GlobalVariableName(homeModule, obj, addrText)
     END;
     (* the static type an enclosing WITH gave it: before Phase 12 step 1 the
        declared one, and a narrowed VAR record got only its base's fields *)
@@ -6880,7 +6891,7 @@ MODULE LLVMCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(cg.scope, nm.name);
-        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
+        IF (obj # NIL) & (obj.externalName = NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
         nm := nm.next
       END;
       vd := vd.next
@@ -6891,7 +6902,7 @@ MODULE LLVMCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(cg.scope, nm.name);
-        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN
+        IF (obj # NIL) & (obj.externalName = NIL) & Types.NeedsInit(obj.type) THEN
           ResolveVarAddress(cg, obj, addrText);
           InitializeAt(w, cg, addrText, obj.type)
         END;
@@ -6922,8 +6933,12 @@ MODULE LLVMCodeGenerator;
     NEW(e); COPY(cName, e.name); e.next := cg.declaredExternals; cg.declaredExternals := e
   END MarkDeclaredExternal;
 
+  PROCEDURE ^ EmitDataDeclaration(VAR w: Files.Rider; VAR cg: Codegen; symbol: ARRAY OF CHAR);
+
   PROCEDURE EmitGlobals(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
-    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object; llvmType: LongText;
+    VAR
+      vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object; llvmType: LongText;
+      symbol: ValueText;
   BEGIN
     IF module.declarations # NIL THEN
       vd := module.declarations.varDecls;
@@ -6931,10 +6946,18 @@ MODULE LLVMCodeGenerator;
         nm := vd.names;
         WHILE nm # NIL DO
           obj := SymbolTable.FindLocal(cg.scope, nm.name);
-          LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
-          WriteStr(w, "@"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, nm.name^);
-          WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer");
-          WriteDebugGlobal(w, obj); WriteLn(w);
+          IF obj.externalName = NIL THEN
+            LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
+            WriteStr(w, "@"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, nm.name^);
+            WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer");
+            WriteDebugGlobal(w, obj); WriteLn(w)
+          ELSIF Names.Equals(obj.externalConvention, "VMS") THEN
+            (* as an external ["VMS"] procedure is (EmitExternalDeclares) *)
+            ReportUnsupported(cg, nm.line, nm.column, "an external variable with the VMS calling convention")
+          ELSE
+            (* another language's storage: poc neither allocates nor zeroes it *)
+            GlobalVariableName(cg.moduleName, obj, symbol); EmitDataDeclaration(w, cg, symbol)
+          END;
           nm := nm.next
         END;
         vd := vd.next
@@ -7324,7 +7347,9 @@ MODULE LLVMCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(cg.scope, nm.name);
-        IF obj # NIL THEN total := total + CountPointerSlots(obj.type) END;
+        (* an external variable is not a root: foreign code's, and only a
+           SYSTEM.PTR's slots, which the checker allows there *)
+        IF (obj # NIL) & (obj.externalName = NIL) THEN total := total + CountPointerSlots(obj.type) END;
         nm := nm.next
       END;
       vd := vd.next
@@ -7358,7 +7383,7 @@ MODULE LLVMCodeGenerator;
       nm := vd.names;
       WHILE nm # NIL DO
         obj := SymbolTable.FindLocal(cg.scope, nm.name);
-        IF (obj # NIL) & (CountPointerSlots(obj.type) > 0) THEN
+        IF (obj # NIL) & (obj.externalName = NIL) & (CountPointerSlots(obj.type) > 0) THEN
           ModuleQualifiedName(cg, obj.name^, global);
           EmitPointerOffsets(w, wordInt, global, obj.type, 0, first)
         END;
@@ -8494,7 +8519,7 @@ MODULE LLVMCodeGenerator;
     obj := x.scope.objects;
     WHILE obj # NIL DO
       IF obj.class = SymbolTable.varClass THEN
-        QualifiedName(x.module.name^, obj.name^, symbol); EmitDataDeclaration(w, cg, symbol);
+        GlobalVariableName(x.module.name^, obj, symbol); EmitDataDeclaration(w, cg, symbol);
         DeclareTypeSymbols(w, cg, obj.type, x.module.name)
       ELSIF obj.class = SymbolTable.procClass THEN
         pt := obj.type(Types.ProcedureType);

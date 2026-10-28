@@ -7,12 +7,11 @@ MODULE Shell;
     verb: ARRAY 8 OF CHAR;
     name: ARRAY 64 OF CHAR;
     greetings: INTEGER;
-
-  (* the table's global symbol, named by ShellCommands.cld's MODULE *)
-  PROCEDURE ["VMS", "SHELL_COMMANDS"] Commands;
+    (* the table's global symbol, named by ShellCommands.cld's MODULE *)
+    ["VMS", "SHELL_COMMANDS"] commands: SYSTEM.BYTE;
 
 BEGIN
-  table := SYSTEM.VAL(SYSTEM.ADDRESS, Commands);
+  table := SYSTEM.ADR(commands);
   greetings := 0;
   REPEAT
     status := CommandLanguage.ParsePrompting("SHELL> ", table);

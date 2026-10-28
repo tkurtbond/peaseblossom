@@ -569,6 +569,16 @@ LEN(a), SIZE(SYSTEM.INT32), SYSTEM.VAL(SYSTEM.ADDRESS, CompareIntegers))`.
 An external procedure is not otherwise a value, and nothing checks that
 the function can call it as it will.
 
+**A C variable.** A declaration of a module's `VAR` section that starts
+with `["C"]` is a C variable, defined by C and used in place: `VAR ["C",
+"environ"] environment-: SYSTEM.ADDRESS;` (a second string gives its C
+name, and the declaration then has one identifier) or `VAR ["C"] opterr,
+optind: SYSTEM.INT32;`. poc does not zero it: it has the value C gave
+it. Its type may not hold a `POINTER TO`, since the collector does not
+look in it. A variable that is a macro or thread-local in C, such as
+`errno`, or named differently on each system, such as `stdin`, is reached
+through a function in the module's part in C instead.
+
 **A module's part in C.** A file `<Module>.c` beside `<Module>.Mod` is
 compiled with the module and linked wherever the module is, into a program
 or a library: the module's own C, which its `["C"]` procedures call.

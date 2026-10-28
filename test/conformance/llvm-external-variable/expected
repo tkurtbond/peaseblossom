@@ -1,0 +1,37 @@
+== from source
+counter 41
+table[3] 4
+pair.second 8
+sum 66
+counter 42
+table[0] 2
+pair.first 70
+sum 159
+ADR(pair) = ADR(Counters.pair): TRUE
+ADR(table[1]) - ADR(table): 4
+== -compile, then the pair
+MODULE Counters;
+  IMPORT SYSTEM;
+  TYPE
+    Pair* = RECORD first*: SYSTEM.INT32; second*: SYSTEM.INT32 END;
+  VAR
+    ["C", "counter"] counter*: SYSTEM.INT32;
+    ["C", "counters_table"] table*: ARRAY 4 OF SYSTEM.INT32;
+    ["C", "counters_pair"] pair-: Pair;
+  PROCEDURE ["C", "counters_sum"] Sum*(): SYSTEM.INT32;
+END Counters.
+semantic OK, wrote UseCounters.ll
+counter 41
+table[3] 4
+pair.second 8
+sum 66
+counter 42
+table[0] 2
+pair.first 70
+sum 159
+ADR(pair) = ADR(Counters.pair): TRUE
+ADR(table[1]) - ADR(table): 4
+== the IR's counter, counters_table and counters_pair
+@counter = external global i8
+@counters_pair = external global i8
+@counters_table = external global i8

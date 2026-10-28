@@ -29,10 +29,11 @@ MODULE SymbolTable;
      declaration - SemanticActions.ResolveProcDecls clears it once the
      real body arrives, mirroring pendingTypeNode/resolving's own
      "in-progress" bracketing above but for procedures instead of types)
-     and externalConvention/externalName (procClass only: set only for
-     an external procedure declaration - AGENTS.md's "External
-     procedures" - so a later backend can find the linkage info without
-     re-walking the AST; both stay NIL otherwise).
+     and externalConvention/externalName (procClass and varClass: set
+     only for an external procedure declaration - AGENTS.md's "External
+     procedures" - or an external variable's - "External variables" - so
+     a later backend can find the linkage info without re-walking the
+     AST; both stay NIL otherwise).
 
      PLAN.md Phase 7 adds moduleClass: an Object bound to an IMPORTed
      module's own name (or its "ident :=" alias), one per entry in a
@@ -115,7 +116,7 @@ MODULE SymbolTable;
         parameters"), set as isVarParam is. SemanticActions.CheckDesignator
         makes it, and every part of it, read-only, as readOnly does an
         imported variable. *)
-      externalConvention*, externalName*: Names.Name; (* procClass only; see above *)
+      externalConvention*, externalName*: Names.Name; (* procClass and varClass; see above *)
       moduleScope*: Scope; (* moduleClass only; see above *)
       realModuleName*: Names.Name; (* moduleClass only: the module's
         own real name, distinct from .name (the possibly-aliased local

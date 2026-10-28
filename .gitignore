@@ -18,6 +18,7 @@ test/conformance/**/*.c
 !test/conformance/llvm-cxx-part/both/Both.c
 !test/conformance/llvm-object-reuse/src/A.c
 !test/conformance/llvm-system-val-external/part/Compare.c
+!test/conformance/llvm-external-variable/part/Counters.c
 test/conformance/**/*.h
 # a fixture's own C header (Phase 13 step 2: -c-flag)
 !test/conformance/poc-c-flag/include/fnv.h

@@ -1560,17 +1560,66 @@ MODULE SemanticActions;
      does for fields - no CheckExportMark call, since VAR legitimately
      allows the '-' mark (Appendix A; CheckExportMark exists only to
      reject it on CONST/TYPE names). *)
+  (* TRUE when a variable of type t holds a pointer the collector traces,
+     anywhere in it: a POINTER TO, an array of them, or a record with one,
+     its base type's fields included. SYSTEM.PTR, though a PointerType,
+     is allowed in an external variable, which is not a root
+     (doc/developer/language-extensions.md, "External variables", E3) *)
+  PROCEDURE HoldsTracedPointer(t: Types.Type): BOOLEAN;
+    VAR field: Types.Field; holds: BOOLEAN;
+  BEGIN
+    holds := FALSE;
+    IF t = Types.Ptr THEN holds := FALSE
+    ELSIF t IS Types.PointerType THEN holds := TRUE
+    ELSIF t IS Types.ArrayType THEN holds := HoldsTracedPointer(t(Types.ArrayType).elementType)
+    ELSIF t IS Types.RecordType THEN
+      IF t(Types.RecordType).baseType # NIL THEN holds := HoldsTracedPointer(t(Types.RecordType).baseType) END;
+      field := t(Types.RecordType).fields;
+      WHILE ~holds & (field # NIL) DO holds := HoldsTracedPointer(field.type); field := field.next END
+    END;
+    RETURN holds
+  END HoldsTracedPointer;
+
+  (* doc/developer/language-extensions.md, "External variables": "[conv,
+     name] x: T" names storage another language defines, at module level
+     only, one identifier when the name is given (each is otherwise its
+     own linkage name), and never of a type with a pointer in it, which
+     the collector could not find (Parser.ParseVarDecl refuses an
+     initializer) *)
+  PROCEDURE CheckExternalVarDecl(d: SyntaxTree.VarDeclNode; scope: SymbolTable.Scope; t: Types.Type);
+  BEGIN
+    Diagnostics.NotInReport(d.line, d.column, "an external variable");
+    IF (~Names.Equals(d.externalConvention, "C")) & (~Names.Equals(d.externalConvention, "VMS")) THEN
+      Diagnostics.Error(d.line, d.column, "unknown external calling convention")
+    END;
+    IF scope.outer # SymbolTable.Universe THEN
+      Diagnostics.Error(d.line, d.column, "an external variable is declared only at module level")
+    END;
+    IF (d.externalName # NIL) & (d.names # NIL) & (d.names.next # NIL) THEN
+      Diagnostics.Error(d.names.next.line, d.names.next.column,
+                        "an external variable with a linkage name declares one identifier")
+    END;
+    IF (t # NIL) & HoldsTracedPointer(t) THEN
+      Diagnostics.Error(d.line, d.column, "an external variable cannot hold a pointer the collector traces")
+    END
+  END CheckExternalVarDecl;
+
   PROCEDURE ResolveOneVarDecl(d: SyntaxTree.VarDeclNode; scope: SymbolTable.Scope);
     VAR t: Types.Type; idents: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
   BEGIN
     t := ResolveType(scope, d.type, FALSE);
     RejectOpenArray(t, d.type, "a variable cannot be an open array");
+    IF d.externalConvention # NIL THEN CheckExternalVarDecl(d, scope, t) END;
     idents := d.names;
     WHILE idents # NIL DO
       obj := SymbolTable.Insert(scope, idents.name, SymbolTable.varClass, t,
                                  idents.exportMark # SyntaxTree.exportNone,
                                  idents.exportMark = SyntaxTree.exportReadOnly,
                                  idents.line, idents.column);
+      IF (obj # NIL) & (d.externalConvention # NIL) THEN
+        obj.externalConvention := d.externalConvention;
+        IF d.externalName # NIL THEN obj.externalName := d.externalName ELSE obj.externalName := idents.name END
+      END;
       idents := idents.next
     END
   END ResolveOneVarDecl;

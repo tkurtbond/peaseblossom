@@ -19,7 +19,7 @@
 # the VAX development system can be used (../../vaxfixture.sh), POCRTL and
 # SEVEN are built there from poc's objects, and Value and SevenUse, the
 # latter against SEVEN's shareable image and its object library, and run:
-# each prints SEVEN_VALUE, the address of an external procedure, as 7
+# each prints SEVEN_VALUE, the address of an external variable, as 7
 # (guest-options.com, guest-options.expected).
 . ../../vaxfixture.sh
 rm -rf work

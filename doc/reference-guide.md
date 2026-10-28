@@ -302,6 +302,32 @@ Under `-strict` the declaration is an error: `an external procedure is not
 in the Oberon-2 report (-strict)`, and so is taking its address: `the
 address of an external procedure is not in the Oberon-2 report (-strict)`.
 
+### External variables
+
+```oberon
+VAR
+  ["C", "environ"] environment-: SYSTEM.ADDRESS;
+  ["C"] opterr, optind: SYSTEM.INT32;
+  ["VMS", "SHELL_COMMANDS"] commands: SYSTEM.BYTE;
+```
+
+A declaration of a module's `VAR` section that starts with a calling
+convention names a variable another object defines, a C file's or a
+MACRO-32 module's, read, written, passed and given to `SYSTEM.ADR` in
+place. The second string, if there is one, is the name to link with, used
+as it is, and the declaration then has one identifier; without it, each
+identifier is its own. poc gives it no storage and never sets it: it
+starts with the value its definer gave it, and record field initializers
+do not apply. `"C"` is for the LLVM backend, `"VMS"` for the VAX/VMS one.
+It may be exported, and an importer reaches it by its linkage name.
+
+It is an error in a procedure, with an initializer, and for a type that
+holds a pointer the collector traces, a `POINTER TO` anywhere in it
+(`SYSTEM.PTR`, `SYSTEM.ADDRESS` and procedure types are allowed). That
+its type matches the definer's is the program's business, as for an
+external procedure's parameters. Under `-strict` it is an error: `an
+external variable is not in the Oberon-2 report (-strict)`.
+
 ### Underscores and dollar signs in identifiers
 
 `_` and `$` may appear in an identifier anywhere a letter may, first

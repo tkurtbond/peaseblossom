@@ -1,0 +1,14 @@
+; vax-external-variable's guest test (guest-external-variable.com): the
+; storage of VaxExternalData's and VaxExternalVariable's external
+; variables, defined and initialised here, not by poc
+        .TITLE  EXTDATA
+        .PSECT  EXT_DATA,PIC,NOSHR,WRT,NOEXE,LONG
+EXT_COUNTER::
+        .LONG   41
+EXT_TABLE::
+        .LONG   1,2,3,4
+EXT_PAIR::
+        .LONG   7,8
+EXT_FLAGS::
+        .LONG   1
+        .END

@@ -939,6 +939,16 @@ Those done while Phase 15 was current, 1 and 2, are in
 Those done while Phase 17 was current, 3, are in
 `doc/history/phases/phase-17.md`.
 
+4. **External variables** [done] (decided 2026-10-28, `000-todo.org`): `VAR
+   ["C", "environ"] environment-: SYSTEM.ADDRESS;` names storage another
+   language defines, read and written in place, in place of an external
+   procedure's address and `SYSTEM.GET`/`PUT`. Proposals E1-E8 in
+   `doc/developer/language-extensions.md`, "External variables",
+   approved by the user 2026-10-28 with the attribute on each
+   declaration, and implemented for both backends (fixtures
+   `llvm-external-variable`, `semantic-reject-external-variable`,
+   `vax-external-variable`).
+
 ## Ongoing implementation enhancements
 
 Changes to how poc builds, links and packages programs and libraries that

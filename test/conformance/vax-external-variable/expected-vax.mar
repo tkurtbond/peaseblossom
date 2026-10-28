@@ -1,0 +1,192 @@
+;; Reviewed 2026-10-28 by the user (written by Claude, for
+;; doc/developer/language-extensions.md, "External variables", proposals
+;; E1-E8). Why this is right:
+;; - Each external variable is named by its linkage name in capitals in
+;;   general mode, G^EXT_COUNTER, G^EXT_TABLE, G^EXT_PAIR, G^EXTSHR_LIMIT,
+;;   G^EXT_FLAGS (["VMS"] ext_flags, its identifier its own name), declared
+;;   .EXTERNAL in the order of first use, as an external procedure is
+;;   (vax-external, section 7). None of them has storage in "the module's
+;;   variables", which holds only i, sum and status.
+;; - Imported ones, VaxExternalData's counter, table and pair, are reached
+;;   by the same linkage names, not by VaxExternalData's mangled ones, and
+;;   EXT_PAIR declared again here is the same symbol, so ADR(pair) and
+;;   ADR(VaxExternalData.pair) are both MOVAB G^EXT_PAIR.
+;; - A field is an offset from the symbol, G^EXT_PAIR+4, and an element is
+;;   indexed, MOVAL G^EXT_TABLE[R0]; INCL on a set is BISL2 into it; a VAR
+;;   actual is its address, MOVAB G^EXT_COUNTER and MOVAB G^EXTSHR_LIMIT.
+;; - The initializer zeroes nothing: the values HAND-EXTDATA.MAR and
+;;   HAND-EXTSHR.MAR gave are what the program starts with.
+; VaxExternalVariable, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXEXTERNALVARIABLE
+	.IDENT	/7342e705f0297ede/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: LONGINT
+	.ALIGN	LONG
+VAXEXTERNALVARIABLE_I_P0BJK5UI:
+	.BLKL	1
+; sum: LONGINT
+	.ALIGN	LONG
+VAXEXTERNALVARIABLE_SU_33BIBOFQ:
+	.BLKL	1
+; status: LONGINT
+	.ALIGN	LONG
+VAXEXTERNALVARIABLE_ST_BTM793VP:
+	.BLKL	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	EXT_COUNTER
+	.EXTERNAL	EXT_TABLE
+	.EXTERNAL	EXT_PAIR
+	.EXTERNAL	EXTSHR_LIMIT
+	.EXTERNAL	EXT_FLAGS
+	.EXTERNAL	SYS$EXIT
+	.EXTERNAL	VAXEXTERNALDATA_INIT
+	.EXTERNAL	POC_K1_A9F926916A5B85A3
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxExternalVariable/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Bump
+VAXEXTERNALVARIABLE_BU_LHV5JD2J:
+	.WORD	^M<>
+; line 23
+	INCL	@4(AP)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXEXTERNALVARIABLE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^VAXEXTERNALDATA_INIT
+	SUBL2	#8, SP
+; line 27
+	MOVL	#1, -8(FP)
+	MOVAB	G^EXT_COUNTER, -4(FP)
+	CALLG	-8(FP), VAXEXTERNALVARIABLE_BU_LHV5JD2J
+; line 28
+	MOVL	G^EXT_COUNTER, VAXEXTERNALVARIABLE_ST_BTM793VP
+; line 29
+	MOVL	#30, G^EXT_TABLE+8
+; line 30
+	CLRL	VAXEXTERNALVARIABLE_I_P0BJK5UI
+L_1:
+	CMPL	VAXEXTERNALVARIABLE_I_P0BJK5UI, #1
+	BLEQ	L_3
+	JMP	L^L_2
+L_3:
+; line 30
+	MOVL	#1, -8(FP)
+	MOVL	VAXEXTERNALVARIABLE_I_P0BJK5UI, R0
+	CMPL	R0, #3
+	BLEQU	L_4
+	PUSHL	#49
+	PUSHL	#30
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MOVAL	G^EXT_TABLE[R0], -4(FP)
+	CALLG	-8(FP), VAXEXTERNALVARIABLE_BU_LHV5JD2J
+	SUBL3	VAXEXTERNALVARIABLE_I_P0BJK5UI, #1, R0
+	CMPL	R0, #1
+	BGEQU	L_5
+	JMP	L^L_2
+L_5:
+	INCL	VAXEXTERNALVARIABLE_I_P0BJK5UI
+	JMP	L^L_1
+L_2:
+; line 31
+	CLRL	VAXEXTERNALVARIABLE_SU_33BIBOFQ
+; line 32
+	CLRL	VAXEXTERNALVARIABLE_I_P0BJK5UI
+L_6:
+	CMPL	VAXEXTERNALVARIABLE_I_P0BJK5UI, #3
+	BLEQ	L_8
+	JMP	L^L_7
+L_8:
+; line 32
+	MOVL	VAXEXTERNALVARIABLE_I_P0BJK5UI, R0
+	CMPL	R0, #3
+	BLEQU	L_9
+	PUSHL	#82
+	PUSHL	#32
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_9:
+	ADDL2	G^EXT_TABLE[R0], VAXEXTERNALVARIABLE_SU_33BIBOFQ
+	SUBL3	VAXEXTERNALVARIABLE_I_P0BJK5UI, #3, R0
+	CMPL	R0, #1
+	BGEQU	L_10
+	JMP	L^L_7
+L_10:
+	INCL	VAXEXTERNALVARIABLE_I_P0BJK5UI
+	JMP	L^L_6
+L_7:
+; line 33
+	ADDL2	VAXEXTERNALVARIABLE_SU_33BIBOFQ, VAXEXTERNALVARIABLE_ST_BTM793VP
+; line 34
+	MOVL	#70, G^EXT_PAIR
+; line 35
+	MOVAB	G^EXT_PAIR, R0
+	MOVAB	G^EXT_PAIR, R1
+	CMPL	R0, R1
+	BEQL	L_12
+	JMP	L^L_11
+L_12:
+; line 36
+	ADDL3	G^EXT_PAIR+4, G^EXT_PAIR, R0
+	ADDL2	R0, VAXEXTERNALVARIABLE_ST_BTM793VP
+L_11:
+; line 38
+	MOVL	#1, -8(FP)
+	MOVAB	G^EXTSHR_LIMIT, -4(FP)
+	CALLG	-8(FP), VAXEXTERNALVARIABLE_BU_LHV5JD2J
+; line 39
+	ADDL2	G^EXTSHR_LIMIT, VAXEXTERNALVARIABLE_ST_BTM793VP
+; line 40
+	BISL2	#^X00000008, G^EXT_FLAGS
+; line 41
+	CMPL	G^EXT_FLAGS, #^X00000009
+	BEQL	L_14
+	JMP	L^L_13
+L_14:
+; line 41
+	ADDL2	#9, VAXEXTERNALVARIABLE_ST_BTM793VP
+L_13:
+; line 42
+	MOVL	#1, -8(FP)
+	MULL3	#16, VAXEXTERNALVARIABLE_ST_BTM793VP, R0
+	INCL	R0
+	MOVL	R0, -4(FP)
+	CALLG	-8(FP), G^SYS$EXIT
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_7342E705F0297EDE == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXEXTERNALVARIABLE_MAIN, ^M<>
+	CALLS	#0, VAXEXTERNALVARIABLE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXEXTERNALVARIABLE_MAIN

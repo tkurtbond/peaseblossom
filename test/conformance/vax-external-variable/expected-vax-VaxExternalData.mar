@@ -1,0 +1,42 @@
+;; Reviewed 2026-10-28 by the user (written by Claude, for
+;; doc/developer/language-extensions.md, "External variables", proposals
+;; E1-E8). Why this is right:
+;; - A module whose only variables are external has no "the module's
+;;   variables" and no .EXTERNAL for them: it does not use them, and an
+;;   importer names them itself. Pair's type descriptor is written as for
+;;   any exported record.
+; VaxExternalData, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXEXTERNALDATA
+	.IDENT	/a9f926916a5b85a3/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG
+; VaxExternalData.Pair
+	.ALIGN	LONG
+VAXEXTERNALDATA_PAIR_6DJESU4J::
+	.LONG	8
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXEXTERNALDATA_PAIR_6DJESU4J
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXEXTERNALDATA_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_A9F926916A5B85A3 == 0
+
+	.END

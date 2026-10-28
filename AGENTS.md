@@ -367,6 +367,19 @@ An external is never a procedure value, but `SYSTEM.VAL(SYSTEM.ADDRESS, E)`
 is its address (2026-10-15), for `qsort`'s comparison or `CLI$DCL_PARSE`'s
 `LIB$GET_INPUT`.
 
+### External variables (decided and implemented, 2026-10-28)
+
+`VAR ["C", "environ"] environment-: SYSTEM.ADDRESS;`, the attribute before
+each declaration of a module's `VAR` section: storage another object
+defines, read, written and passed in place under its linkage name (the
+second string, the list then one identifier; else each identifier's own),
+never mangled. poc allocates, zeroes and initializes nothing, and it is
+not a collector root, so a traced `POINTER TO` anywhere in its type is an
+error (`SYSTEM.PTR`, `ADDRESS` and procedure types are not); a local one
+or an initializer is an error. LLVM takes `"C"`, the VAX `"VMS"`. The
+`.sym` file keeps the attribute, and an importer uses the linkage name.
+`-strict` rejects it.
+
 ### `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
 
 `poc -strict` makes each extension above an error in the command-line module's

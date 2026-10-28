@@ -1,11 +1,12 @@
 MODULE Value;
   (* vax-options-files (doc/developer/vax-macro32-backend.md, section
      13.3): SEVEN_VALUE, which only an options file defines, printed as
-     the address of an external procedure, SYSTEM.VAL(SYSTEM.ADDRESS, E). *)
+     the address of an external variable (doc/developer/language-extensions.md,
+     "External variables"). *)
   IMPORT SYSTEM, Out;
 
-  PROCEDURE ["VMS", "SEVEN_VALUE"] SevenValue;
+  VAR ["VMS", "SEVEN_VALUE"] sevenValue: SYSTEM.BYTE;
 
 BEGIN
-  Out.String("SEVEN_VALUE is "); Out.Int(SYSTEM.VAL(SYSTEM.ADDRESS, SevenValue), 0); Out.Ln
+  Out.String("SEVEN_VALUE is "); Out.Int(SYSTEM.ADR(sevenValue), 0); Out.Ln
 END Value.
