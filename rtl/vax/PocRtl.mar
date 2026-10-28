@@ -1249,7 +1249,7 @@ POC_FILE_OPEN_FAB:
 
 ; POC_FILE_GET(control, record, size): the next record into record, of
 ; size bytes; R0 its length, -1 at the end of the file, -2 if it cannot
-; be read
+; be read, -3 if it is longer than size bytes (RMS$_RTB)
 	.ENTRY	POC_FILE_GET, ^M<R6>
 	MOVL	4(AP), R6
 	MOVL	8(AP), POC_F_RAB+RAB$L_UBF(R6)
@@ -1264,7 +1264,11 @@ POC_FILE_OPEN_FAB:
 	BNEQ	20$
 	MNEGL	#1, R0
 	RET
-20$:	MNEGL	#2, R0
+20$:	CMPL	R0, #RMS$_RTB
+	BNEQ	30$
+	MNEGL	#3, R0
+	RET
+30$:	MNEGL	#2, R0
 	RET
 
 	.PSECT	POC_DATA
@@ -1390,13 +1394,30 @@ POC_PROMPT:
 ; record attributes, called name, a new version if there is one already,
 ; to be written a record at a time and not shared; R0 the status
 	.ENTRY	POC_RECORD_CREATE, ^M<R2,R3,R4,R5,R6>
+	MOVZBL	#FAB$C_VAR, R1
+	JSB	POC_RECORD_MAKE
+	RET
+
+; POC_RECORD_CREATE_FIXED(control, name, length, size): the same, of
+; fixed-length records of size bytes (vax-macro32-backend.md section
+; 13.2, proposal 2); R0 the status
+	.ENTRY	POC_RECORD_CREATE_FIXED, ^M<R2,R3,R4,R5,R6>
+	MOVZBL	#FAB$C_FIX, R1
+	JSB	POC_RECORD_MAKE
+	RET
+
+; JSB, AP the arguments of POC_RECORD_CREATE or POC_RECORD_CREATE_FIXED,
+; R1 the record format: the file made and connected; R0 the status
+POC_RECORD_MAKE:
 	MOVL	4(AP), R6
+	PUSHL	R1
 	JSB	POC_FILE_INIT
 	MOVL	8(AP), POC_F_FAB+FAB$L_FNA(R6)
 	MOVB	12(AP), POC_F_FAB+FAB$B_FNS(R6)
 	MOVB	#FAB$M_PUT, POC_F_FAB+FAB$B_FAC(R6)
 	CLRB	POC_F_FAB+FAB$B_SHR(R6)
-	MOVB	#FAB$C_VAR, POC_F_FAB+FAB$B_RFM(R6)
+	MOVL	(SP)+, R0
+	MOVB	R0, POC_F_FAB+FAB$B_RFM(R6)
 	CLRB	POC_F_FAB+FAB$B_RAT(R6)
 	MOVW	16(AP), POC_F_FAB+FAB$W_MRS(R6)
 	CLRQ	-(SP)
@@ -1404,7 +1425,7 @@ POC_PROMPT:
 	CALLS	#3, G^SYS$CREATE
 	CLRL	R1
 	JSB	POC_FILE_CONNECT
-	RET
+	RSB
 
 ; POC_RECORD_PUT(control, record, length): the first length bytes of
 ; record written as the file's next record; R0 the status

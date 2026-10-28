@@ -269,6 +269,18 @@ proc ftp_get {name file} {
   close $out
 }
 
+# a copy back in binary mode, its bytes as they are: a counted object that
+# OBJCONVERT -COUNTED wrote (doc/developer/vax-macro32-backend.md, section
+# 13.2)
+proc ftp_get_binary {name file} {
+  set out [open $file wb]
+  try {
+    ftp::transfer RETR $name [list ftp::get_bytes $out] I
+  } finally {
+    close $out
+  }
+}
+
 proc ftp::get_bytes {out data} {
   seek $out 0
   chan truncate $out 0

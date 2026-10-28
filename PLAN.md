@@ -985,15 +985,19 @@ Those done while Phase 18 was current, 5-7, are in
       universal (the user, 2026-10-27). LLVM first, then the VAX. The
       LLVM side, 1-4 and 7, is done (2026-10-27; fixture
       `poc-object-files`); the VAX's 5, `-build`, too (2026-10-27;
-      fixture `vax-build-object-files`); 6, `-library`, after the next
-      item.
+      fixture `vax-build-object-files`); 6, `-library`, next, its VMS
+      `ObjectRecords.Open` and `Get` over `RecordFiles`' below.
     - A program on VMS that writes an object in the counted form, the
-      reverse of OBJCONVERT (the user, 2026-10-27): it reads the object's
-      records and writes each as its count, its bytes and a pad byte
-      after an odd count, into a file of fixed 512-byte records, so that
-      FTP in binary brings to Unix what poc's `-build` takes there. Next,
-      a step of its own; a fixture on the guest converts an object both
-      ways and compares it with the original.
+      reverse of OBJCONVERT (the user, 2026-10-27) [done]: `OBJCONVERT
+      -COUNTED <object> <counted file>` reads the object's records and
+      writes each as its count, its bytes and a pad byte after an odd
+      count, into a file of fixed 512-byte records, so that FTP in
+      binary brings to Unix what poc's `-build` takes there; the zeros
+      after the last record end a counted file. Six proposals, approved
+      and done 2026-10-27 (`doc/developer/vax-macro32-backend.md`,
+      section 13.2), with `RecordFiles.Open`, `Get` and `CreateFixed`.
+      Fixtures `vax-objconvert-counted`, run on the guest, and
+      `vax-build-object-files`.
 
 ## Open design questions
 

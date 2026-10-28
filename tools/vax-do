@@ -15,7 +15,10 @@
 #   tools/vax-do [-o <dir>] [-get <NAME.EXT>]... [-p <word>] <proc.com> [<file>...]
 #
 # -o is the directory the files come back to (default .); -get names a file
-# the procedure leaves in POC's directory, repeated for each; -p gives the
+# the procedure leaves in POC's directory, repeated for each, brought back
+# in ASCII mode but for a <NAME>.CNT, a counted object OBJCONVERT -COUNTED
+# wrote (doc/developer/vax-macro32-backend.md, section 13.2), in binary
+# mode; -p gives the
 # procedure its P1, letters, digits and underscores only. Files cross in
 # ASCII mode, as RMS variable-length records on the guest, all but poc's
 # objects, <name>.obj (PLAN.md Phase 18 step 4c; doc/developer/

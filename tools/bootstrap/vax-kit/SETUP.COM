@@ -4,7 +4,8 @@ $ ! the setup procedures of the libraries of one size model that are built,
 $ ! POCRTL's, and VMSDEF's and VMSLIB's once the STARLET kit is. Run it once
 $ ! a session, or from LOGIN.COM. It defines OBJCONVERT too, which
 $ ! converts an object poc wrote on Linux or a BSD and FTP sent in binary;
-$ ! the procedures poc writes there run it. Written by tools/bootstrap/make-vax-kit
+$ ! the procedures poc writes there run it. OBJCONVERT -COUNTED converts
+$ ! an object made here for poc there. Written by tools/bootstrap/make-vax-kit
 $ ! (doc/developer/vax-macro32-backend.md, section 21, proposals 4 and 10).
 $ !
 $ !   @SETUP [O2|OC]

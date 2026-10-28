@@ -69,8 +69,10 @@ MODULE ObjectRecords;
      vax-macro32-backend.md, section 13.1): its counts walk exactly to its
      end, none above 512, the object language's longest record and the
      most OBJCONVERT takes, and each record's first byte is an object
-     record's type, OBJ$C_HDR (0) to OBJ$C_EOMW (7). An object fetched from
-     VMS by FTP in binary is not: its records arrive run together, with no
+     record's type, OBJ$C_HDR (0) to OBJ$C_EOMW (7), but that a count of
+     0 followed only by zero bytes ends it, as OBJCONVERT -COUNTED pads its
+     last block (section 13.2, proposal 4). An object fetched from VMS by
+     FTP in binary is not: its records arrive run together, with no
      counts. *)
   PROCEDURE IsCounted*(name: ARRAY OF CHAR): BOOLEAN;
     VAR f: Files.File; r: Files.Rider; low, high, type: CHAR; length, position, size: LONGINT; ok: BOOLEAN;
@@ -79,13 +81,21 @@ MODULE ObjectRecords;
     IF f = NIL THEN RETURN FALSE END;
     size := Files.Length(f); position := 0; ok := size > 0;
     WHILE ok & (position < size) DO
-      IF position + 3 > size THEN
+      IF position + 2 > size THEN
         ok := FALSE
       ELSE
-        Files.Set(r, f, position); Files.Read(r, low); Files.Read(r, high); Files.Read(r, type);
+        Files.Set(r, f, position); Files.Read(r, low); Files.Read(r, high);
         length := ORD(low) + 256 * LONG(ORD(high));
-        position := position + 2 + length + length MOD 2;
-        ok := (length > 0) & (length <= 512) & (ORD(type) <= 7) & (position <= size)
+        IF (length = 0) & (position > 0) THEN (* the end: zeros to the file's *)
+          position := position + 2;
+          WHILE ok & (position < size) DO Files.Read(r, type); ok := type = 0X; INC(position) END
+        ELSIF position + 3 > size THEN
+          ok := FALSE
+        ELSE
+          Files.Read(r, type);
+          position := position + 2 + length + length MOD 2;
+          ok := (length > 0) & (length <= 512) & (ORD(type) <= 7) & (position <= size)
+        END
       END
     END;
     Files.Close(f);

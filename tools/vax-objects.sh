@@ -15,7 +15,8 @@
 
 # An object's records, a line each, its bytes in hexadecimal, from poc's
 # counted form (a 2-byte little-endian count, the bytes, a pad byte when the
-# count is odd: doc/developer/vax-object-language.md, section 10) or from
+# count is odd: doc/developer/vax-object-language.md, section 10; a count of
+# 0 ends it, as OBJCONVERT -COUNTED pads its last block) or from
 # what DUMP/RECORDS printed on the guest: each line's longwords, right to
 # left, then the bytes as text and their offset. The source file record
 # (SRC, 00 02 and the name as given or found) is the name alone, lowercase,
@@ -27,6 +28,7 @@ counted_records() {
       p = 0
       while (p + 1 < n) {
         count = strtonum("0x" byte[p + 1] byte[p]); p += 2; line = ""
+        if (count == 0) break
         for (i = 0; i < count; i++) line = line byte[p + i]
         print line; p += count + count % 2
       }

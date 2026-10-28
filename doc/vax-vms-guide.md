@@ -102,8 +102,9 @@ run in, and everything in it is text.
        $ @BUILD
 
    This assembles and links `POC.EXE` into `[.BIN]`, and with it
-   `OBJCONVERT.EXE`, which converts objects poc wrote on Unix (chapter 3,
-   "From objects or from MACRO-32"), then builds every
+   `OBJCONVERT.EXE`, which converts objects poc wrote on Unix, and
+   objects made on VMS for poc on Unix (chapter 3, "From objects or from
+   MACRO-32" and "Linking other objects and libraries"), then builds every
    library that is there, under both size models (chapter 3). It takes a
    while; `BUILD.LOG` has each step's time. `@BUILD` builds only what is
    not built yet, so after the STARLET kit is unpacked into a built
@@ -288,7 +289,8 @@ first, with the command `OBJCONVERT`, which the kit's `SETUP.COM`
 defines (chapter 2): it writes a new version of the object with the
 records it started as, and deletes the old one. An object already
 converted, or written on VMS, is left alone, so the procedure can be run
-again.
+again. `OBJCONVERT -COUNTED` goes the other way (below, "Linking other
+objects and libraries").
 
 ### Size models
 
@@ -341,8 +343,19 @@ tables (chapter 10), before the libraries:
 Its name may not be a module's, a command table's, another object's or
 `POCRTL`'s. On Unix it must be in the counted form poc's own objects
 have there (one poc wrote, say), and poc refuses any other: an object
-fetched from VMS by FTP has lost its records' boundaries, so name such a
-file on VMS by `-link` instead. Copy it to VMS in binary with the
+fetched from VMS by FTP has lost its records' boundaries. Convert such
+an object on VMS to the counted form first, with `OBJCONVERT -COUNTED`,
+fetch that in binary, and give poc it under the name the object had:
+
+    $ OBJCONVERT -COUNTED TWICE.OBJ TWICE.CNT
+
+    ftp> binary
+    ftp> get TWICE.CNT twice.obj
+
+(or name the object on VMS by `-link`). `OBJCONVERT -COUNTED` refuses an
+object with an empty record or one longer than 512 bytes, and a file
+that is not one of records, and prints nothing when it succeeds. Copy
+the object to VMS in binary with the
 modules' files, and the procedure converts it as it does theirs, whether
 they are objects or MACRO-32. Only `-build` takes an object file; a
 library does not, yet.
@@ -842,8 +855,13 @@ while it allocates or collects, so `NEW` is safe at AST level (chapter
 - **`RecordFiles`** writes a file of variable-length records, one RMS
   record at a time, with no record attributes: `Create(name, maximum)`
   (NIL if the file cannot be made), `Put(f, bytes, length)` and
-  `Close(f)`. poc writes its objects with it; a failure stops the
-  program with a message, as `Files`' does.
+  `Close(f)`; `CreateFixed(name, size)` makes one of fixed-length
+  records of exactly `size` bytes. `Open(name)` opens a file of records
+  to be read (NIL if it cannot be, or is Stream_LF, fixed-length or
+  undefined, which `Files` reads), and `Get(f, bytes, length)` reads the
+  next record, FALSE at the end. poc writes its objects with it, and
+  `OBJCONVERT` reads and writes them; a failure, or a record longer than
+  `bytes`, stops the program with a message, as `Files`' does.
 
 ## 7. Calling VMS
 

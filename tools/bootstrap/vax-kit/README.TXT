@@ -97,7 +97,9 @@ poc on Linux or a BSD also compiles for VAX/VMS. Its "-vax-objects"
 writes each module's object, which must be copied to VMS in binary mode,
 with the .COM file in ASCII mode. VMS stores such an object as fixed
 512-byte records, and the .COM file converts it first, with the command
-OBJCONVERT, which SETUP.COM defines.
+OBJCONVERT, which SETUP.COM defines. "OBJCONVERT -COUNTED <object>
+<counted file>" goes the other way: it writes an object made on VMS in
+the counted form poc on Linux or a BSD takes, to be fetched in binary.
 
 poc for VAX/VMS has no LLVM back end: it compiles for VAX/VMS only, and
 refuses the options that only the LLVM back end has (-lto, -g and so on).

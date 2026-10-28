@@ -1,0 +1,26 @@
+MACRO status: %X10000001
+OBJCONVERT -COUNTED status: %X00000001
+OBJCONVERT status: %X00000001
+OBJCONVERT -COUNTED EMPTY.OBJ status: %X10000012
+objconvert: EMPTY.OBJ: an empty record
+OBJCONVERT -COUNTED LONG.OBJ status: %X10000012
+objconvert: LONG.OBJ: a record longer than 512 bytes
+OBJCONVERT -COUNTED TWICE.CNT status: %X10000012
+objconvert: TWICE.CNT: is not a file of records
+OBJCONVERT -COUNTED MISSING.OBJ status: %X10000012
+objconvert: MISSING.OBJ: cannot be read
+OBJCONVERT -COUNTED TWICE.OBJ status: %X10000012
+usage: OBJCONVERT <counted file> <object>
+       OBJCONVERT -COUNTED <object> <counted file>
+build status: %X10000001
+a record of 0 bytes, as written
+a record of 1 bytes, as written
+a record of 512 bytes, as written
+the end of RECORDS.DAT
+STREAM.TXT not opened: Stream_LF
+FIXED.DAT not opened: fixed-length
+MISSING.DAT not opened: not there
+reading a record of 600 bytes into 100
+run status: %X1000031A
+
+-- record longer than the space for it: LONG.DAT

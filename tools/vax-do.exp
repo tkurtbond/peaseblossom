@@ -2,7 +2,9 @@
 # tools/vax-do, which runs this: in one FTP session (tools/vax-ftp.tcl),
 # copies the procedure and the files to POC's home directory, then, by
 # telnet, runs @<NAME>/OUTPUT=VAXDO.LOG [<P1>], keeping the FTP session alive,
-# then copies VAXDO.LOG and each <GET> back into <dir>, and deletes every
+# then copies VAXDO.LOG and each <GET> back into <dir> (a <NAME>.CNT, a
+# counted object OBJCONVERT -COUNTED wrote, in binary mode; the rest in
+# ASCII mode), and deletes every
 # version of all of them on the guest, whatever happened. A <file> that is
 # poc's object, <NAME.EXT> <NAME>.OBJ, is copied in binary mode as
 # <NAME>.CNT and converted to <NAME>.OBJ before the procedure runs
@@ -101,7 +103,8 @@ expect eof
 
 set status 0
 foreach remote [concat VAXDO.LOG $gets] {
-  if {[catch {ftp_get $remote [file join $outdir $remote]} message]} {
+  if {[string match *.CNT $remote]} { set get ftp_get_binary } else { set get ftp_get }
+  if {[catch {$get $remote [file join $outdir $remote]} message]} {
     puts stderr "vax-do: cannot copy $remote back: $message"
     file delete [file join $outdir $remote]
     set status 1

@@ -141,12 +141,15 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   registered (section 19.20); the search path is VMS
   directories; the typed riders write IEEE reals, converted from
   F_floating and G_floating; every File is finalized.
-- `RecordFiles.Mod` (`Create`, `Put`, `Close`), VAX only: a file of
-  variable-length records with no record attributes, written a record
-  at a time, as poc on VMS writes an object (`src/back/vax/vms/
-  ObjectRecords.Mod`) and `tools/objconvert`'s converter writes one
+- `RecordFiles.Mod` (`Create`, `CreateFixed`, `Put`, `Open`, `Get`,
+  `Close`), VAX only: a file of variable-length (or fixed-length)
+  records with no record attributes, written a record at a time, as poc
+  on VMS writes an object (`src/back/vax/vms/ObjectRecords.Mod`) and
+  `tools/objconvert`'s converter writes one
   (`doc/developer/vax-object-language.md`, section 15.9; Phase 18 step
-  4c). A failure stops the program, as `Files`' does; a File is not
+  4c), or a file of records read a record at a time, as `OBJCONVERT
+  -COUNTED` reads an object (`doc/developer/vax-macro32-backend.md`,
+  section 13.2). A failure stops the program, as `Files`' does; a File is not
   finalized, RMS closing it when the image exits.
 - `GarbageCollectedHeap.Mod` (`Allocate`, `Collect`, `SetStackBase`,
   `SetHeapLimit`, `SetChunkSize`, `SetMarkStackCapacity`,

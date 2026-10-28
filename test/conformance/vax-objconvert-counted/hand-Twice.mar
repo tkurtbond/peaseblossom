@@ -1,0 +1,14 @@
+; vax-objconvert-counted (doc/developer/vax-macro32-backend.md, section
+; 13.2, proposal 6): an object MACRO makes on VMS, not poc, for
+; OBJCONVERT -COUNTED to write in the counted form and OBJCONVERT to
+; turn back into an object. TWICE(n) is 2 * n; OTHER is 0.
+	.TITLE	TWICE
+	.IDENT	/V1.0/
+	.PSECT	$CODE, PIC, SHR, NOWRT, EXE, LONG
+	.ENTRY	TWICE, ^M<>
+	MULL3	#2, 4(AP), R0
+	RET
+	.ENTRY	OTHER, ^M<>
+	CLRL	R0
+	RET
+	.END

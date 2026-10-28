@@ -1089,6 +1089,110 @@ an object's global symbols* (proposal 6), so that an object behaves as
 a `.mar` part, its entry points universal, rather than usable only from
 inside the library.
 
+### 13.2 An object from VMS in the counted form (proposed and approved 2026-10-27)
+
+`PLAN.md`, item 9, the step after proposal 5 (the user, 2026-10-27).
+Proposal 5 takes on Unix only an object in the counted form, and FTP in
+binary loses an object's record boundaries on the way from VMS (13.1,
+question (a)), so an object made on VMS by MACRO, a compiler or the
+Librarian cannot reach a link poc writes on Unix except by `-link` and
+its VMS file specification. This is the reverse of `OBJCONVERT`: a
+program on VMS writes an object's records in the counted form into a
+file whose bytes FTP in binary carries as they are.
+
+1. *`RecordFiles.Open` and `Get`.* `Open(name): File` opens a file of
+   records to be read, NIL if it cannot be opened or is not one;
+   `Get(f, VAR bytes, VAR length): BOOLEAN` reads the next record into
+   `bytes` and its length into `length`, FALSE at the end of the file.
+   A record longer than `bytes`, one that cannot be read, or a `Get` on
+   a file made by `Create` or closed stops the program with a message
+   naming the file and HALT(99), as `Put` does. They need no new
+   MACRO-32: `PocRtl.mar`'s `POC_FILE_OPEN` already opens a
+   variable-length file to be read a record at a time (and Stream_LF,
+   fixed-length and undefined ones by block I/O, which `Open` closes
+   again and refuses), sharing it as `Files` does, and `POC_FILE_GET` is
+   `$GET` into a buffer. This replaces 13.1 proposal 6's
+   `POC_RECORD_OPEN` and `POC_RECORD_GET`, and proposal 6's VMS
+   `ObjectRecords.Open` and `Get` will be built on these.
+2. *`RecordFiles.CreateFixed`.* `CreateFixed(name, size): File` makes a
+   sequential file of fixed-length records of `size` bytes (1 to
+   32,765), no record attributes, written by `Put`, each record exactly
+   `size` bytes (any other length stops it, as a length outside 0 to
+   maximum does now). One new entry in `PocRtl.mar`,
+   `POC_RECORD_CREATE_FIXED`, `POC_RECORD_CREATE` with `RFM=FIX` and
+   `MRS=size`, sharing its code. It is what FTP in binary sends byte for
+   byte, as poc's objects arrive on VMS as such a file: a Stream_LF file
+   made by `Files` is not safe, since a transfer that reads it by records
+   drops its LFs.
+3. *`OBJCONVERT -COUNTED <object> <counted file>`.* The same program and
+   image as now, with a first argument (in any case, as DCL makes it
+   uppercase) that turns it round, so the kit builds, installs and keys
+   nothing new and `SETUP.COM`'s command does both. It reads each record
+   of `<object>` with `RecordFiles.Get` (a buffer of 512 bytes, the
+   object language's longest record), writes its count, low byte first,
+   its bytes and a pad byte after an odd count into 512-byte records of
+   a `CreateFixed` file, and pads the last with zeros. A record that does
+   not fit, an empty record, or an `<object>` that is not a file of
+   records (one sent from Unix and not converted yet) stops it with a
+   message and HALT(2), the file it began deleted, as now. It prints
+   nothing when it succeeds. The usage message names both forms.
+   Not checked: that the records are an object's; poc checks that on
+   Unix (proposal 4), the Linker on VMS.
+4. *The end of a counted file.* The zeros after the last record (2 to
+   511 bytes, the counts and pads keeping every record even) end a
+   counted file, as `OBJCONVERT` stops at a count of 0: `ObjectRecords.
+   IsCounted` (the host's) takes a count of 0 followed only by zero bytes
+   as the end, where it now refuses it; poc's own objects have no such
+   end and are unchanged. So the file `-COUNTED` writes, fetched in
+   binary, goes straight to `-build` (proposal 5) and back to VMS through
+   `OBJCONVERT`.
+5. *Documents.* `vax-vms-guide.md` chapter 3, "Linking other objects and
+   libraries": how an object made on VMS reaches a link poc writes on
+   Unix (`$ OBJCONVERT -COUNTED TWICE.OBJ TWICE.CNT`, FTP's `binary` and
+   `get`, the file renamed `twice.obj`); the `OBJCONVERT` sentences there
+   and in chapter 2, `README.TXT` and `SETUP.COM`'s comment name both
+   directions; `RecordFiles`' comment and the guide's runtime list gain
+   `Open`, `Get` and `CreateFixed`, and `rtl/vax/README.md` its line.
+6. *Fixtures.* On every host: `IsCounted`'s new end in
+   `vax-build-object-files` (a counted object padded with zeros taken,
+   one with a nonzero byte after its count of 0 refused). On the guest,
+   one new fixture, `vax-objconvert-counted`: a hand-written `.MAR`
+   assembled there by `MACRO/OBJECT` (an object poc did not write),
+   `OBJCONVERT -COUNTED` of it, `OBJCONVERT` of that back, and the two
+   objects' `DUMP/RECORDS` compared; the counted file fetched in binary
+   and given to `poc -target vax-dec-vms -build` on the host, its
+   records (`tools/vax-objects.sh`'s `counted_records`) compared with
+   the original's `DUMP/RECORDS` (`dumped_records`); and the refusals:
+   an object not a file of records, a missing one, too few arguments.
+   `RecordFiles.Open` and `Get` get a guest program of their own in the
+   same fixture: records of 0, 1 and 512 bytes read back, a record
+   longer than the buffer, a Stream_LF file refused, a missing file NIL.
+
+**Approved by the user, 2026-10-27**, all six as written. *Done
+2026-10-27*, with these differences:
+
+- Proposal 1 did need MACRO-32 after all: `POC_FILE_GET` returned the
+  same -2 for every failure, so it now returns -3 on `RMS$_RTB`, a
+  record longer than the buffer, and `Get` names that ("record longer
+  than the space for it") apart from one that cannot be read. `Files`
+  and `Platform` take -3 as they took -2. `Put` on a file `Open` opened
+  stops the program too.
+- Proposal 3's buffer is 32,765 bytes, the longest record `Get` can
+  read, not 512, so that an object's record longer than 512 bytes gets
+  `OBJCONVERT`'s own message ("a record longer than 512 bytes") and
+  HALT(2) rather than `RecordFiles`' HALT(99). `OBJCONVERT -COUNTED
+  <object>` alone, three arguments with the option first, gets the
+  usage message rather than being taken as a counted file called
+  `-COUNTED`.
+- Proposal 4's end is also `tools/vax-objects.sh`'s: `counted_records`
+  stops at a count of 0.
+- For proposal 6, `tools/vax-do -get` brings a `<NAME>.CNT` back in
+  binary (`ftp_get_binary` in `tools/vax-ftp.tcl`) and every other file
+  in ASCII as before. `vax-objconvert-counted` also refuses an object
+  with an empty record and one with a 630-byte record, each leaving no
+  file, and its counted output is named `REFUSED.CNT`: `tools/vax-do`
+  sends `Out`'s object, which the guest program imports, as `OUT.CNT`.
+
 ## 14. Widening the backend to poc's own source (Phase 16 step 3)
 
 **Decided (the user, 2026-10-09): the VAX takes `-OC` as well as
