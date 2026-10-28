@@ -1,7 +1,7 @@
 record 1 HDR, 70 bytes
   MHD level 0 record size 512 name VAXVARRECORDS ident D9797D37DC8FE6C6
   created "18-OCT-2026 00:00" patched "                 "
-record 2 HDR, 24 bytes
+record 2 HDR
   LNM "Peaseblossom poc"
 record 3 HDR, 38 bytes
   SRC "../vax-var-records/VaxVarRecords.mod"

@@ -1,7 +1,7 @@
 record 1 HDR, 65 bytes
   MHD level 0 record size 512 name VAXDEBUG ident DD3FC2B73BE01C06
   created "18-OCT-2026 00:00" patched "                 "
-record 2 HDR, 24 bytes
+record 2 HDR
   LNM "Peaseblossom poc"
 record 3 HDR, 14 bytes
   SRC "VaxDebug.mod"

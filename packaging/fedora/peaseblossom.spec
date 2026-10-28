@@ -25,7 +25,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.9.0
+Version:        0.10.0
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -110,6 +110,17 @@ test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-
 %{_docdir}/%{name}-vax/
 
 %changelog
+* Wed Oct 28 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.10.0-1
+- Update to 0.10.0: external variables (VAR ["C", "environ"] x: T;
+  and ["VMS"] for VAX/VMS), storage another object defines; object
+  files on the command line, linked by -build and put in a library by
+  -library, for LLVM (.o) and for VAX/VMS (.obj, from VMS by FTP after
+  OBJCONVERT -COUNTED); for VAX/VMS, Linker options files (.opt) among
+  the files and -link arguments as lines of the link's options file,
+  both recorded by a library; -target vax-dec-vms refuses the options
+  only the LLVM back end has; and a -link argument is no longer cut to
+  255 characters.
+
 * Sat Oct 24 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.9.0-1
 - Update to 0.9.0: poc needs far less memory, most of all for VAX/VMS:
   identifiers and literals are held once and sized to fit, the VAX back
