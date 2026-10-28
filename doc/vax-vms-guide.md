@@ -334,6 +334,17 @@ name that is its name, else in `SYS$SHARE`. A line may be up to 512 characters, 
 `CREATE` reads, and may not start with `$`, which would end the options
 file; poc refuses either. The same line given twice is linked once.
 
+An options file of your own, a `.opt` named after the program's file,
+gives such lines too: poc reads it, so it must be where poc runs, and
+adds its lines after the `-link` arguments, as if each were one.
+
+    $ POC PROG.MOD LINK.OPT
+
+poc leaves out a blank line and a comment, one that starts with `!`,
+and joins a line that ends in `-`, the Linker's continuation, with the
+next, so a continued option is one line, held to the same 512
+characters. An options file cannot name another.
+
 An object file of your own, a `.obj` named after the program's file, is
 copied beside the modules' files and linked after them and any command
 tables (chapter 10), before the libraries:
@@ -357,10 +368,11 @@ object with an empty record or one longer than 512 bytes, and a file
 that is not one of records, and prints nothing when it succeeds. Copy
 the object to VMS in binary with the
 modules' files, and the procedure converts it as it does theirs, whether
-they are objects or MACRO-32. Only `-build` takes an object file; a
-library does not, yet.
+they are objects or MACRO-32. Only `-build` and `-library` take an
+object file.
 
-A library built with `-link` links its shareable image with the lines,
+A library built with `-link`, or with an options file among its files,
+links its shareable image with the lines,
 and its manifest records them: every program that links the library, its
 object library or its image, gets them too, before its own, so name a
 file there by a logical name the program's link can also find.
@@ -435,6 +447,11 @@ procedure links against it.
 
 A `.mar` file named among the modules is a part of the library, assembled
 with them: `POCRTL` is made from `rtl/vax`'s modules and `PocRtl.mar`.
+A `.obj` file named there is an object of your own, copied into the
+library's directory, put in its `.OLB` and linked into its `.EXE` after
+the modules' objects, its entry points and procedures made universal
+too. It is named as an object given to `-build` is, and on Unix must be
+in the counted form (above).
 
 On Unix, `poc -target vax-dec-vms -library` writes the same files, from
 MACRO-32 unless given `-vax-objects`. Copy the whole directory to VMS,

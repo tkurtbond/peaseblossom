@@ -1044,9 +1044,9 @@ whole in one directory, as with the modules' own.
    below exists (`ObjectRecords.IsCounted`, the host's a walk of the
    counts). An object may not be named `POCRTL` either, the runtime's
    object in the current directory when `POC$RTL` is not defined. Every
-   other command, and any other target, refuses a `.obj` ("a VAX object
-   file (.obj) is linked only by -build for vax-dec-vms"), `-library`
-   too until proposal 6. A name VMS cannot have is reported with the
+   other command but `-library` (proposal 6), and any other target,
+   refuses a `.obj` ("a VAX object file (.obj) is linked only by -build
+   or -library for vax-dec-vms"). A name VMS cannot have is reported with the
    file's own extension now, `.mar`, `.cld` or `.obj`.
 6. *`-library`.* The same copy and names. Each object is inserted in
    `<NAME>.OLB` and listed in the shareable image's options file after
@@ -1064,6 +1064,16 @@ whole in one directory, as with the modules' own.
    in `PocRtl.mar`, `$GET` in record mode). VMS's `Files` cannot read
    them: it reads a variable-length file a record at a time with an LF
    after each, and an object's records hold LF bytes.
+   *Done 2026-10-27* (fixture `vax-library-object-files`, run on the
+   guest). Every GSD subrecord of the object language's types 0 to 12
+   is parsed in full, since none has a length field, and the local ones,
+   `LEPM` (10) and `LPRO` (11), are not made universal; a subrecord of
+   another type, or one that runs past its record, is refused ("cannot
+   read the global symbols of"), as are the names `-build` refuses, all
+   before the library's directory is made. The manifest's line is
+   `object <name>.obj`, the file's name, as LLVM's records `twice.o`;
+   `-install-library` deletes an older copy's objects before it copies
+   the new ones.
 
 Proposal 7's fixtures for the VAX: `-build`'s and `-library`'s
 procedures and the manifest compared, and the refusals, on every host;
@@ -1192,6 +1202,53 @@ file whose bytes FTP in binary carries as they are.
   with an empty record and one with a 630-byte record, each leaving no
   file, and its counted output is named `REFUSED.CNT`: `tools/vax-do`
   sends `Out`'s object, which the guest program imports, as `OUT.CNT`.
+
+### 13.3 Options files on the command line (proposal 9, approved 2026-10-28)
+
+`PLAN.md`, item 9. A `.opt` in any case among the files of `-build` or
+`-library` for vax-dec-vms is an options file for the Linker, and its
+lines are `-link`'s (the user, 2026-10-28: "recorded like -link"). poc
+reads the file, so it is on the machine where poc runs, and the
+procedure poc writes holds its lines, not its name, so nothing more is
+sent to VMS.
+
+- *Its lines.* Each is taken as `-link`'s argument is, after the
+  `-link` arguments, in the order of the files and their lines: the
+  blanks and tabs around a line dropped, and a CR before its LF; a
+  blank line, and a comment, one that starts with `!`, left out; and a
+  line that ends in `-`, the Linker's continuation (`AA-LA62A`, section
+  3.2), joined with the next without the `-`, so that the line is one
+  in the options file too, where a line seen twice is linked once (13,
+  "`-link`"). A comment at the end of a line is the Linker's and stays.
+  An options file cannot name another (`/OPTIONS` is not allowed in
+  one), so poc reads none further.
+- *In `-build`.* The lines go into `<IMAGE>.OPT` after the libraries'
+  recorded lines and the `-link` arguments, as one more `-link`
+  argument would.
+- *In `-library`.* The same lines go into the shareable image's link and
+  into the manifest as `link <line>` lines with the `-link` arguments,
+  so that every program linked with the library, against its `.OLB` or
+  its `.EXE`, gets them. The guest showed (2026-10-28, `PSECT_ATTR=
+  COMMON_A,NOSHR` for a library that has the `COMMON_A` psect) that such
+  a line in a program's link does no harm where the program does not
+  need it: no warning against the `.EXE`, nor with the library's object
+  linked in, and against the `.EXE` a program with its own `COMMON_A`
+  that gets `%LINK-W-MULPSC` without the line links cleanly with it.
+- *Refused*, each before anything is written: a `.opt` that cannot be
+  opened; an option that starts with `$`, which would end `$ CREATE`'s
+  data in the procedure, or is longer than 512 characters once joined
+  (`VaxToolchainDriver.optionLineLength`), either named by the file and
+  the line it starts on (`Seven.opt, line 4:`); a continuation past the
+  end of the file; and a `.opt` given to any other command or target ("an
+  options file (.opt) is linked only by -build or -library for
+  vax-dec-vms").
+
+*Done 2026-10-28* (`Poc.AddVaxOptionFile`; fixture `vax-options-files`,
+run on the guest): `Seven.opt`'s `SYMBOL=SEVEN_VALUE,7`, continued over
+two lines, defines the absolute symbol a program prints as the address
+of an external procedure (`SYSTEM.VAL(SYSTEM.ADDRESS, E)`), built with
+it by `-build`, and against the library SEVEN made with it, through
+SEVEN's `.EXE` and its `.OLB`.
 
 ## 14. Widening the backend to poc's own source (Phase 16 step 3)
 

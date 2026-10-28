@@ -160,9 +160,14 @@ MODULE Poc;
     (* -build's and -library's object files, in the order given; NIL for
        every other command *)
     objectFiles: ObjectFile;
-    (* -build for vax-dec-vms: its object files, .obj files (doc/developer/
-       vax-macro32-backend.md, section 13.1); NIL for every other command *)
+    (* -build and -library for vax-dec-vms: their object files, .obj files
+       (doc/developer/vax-macro32-backend.md, section 13.1); NIL for every
+       other command *)
     vaxObjectFiles: VaxPart;
+    (* -build and -library for vax-dec-vms: their options files, .opt
+       files, by path (section 13.3), whose lines are -link's; NIL for
+       every other command *)
+    vaxOptionFiles: Libraries.LinkArgument;
     (* Phase 12 step 2c: poc -library's modules, and poc -compile's (step
        2f); NIL for every other command *)
     members: LibraryMember;
@@ -1850,13 +1855,32 @@ MODULE Poc;
     RETURN HasExtension(file, ".obj")
   END IsObjFile;
 
-  (* a VAX object file given where only -build for vax-dec-vms takes one *)
+  (* a VAX object file given where only -build and -library for
+     vax-dec-vms take one *)
   PROCEDURE NotForVaxObjectFiles;
   BEGIN
     failed := TRUE;
-    Err.String("poc: a VAX object file (.obj) is linked only by -build for "); Err.String(VaxToolchainDriver.triple);
+    Err.String("poc: a VAX object file (.obj) is linked only by -build or -library for ");
+    Err.String(VaxToolchainDriver.triple);
     Err.Ln
   END NotForVaxObjectFiles;
+
+  (* Whether file's name ends in ".opt", in any case: an options file for
+     the VAX's linker (doc/developer/vax-macro32-backend.md, section 13.3) *)
+  PROCEDURE IsOptFile(file: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN HasExtension(file, ".opt")
+  END IsOptFile;
+
+  (* an options file given where only -build and -library for vax-dec-vms
+     take one *)
+  PROCEDURE NotForVaxOptionFiles;
+  BEGIN
+    failed := TRUE;
+    Err.String("poc: an options file (.opt) is linked only by -build or -library for ");
+    Err.String(VaxToolchainDriver.triple);
+    Err.Ln
+  END NotForVaxOptionFiles;
 
   (* Whether file's name ends in ".o" *)
   PROCEDURE IsDotO(file: ARRAY OF CHAR): BOOLEAN;
@@ -1896,14 +1920,15 @@ MODULE Poc;
   (* the files among the arguments from first on, after a command's own
      file: in commandTables the .cld files, -build's command tables
      (section 23, proposal 5), in vaxObjectFiles the .obj files, the VAX's
-     object files (section 13.1), and for the LLVM back end (~vax) in
+     object files (section 13.1), in vaxOptionFiles the .opt files, its
+     linker's options files (section 13.3), and for the LLVM back end (~vax) in
      objectFiles the object files; a module's .o is refused when building,
      since -build finds the module through the import path, and would link
      it twice *)
   PROCEDURE CollectBuildFiles(first: INTEGER; vax, building: BOOLEAN; VAR ok: BOOLEAN);
     VAR i: INTEGER; file: Libraries.Path; f: Files.File;
   BEGIN
-    ok := TRUE; commandTables := NIL; objectFiles := NIL; vaxObjectFiles := NIL;
+    ok := TRUE; commandTables := NIL; objectFiles := NIL; vaxObjectFiles := NIL; vaxOptionFiles := NIL;
     FOR i := first TO argumentCount - 1 DO
       GetArgument(i, file);
       IF ~ok THEN
@@ -1913,6 +1938,12 @@ MODULE Poc;
           failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
         ELSE
           AddVaxPart(file, vaxObjectFiles, ok)
+        END
+      ELSIF IsOptFile(file) THEN
+        IF ~FileExists(file) THEN
+          failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
+        ELSE
+          Libraries.AddLinkArgument(vaxOptionFiles, file)
         END
       ELSIF IsCldFile(file) THEN
         f := Files.Old(file);
@@ -2029,6 +2060,80 @@ MODULE Poc;
     RETURN a = NIL
   END VaxLinkArgumentsOk;
 
+  (* The lines of the options file path, a .opt named to -build or
+     -library for vax-dec-vms (doc/developer/vax-macro32-backend.md,
+     section 13.3), added to linkArguments after the -link arguments, as
+     -link's are: the blanks around a line dropped, a blank line and a
+     comment, a line that starts with "!", left out, and a line that ends
+     in "-" joined with the next, without it. FALSE, said why, when the
+     file cannot be read or an option cannot be a line of the options
+     file in the procedure (IsVaxOptionLine's rule). *)
+  PROCEDURE AddVaxOptionFile(path: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      f: Files.File; r: Files.Rider; line: ARRAY maxLineLength OF CHAR;
+      option: ARRAY VaxToolchainDriver.optionLineLength + 2 OF CHAR;
+      i, j, start, length, lineNumber, first: INTEGER; ok, more: BOOLEAN;
+  BEGIN
+    f := Files.Old(path);
+    IF f = NIL THEN
+      failed := TRUE; Err.String("poc: cannot open "); Err.String(path); Err.Ln;
+      RETURN FALSE
+    END;
+    Files.Set(r, f, 0); ok := TRUE; length := 0; lineNumber := 0; first := 0;
+    LOOP
+      Files.ReadLine(r, line);
+      IF r.eof & (line[0] = 0X) THEN EXIT END;
+      INC(lineNumber);
+      start := 0;
+      WHILE (line[start] = " ") OR (line[start] = 9X) DO INC(start) END;
+      i := start; WHILE line[i] # 0X DO INC(i) END;
+      WHILE (i > start) & ((line[i - 1] = " ") OR (line[i - 1] = 9X) OR (line[i - 1] = 0DX)) DO DEC(i) END;
+      IF (length = 0) & ((i = start) OR (line[start] = "!")) THEN
+        (* left out *)
+      ELSE
+        IF length = 0 THEN first := lineNumber END;
+        more := (i > start) & (line[i - 1] = "-");
+        IF more THEN DEC(i) END;
+        j := start;
+        WHILE (j < i) & (length <= VaxToolchainDriver.optionLineLength) DO
+          option[length] := line[j]; INC(length); INC(j)
+        END;
+        option[length] := 0X;
+        IF length > VaxToolchainDriver.optionLineLength THEN
+          failed := TRUE; Err.String("poc: "); Err.String(path); Err.String(", line "); Err.Int(first, 0);
+          Err.String(": an option longer than "); Err.Int(VaxToolchainDriver.optionLineLength, 0);
+          Err.String(" characters, more than the options file in the procedure takes"); Err.Ln;
+          ok := FALSE
+        ELSIF option[0] = "$" THEN
+          failed := TRUE; Err.String("poc: "); Err.String(path); Err.String(", line "); Err.Int(first, 0);
+          Err.String(": an option that starts with $, which would end the options file in the procedure");
+          Err.Ln;
+          ok := FALSE
+        ELSIF ~more THEN
+          Libraries.AddLinkArgument(linkArguments, option); length := 0
+        END
+      END;
+      IF ~ok OR r.eof THEN EXIT END
+    END;
+    Files.Close(f);
+    IF ok & (length > 0) THEN
+      failed := TRUE; Err.String("poc: "); Err.String(path); Err.String(", line "); Err.Int(first, 0);
+      Err.String(": an option continued past the end of the file"); Err.Ln;
+      ok := FALSE
+    END;
+    RETURN ok
+  END AddVaxOptionFile;
+
+  (* Every options file of vaxOptionFiles added (AddVaxOptionFile), in the
+     order given *)
+  PROCEDURE AddVaxOptionFiles(): BOOLEAN;
+    VAR a: Libraries.LinkArgument;
+  BEGIN
+    a := vaxOptionFiles;
+    WHILE (a # NIL) & AddVaxOptionFile(a.arg) DO a := a.next END;
+    RETURN a = NIL
+  END AddVaxOptionFiles;
+
   (* The lines a VAX link's options file takes besides its objects and
      libraries (PLAN.md, "Ongoing implementation enhancements"): the link
      lines of the manifests of the libraries of Libraries.linkOrder, in
@@ -2083,7 +2188,10 @@ MODULE Poc;
       comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR; path: Libraries.Path;
   BEGIN
     IF ~SetVaxTarget("-build", VaxToolchainDriver.triple) THEN RETURN END;
-    IF (exePath[0] # 0X) & ~VaxImagePaths(exePath, comPath, image) OR ~VaxLinkArgumentsOk() THEN RETURN END;
+    IF (exePath[0] # 0X) & ~VaxImagePaths(exePath, comPath, image) OR ~AddVaxOptionFiles()
+        OR ~VaxLinkArgumentsOk() THEN
+      RETURN
+    END;
     CheckAndDiscoverProgram(name, outputDir, modules, ok);
     AddVaxCollector(outputDir, modules, ok);
     IF ~ok THEN RETURN END;
@@ -2212,6 +2320,7 @@ MODULE Poc;
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildVax(name, outputDir, exePath); RETURN END;
     IF commandTables # NIL THEN NotForCommandTables; RETURN END;
     IF vaxObjectFiles # NIL THEN NotForVaxObjectFiles; RETURN END;
+    IF vaxOptionFiles # NIL THEN NotForVaxOptionFiles; RETURN END;
     IF ~PassObjectFiles() THEN RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
@@ -2261,9 +2370,11 @@ MODULE Poc;
 
   (* The modules of the command line's files from firstFile on, by the
      names their files declare, in members: poc -library's (forLibrary),
-     where a file may also be a module's .sym or .o (Phase 12 step 2f) or
-     an object file (IsObjectFile, in objectFiles) and a module a library
-     on the path has is refused, or poc -compile's *)
+     where a file may also be a module's .sym or .o (Phase 12 step 2f), an
+     object file (IsObjectFile, in objectFiles), or for vax-dec-vms a
+     hand-written .mar (in vaxParts) or a VAX object file (in
+     vaxObjectFiles; section 13.1, proposal 6), and a module a library on
+     the path has is refused, or poc -compile's *)
   PROCEDURE ReadMembers(firstFile: INTEGER; forLibrary: BOOLEAN; VAR ok: BOOLEAN);
     VAR
       file: Libraries.Path; i: INTEGER; member, tail: LibraryMember;
@@ -2271,14 +2382,29 @@ MODULE Poc;
       owner: Libraries.Library; compiled: BOOLEAN; symFile, objectFile, irFile: Libraries.Path;
   BEGIN
     ok := TRUE; members := NIL; tail := NIL; membersOnly := forLibrary; vaxParts := NIL; objectFiles := NIL;
+    vaxObjectFiles := NIL; vaxOptionFiles := NIL;
     FOR i := firstFile TO argumentCount - 1 DO
       GetArgument(i, file); objectFile[0] := 0X; irFile[0] := 0X;
       IF ok & forLibrary & forVax & IsMarFile(file) THEN
         AddVaxPart(file, vaxParts, ok)
       ELSIF ok & IsCldFile(file) THEN
         NotForCommandTables; ok := FALSE
+      ELSIF ok & forLibrary & forVax & IsObjFile(file) THEN
+        IF ~FileExists(file) THEN
+          failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
+        ELSE
+          AddVaxPart(file, vaxObjectFiles, ok)
+        END
       ELSIF ok & IsObjFile(file) THEN
         NotForVaxObjectFiles; ok := FALSE
+      ELSIF ok & forLibrary & forVax & IsOptFile(file) THEN
+        IF ~FileExists(file) THEN
+          failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
+        ELSE
+          Libraries.AddLinkArgument(vaxOptionFiles, file)
+        END
+      ELSIF ok & IsOptFile(file) THEN
+        NotForVaxOptionFiles; ok := FALSE
       ELSIF ok & ~forVax & IsObjectFile(file) THEN
         IF forLibrary THEN AddObjectFile(file, ok) ELSE NotForObjectFiles; ok := FALSE END
       ELSE
@@ -2416,11 +2542,12 @@ MODULE Poc;
   (* poc -target vax-dec-vms -library <name> <file>... (Phase 17 step 1;
      doc/developer/vax-macro32-backend.md, section 18): the library name
      for the VAX, made as on LLVM (BuildLibrary) from its modules, each
-     compiled from source, and any hand-written .mar files named
-     (vaxParts), in <outputDir>/vax-dec-vms/<O2|OC>/: each module's .sym
-     and .mar - or with objects, its .obj (PLAN.md Phase 18 step 6;
-     doc/developer/vax-object-language.md, section 17, proposal 6) - each
-     part copied there, the manifest and the .owner files,
+     compiled from source, any hand-written .mar files named (vaxParts)
+     and any object files (vaxObjectFiles; section 13.1, proposal 6), in
+     <outputDir>/vax-dec-vms/<O2|OC>/: each module's .sym and .mar - or
+     with objects, its .obj (PLAN.md Phase 18 step 6; doc/developer/
+     vax-object-language.md, section 17, proposal 6) - each part and each
+     object file copied there, the manifest and the .owner files,
      and the DCL procedures VaxToolchainDriver.WriteLibraryProcedures
      writes, <name>_build.com, which makes <NAME>.OLB and <NAME>.EXE on
      VMS, its image linked with the lines VaxOptionLines gives, and
@@ -2433,7 +2560,9 @@ MODULE Poc;
       modules, modulesTail, m: ModuleLists.ModuleList; visited: VisitedModule; ok: BOOLEAN;
       imp: SyntaxTree.ImportNode; key: Libraries.Key;
       units, parts, partsTail, needs, needsTail, symbols, u: VaxToolchainDriver.Unit;
+      named, namedTail, entryPoints: VaxToolchainDriver.Unit; object, other: VaxPart;
       options: VaxToolchainDriver.OptionLine; path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
+      file: Libraries.Path;
   BEGIN
     IF ~SetVaxTarget("-library", VaxToolchainDriver.triple) OR ~VaxLinkArgumentsOk() THEN RETURN END;
     SetVaxWay;
@@ -2446,7 +2575,9 @@ MODULE Poc;
     Libraries.Exclude(name);
     Libraries.TupleDirectory(outputDir, dir);
     ReadMembers(firstFile, TRUE, ok);
-    IF ~ok THEN RETURN END;
+    (* the options files' lines are -link's, recorded with them (section
+       13.3) *)
+    IF ~ok OR ~AddVaxOptionFiles() OR ~VaxLinkArgumentsOk() THEN RETURN END;
     member := members;
     WHILE member # NIL DO
       IF member.compiled THEN
@@ -2468,6 +2599,44 @@ MODULE Poc;
       END;
       member := member.next
     END;
+    (* each object file (section 13.1, proposal 6): one in the form poc's
+       own have, its name no module's, hand-written part's, other object's
+       or the runtime's, as -build's, and its entry points read, for
+       UNIVERSAL=, before anything is written *)
+    entryPoints := NIL; object := vaxObjectFiles;
+    WHILE object # NIL DO
+      member := members;
+      WHILE (member # NIL) & ~VaxToolchainDriver.IsSameVmsName(member.name, object.name) DO member := member.next END;
+      part := vaxParts;
+      WHILE (part # NIL) & ~VaxToolchainDriver.IsSameVmsName(part.name, object.name) DO part := part.next END;
+      other := vaxObjectFiles;
+      WHILE (other # object) & ~VaxToolchainDriver.IsSameVmsName(other.name, object.name) DO other := other.next END;
+      IF member # NIL THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path); Err.String(" has the file name of module ");
+        Err.String(member.name); Err.String("'s .obj"); Err.Ln;
+        RETURN
+      ELSIF part # NIL THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path); Err.String(" has the file name of the object of ");
+        Err.String(part.path); Err.Ln;
+        RETURN
+      ELSIF other # object THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path); Err.String(" has the file name of ");
+        Err.String(other.path); Err.Ln;
+        RETURN
+      ELSIF VaxToolchainDriver.IsSameVmsName(object.name, VaxToolchainDriver.runtimeLibrary) THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path);
+        Err.String(" has the file name of poc's runtime, POCRTL.OBJ"); Err.Ln;
+        RETURN
+      ELSIF ~VaxToolchainDriver.IsCountedObject(object.path) THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path);
+        Err.String(" is not a VAX object in the counted form"); Err.Ln;
+        RETURN
+      ELSIF ~VaxToolchainDriver.ReadObjectEntryPoints(object.path, entryPoints) THEN
+        failed := TRUE; Err.String("poc: cannot read the global symbols of "); Err.String(object.path); Err.Ln;
+        RETURN
+      END;
+      object := object.next
+    END;
     IF ~Directories.MakeDirectory(dir) THEN
       failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(dir); Err.Ln;
       RETURN
@@ -2484,6 +2653,19 @@ MODULE Poc;
       IF partsTail = NIL THEN parts := u ELSE partsTail.next := u END;
       partsTail := u;
       part := part.next
+    END;
+    (* and each object file, as <name>.obj *)
+    named := NIL; namedTail := NIL; object := vaxObjectFiles;
+    WHILE object # NIL DO
+      Directories.MakePath(dir, object.name, path); Strcat(path, ".obj");
+      IF ~VaxToolchainDriver.CopyObject(object.path, path) THEN
+        failed := TRUE; Err.String("poc: cannot copy "); Err.String(object.path); Err.String(" to "); Err.String(dir); Err.Ln;
+        RETURN
+      END;
+      NEW(u); COPY(object.name, u.name); u.next := NIL;
+      IF namedTail = NIL THEN named := u ELSE namedTail.next := u END;
+      namedTail := u;
+      object := object.next
     END;
     ModuleInterface.SetInterfaceDir(dir);
     visited := NIL; member := members;
@@ -2513,7 +2695,8 @@ MODULE Poc;
     IF ~CheckLibraries(modules) OR ~VaxOptionLines(options) OR ~WriteVaxModules(modules, dir, TRUE, FALSE) THEN
       RETURN
     END;
-    (* every global symbol of its modules and parts, for UNIVERSAL= *)
+    (* every global symbol of its modules and parts, and every entry point
+       of its object files, for UNIVERSAL= *)
     units := VaxUnits(modules, TRUE); symbols := NIL;
     u := units;
     WHILE u # NIL DO
@@ -2531,6 +2714,12 @@ MODULE Poc;
       END;
       u := u.next
     END;
+    IF symbols = NIL THEN
+      symbols := entryPoints
+    ELSE
+      u := symbols; WHILE u.next # NIL DO u := u.next END;
+      u.next := entryPoints
+    END;
     needs := NIL; needsTail := NIL; owner := Libraries.linkOrder;
     WHILE owner # NIL DO
       NEW(u); COPY(owner.name, u.name); u.next := NIL;
@@ -2538,7 +2727,8 @@ MODULE Poc;
       needsTail := u;
       owner := owner.linkNext
     END;
-    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, options, symbols, vaxObjects) THEN
+    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, named, needs, options, symbols,
+                                                     vaxObjects) THEN
       failed := TRUE; Err.String("poc: cannot write library "); Err.String(name); Err.String("'s procedures in ");
       Err.String(dir); Err.Ln;
       RETURN
@@ -2563,6 +2753,8 @@ MODULE Poc;
     WHILE owner # NIL DO Libraries.AddNeed(lib, owner.name); owner := owner.linkNext END;
     u := parts;
     WHILE u # NIL DO Libraries.AddPart(lib, u.name); u := u.next END;
+    u := named;
+    WHILE u # NIL DO COPY(u.name, file); Strcat(file, ".obj"); Libraries.AddObjectFile(lib, file); u := u.next END;
     IF ~Libraries.WriteManifest(lib) THEN failed := TRUE END
   END BuildLibraryVax;
 
@@ -3174,7 +3366,9 @@ MODULE Poc;
      that poc on VMS can do it too; a library of objects has each module's
      .obj in place of its .mar, copied whole (VaxToolchainDriver.CopyObject;
      PLAN.md Phase 18 step 6, doc/developer/vax-object-language.md,
-     section 17, proposal 6). Its .OLB and .EXE are made where it is
+     section 17, proposal 6), as is each object file of its command line,
+     by its manifest's object lines (section 13.1, proposal 6), the old
+     copy's deleted first. Its .OLB and .EXE are made where it is
      installed, by its build procedure there, which its setup procedure
      then names. *)
   PROCEDURE InstallLibraryVax(name, outputDir: ARRAY OF CHAR);
@@ -3236,7 +3430,9 @@ MODULE Poc;
           m := m.next
         END;
         n := old.parts;
-        WHILE n # NIL DO COPY(n.name, file); Strcat(file, ".mar"); DeleteIn(dir, file); n := n.next END
+        WHILE n # NIL DO COPY(n.name, file); Strcat(file, ".mar"); DeleteIn(dir, file); n := n.next END;
+        n := old.objectFiles;
+        WHILE n # NIL DO DeleteIn(dir, n.name); n := n.next END
       END
     END;
     (* the files, copied, the manifest last *)
@@ -3259,6 +3455,11 @@ MODULE Poc;
     WHILE n # NIL DO
       COPY(n.name, file); Strcat(file, ".mar");
       IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+      n := n.next
+    END;
+    n := lib.objectFiles;
+    WHILE n # NIL DO
+      IF ~CopyObjectInto(lib.dir, dir, n.name) THEN RETURN END;
       n := n.next
     END;
     COPY(name, file); Strcat(file, "_build.com");
@@ -3391,11 +3592,14 @@ MODULE Poc;
     HelpLine("  -build <file>              build a program, as poc <file> does");
     HelpLine("  -build <file> <t>.cld...   for vax-dec-vms: and link command tables");
     HelpLine("  -build <file> <o>.obj...   for vax-dec-vms: and link VAX object files");
+    HelpLine("  -build <file> <f>.opt...   for vax-dec-vms: and add the options files' lines");
     LLVMHelpLine("  -build <file> <o>.o...     and link object files, each with no .sym beside it");
     HelpLine("  -check <file>              check a module, writing nothing");
     HelpLine("  -compile <file>...         compile modules to .sym, .ll and .o, not linked");
     HelpLine("  -library <name> <file>...  build the library <name> of the modules");
     LLVMHelpLine("                             (and object files, .o with no .sym beside it)");
+    HelpLine("                             (for vax-dec-vms: and VAX object files, .obj,");
+    HelpLine("                             and options files, .opt, whose lines -link's are)");
     HelpLine("  -install-library <name>    install the library <name> from the library path");
     HelpLine("  -emit-interface <file>     write the module's interface, <Module>.sym");
     HelpLine("  -show-interface <file>     print the module's interface");
@@ -3921,6 +4125,8 @@ MODULE Poc;
                 NotForCommandTables
               ELSIF (vaxObjectFiles # NIL) & (arg # "-build") THEN
                 NotForVaxObjectFiles
+              ELSIF (vaxOptionFiles # NIL) & (arg # "-build") THEN
+                NotForVaxOptionFiles
               ELSIF (objectFiles # NIL) & (arg # "-build") THEN
                 NotForObjectFiles
               ELSE

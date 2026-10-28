@@ -390,6 +390,12 @@ file there, in any case, is an object file, copied beside them and
 linked after them; on Linux and the BSDs it must have the counted
 records poc's own objects have, and the procedure converts it as it does
 those;
+a
+.Pa .opt
+file there is an options file, which poc reads, each of its lines added
+as a
+.Fl link
+argument after those given;
 .Fl compile
 writes the named modules'
 .Pa .mar
@@ -403,7 +409,14 @@ and
 .Pq or Pa .obj ,
 any
 .Pa .mar
-file named copied beside them, its manifest, and two DCL procedures:
+file named copied beside them, and any
+.Pa .obj
+file named copied too, its entry points made universal, its manifest,
+recording any
+.Pa .opt
+file's lines as it does
+.Fl link
+arguments, and two DCL procedures:
 .Ar name Ns Pa _build.com ,
 which makes the object library
 .Pa NAME.OLB
@@ -542,6 +555,19 @@ at most 512 characters, not starting with
 and each line linked once; with
 .Fl library
 it is also in the options file of the library's shareable image.
+An options file,
+.Pa .opt ,
+among the files of
+.Fl build
+or
+.Fl library
+gives such lines too, after the
+.Fl link
+arguments: blank lines and comments, lines starting with
+.Li \&! ,
+left out, and a line that ends in
+.Li \-
+joined with the next.
 .It Fl c-flag Ar arg
 Pass
 .Ar arg

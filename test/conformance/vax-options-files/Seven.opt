@@ -1,0 +1,5 @@
+! vax-options-files: SEVEN_VALUE, an absolute symbol whose value is 7,
+! which Value and SevenUse print as the address of an external procedure
+
+   SYMBOL=SEVEN_VALUE,-
+	7	

@@ -44,17 +44,14 @@ exit 1
 poc: Tail.obj is not a VAX object in the counted form
 exit 1
 == poc -build Use.mod other/Twice.obj
-poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+poc: a VAX object file (.obj) is linked only by -build or -library for vax-dec-vms
 exit 1
 == poc Use.mod other/Twice.obj
-poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+poc: a VAX object file (.obj) is linked only by -build or -library for vax-dec-vms
 exit 1
 == poc -target vax-dec-vms -emit-macro32 Use.mod other/Twice.obj
-poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+poc: a VAX object file (.obj) is linked only by -build or -library for vax-dec-vms
 exit 1
 == poc -target vax-dec-vms -compile Use.mod other/Twice.obj
-poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
-exit 1
-== poc -target vax-dec-vms -library USE Use.mod other/Twice.obj
-poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+poc: a VAX object file (.obj) is linked only by -build or -library for vax-dec-vms
 exit 1

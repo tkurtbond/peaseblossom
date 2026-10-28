@@ -1,7 +1,7 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * General Improvements
 ** TODO `++` concatenates strings (arrays of characters), stopping each piece at a NUL, and `+++` concatenates arrays, always copying the whole array (even arrays of characters).
-** TODO Have poc link object files listed on the poc command line (.o on Unix, .obj on VMS) into the resulting executable or put them in the object library when producing a library.
+** DONE Have poc link object files listed on the poc command line (.o on Unix, .obj on VMS) into the resulting executable or put them in the object library when producing a library.
 ** TODO Need a better way to access external variables than declaring them as external procedures and converting the value from a procedure.
 ** TODO Should poc use go's approach of rebuilding by content rather than timestamps?
 

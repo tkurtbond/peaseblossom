@@ -17,19 +17,52 @@ MODULE ObjectRecords;
     File* = POINTER TO FileDesc;
     FileDesc = RECORD
       file: Files.File;
-      rider: Files.Rider
+      rider: Files.Rider;
+      writing: BOOLEAN (* made by Create, not opened by Open *)
     END;
 
   (* A new file called name, for records of at most maximum bytes (which
      the VMS implementation needs): NIL if it cannot be made *)
-  PROCEDURE Open*(name: ARRAY OF CHAR; maximum: INTEGER): File;
+  PROCEDURE Create*(name: ARRAY OF CHAR; maximum: INTEGER): File;
     VAR f: File; file: Files.File;
   BEGIN
     file := Files.New(name);
     IF file = NIL THEN RETURN NIL END;
-    NEW(f); f.file := file; Files.Set(f.rider, file, 0);
+    NEW(f); f.file := file; Files.Set(f.rider, file, 0); f.writing := TRUE;
+    RETURN f
+  END Create;
+
+  (* The file called name, to read its records with Get (an object named on
+     poc -library's command line: doc/developer/vax-macro32-backend.md,
+     section 13.1, proposal 6), one IsCounted takes: NIL if it cannot be
+     opened *)
+  PROCEDURE Open*(name: ARRAY OF CHAR): File;
+    VAR f: File; file: Files.File;
+  BEGIN
+    file := Files.Old(name);
+    IF file = NIL THEN RETURN NIL END;
+    NEW(f); f.file := file; Files.Set(f.rider, file, 0); f.writing := FALSE;
     RETURN f
   END Open;
+
+  (* The next record, in bytes, its length in length, as many of its bytes
+     as bytes holds: FALSE at the file's end, or a count of 0, the zeros
+     after the last record *)
+  PROCEDURE Get*(f: File; VAR bytes: ARRAY OF CHAR; VAR length: INTEGER): BOOLEAN;
+    VAR low, high, ch: CHAR; count, i: LONGINT;
+  BEGIN
+    Files.Read(f.rider, low); Files.Read(f.rider, high);
+    IF f.rider.eof THEN RETURN FALSE END;
+    count := ORD(low) + 256 * LONG(ORD(high));
+    IF count = 0 THEN RETURN FALSE END;
+    length := 0;
+    FOR i := 1 TO count DO
+      Files.Read(f.rider, ch);
+      IF length < LEN(bytes) THEN bytes[length] := ch; INC(length) END
+    END;
+    IF ODD(count) THEN Files.Read(f.rider, ch) END;
+    RETURN TRUE
+  END Get;
 
   (* A record, the first length bytes of bytes *)
   PROCEDURE Put*(f: File; VAR bytes: ARRAY OF CHAR; length: INTEGER);
@@ -42,7 +75,8 @@ MODULE ObjectRecords;
 
   PROCEDURE Close*(f: File);
   BEGIN
-    Files.Register(f.file); Files.Close(f.file)
+    IF f.writing THEN Files.Register(f.file) END;
+    Files.Close(f.file)
   END Close;
 
   (* The file at from, written by Put, copied byte for byte to to (a

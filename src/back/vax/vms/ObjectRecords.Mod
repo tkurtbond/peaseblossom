@@ -14,10 +14,26 @@ MODULE ObjectRecords;
 
   (* A new file called name, for records of at most maximum bytes: NIL if
      it cannot be made *)
-  PROCEDURE Open*(name: ARRAY OF CHAR; maximum: INTEGER): File;
+  PROCEDURE Create*(name: ARRAY OF CHAR; maximum: INTEGER): File;
   BEGIN
     RETURN RecordFiles.Create(name, maximum)
+  END Create;
+
+  (* The object called name, to read its records with Get (one named on poc
+     -library's command line: doc/developer/vax-macro32-backend.md, section
+     13.1, proposal 6): NIL if it cannot be opened, or is not a file of
+     records *)
+  PROCEDURE Open*(name: ARRAY OF CHAR): File;
+  BEGIN
+    RETURN RecordFiles.Open(name)
   END Open;
+
+  (* The next record, in bytes, its length in length: FALSE at the file's
+     end. One longer than bytes stops the program (RecordFiles.Get). *)
+  PROCEDURE Get*(f: File; VAR bytes: ARRAY OF CHAR; VAR length: INTEGER): BOOLEAN;
+  BEGIN
+    RETURN RecordFiles.Get(f, bytes, length)
+  END Get;
 
   (* A record, the first length bytes of bytes *)
   PROCEDURE Put*(f: File; VAR bytes: ARRAY OF CHAR; length: INTEGER);

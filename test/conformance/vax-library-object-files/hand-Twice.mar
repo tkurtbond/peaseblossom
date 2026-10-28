@@ -1,0 +1,14 @@
+; vax-library-object-files (doc/developer/vax-macro32-backend.md, section
+; 13.1, proposal 6): an object MACRO makes on VMS, not poc, brought back
+; in the counted form OBJCONVERT -COUNTED writes, and put in the library
+; EXT as an object file. TWICE(n) is 2 * n; OTHER is 0.
+	.TITLE	TWICE
+	.IDENT	/V1.0/
+	.PSECT	$CODE, PIC, SHR, NOWRT, EXE, LONG
+	.ENTRY	TWICE, ^M<>
+	MULL3	#2, 4(AP), R0
+	RET
+	.ENTRY	OTHER, ^M<>
+	CLRL	R0
+	RET
+	.END

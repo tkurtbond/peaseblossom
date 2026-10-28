@@ -1,0 +1,50 @@
+POCRTL exit 0
+== poc -target vax-dec-vms -library-path libs -build Value.mod Seven.opt
+exit 0
+Value.com matches expected-Value.com
+== poc -target vax-dec-vms -library-path libs -link SYMBOL=SEVEN_VALUE,7 -o twice -build Value.mod Seven.opt
+exit 0
+twice.com: 1 SYMBOL line
+== poc -target vax-dec-vms -output-dir libs -library-path libs -library SEVEN SevenLib.mod SEVEN-CRLF.OPT
+exit 0
+manifest matches expected-SEVEN.library
+SEVEN_build.com: 1 SYMBOL line
+== poc -target vax-dec-vms -library-path libs -o useolb -build SevenUse.mod
+exit 0
+useolb.com: 1 SYMBOL line
+== poc -target vax-dec-vms -library-path libs -build Value.mod missing.opt
+poc: cannot open missing.opt
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library OTHER Value.mod missing.opt
+poc: cannot open missing.opt
+exit 1
+== poc -target vax-dec-vms -library-path libs -build Value.mod Dollar.opt
+poc: Dollar.opt, line 2: an option that starts with $, which would end the options file in the procedure
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library OTHER Value.mod Dollar.opt
+poc: Dollar.opt, line 2: an option that starts with $, which would end the options file in the procedure
+exit 1
+== poc -target vax-dec-vms -library-path libs -build Value.mod Long.opt
+poc: Long.opt, line 1: an option longer than 512 characters, more than the options file in the procedure takes
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library OTHER Value.mod Long.opt
+poc: Long.opt, line 1: an option longer than 512 characters, more than the options file in the procedure takes
+exit 1
+== poc -target vax-dec-vms -library-path libs -build Value.mod Dangling.opt
+poc: Dangling.opt, line 2: an option continued past the end of the file
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library OTHER Value.mod Dangling.opt
+poc: Dangling.opt, line 2: an option continued past the end of the file
+exit 1
+== poc -build Value.mod Seven.opt
+poc: an options file (.opt) is linked only by -build or -library for vax-dec-vms
+exit 1
+== poc -output-dir refused -library OTHER SevenLib.mod Seven.opt
+poc: an options file (.opt) is linked only by -build or -library for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -library-path libs -compile Value.mod Seven.opt
+poc: an options file (.opt) is linked only by -build or -library for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -library-path libs -emit-interface Value.mod Seven.opt
+poc: an options file (.opt) is linked only by -build or -library for vax-dec-vms
+exit 1

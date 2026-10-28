@@ -1,0 +1,11 @@
+POCRTL_BUILD: %X10000001
+SEVEN_BUILD: %X10000001
+VALUE.COM, with SEVEN.OPT: %X10000001
+SEVEN_VALUE is 7
+run: %X00000001
+USESHR.COM, against the shareable images: %X10000001
+seven 7, SEVEN_VALUE is 7
+run: %X00000001
+USEOLB.COM, against the object libraries: %X10000001
+seven 7, SEVEN_VALUE is 7
+run: %X00000001

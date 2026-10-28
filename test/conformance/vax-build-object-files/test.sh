@@ -15,8 +15,9 @@
 # there, one not in the counted form (a text file, an empty file, one
 # with its counts lost, as FTP in binary leaves an object from VMS, and
 # one with a record of 514 bytes, longer than OBJCONVERT takes, and one
-# with a byte not zero after its count of 0), and
-# an object given to any other command or target.
+# with a byte not zero after its count of 0), and an object given to
+# any other command but -library (fixture vax-library-object-files) or
+# to any other target.
 rm -rf work
 mkdir work work/other
 run() {
@@ -74,7 +75,6 @@ run -build Use.mod other/Twice.obj
 run Use.mod other/Twice.obj
 run -target vax-dec-vms -emit-macro32 Use.mod other/Twice.obj
 run -target vax-dec-vms -compile Use.mod other/Twice.obj
-run -target vax-dec-vms -library USE Use.mod other/Twice.obj
 ls work/*.com 2>/dev/null | LC_ALL=C sort | sed 's/^/procedure: /' >>result
 rm -rf work
 . ../../testresult.sh

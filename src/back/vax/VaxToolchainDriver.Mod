@@ -189,7 +189,7 @@ MODULE VaxToolchainDriver;
         source: VaxObjectWriter.SourceFile;
   BEGIN
     ModuleFile(outputDir, moduleName, ".obj", path);
-    f := ObjectRecords.Open(path, VaxObjectWriter.recordSize);
+    f := ObjectRecords.Create(path, VaxObjectWriter.recordSize);
     IF f = NIL THEN RETURN FALSE END;
     IF debug THEN source := DebugSource() ELSE source := NIL END;
     VaxObjectWriter.Write(image, Diagnostics.fileName, processor, source, f);
@@ -595,6 +595,100 @@ MODULE VaxToolchainDriver;
     RETURN ObjectRecords.IsCounted(path)
   END IsCountedObject;
 
+  (* The entry points the object at path defines, appended to symbols in
+     the order its GSD records define them: each one of an EPM, EPMW, PRO
+     or PROW subrecord (the Linker manual, AA-LA62A, section 7.3), which a
+     library the object is in makes UNIVERSAL= (section 13.1, proposal 6).
+     Every other subrecord of types 0 to 12, the object language's, is
+     stepped over. FALSE if the object cannot be read (on Unix, one
+     IsCountedObject takes), or a GSD record holds a subrecord of another
+     type or one that runs past its end. *)
+  PROCEDURE ReadObjectEntryPoints*(path: ARRAY OF CHAR; VAR symbols: Unit): BOOLEAN;
+    CONST
+      gsdRecord = 1;
+      sectionDefinition = 0; symbolSpecification = 1; entryPoint = 2; procedure = 3;
+      wordSymbol = 4; wordEntryPoint = 5; wordProcedure = 6; identCheck = 7; environment = 8;
+      localSymbol = 9; localEntryPoint = 10; localProcedure = 11; sharedSectionDefinition = 12;
+    VAR f: ObjectRecords.File; record: ARRAY VaxObjectWriter.recordSize OF CHAR; name: ARRAY 32 OF CHAR;
+        length, at, type, flags, count, i: INTEGER; ok: BOOLEAN; u, last: Unit;
+
+    (* the byte at at, at moved past it; 0, and ok FALSE, past the record's end *)
+    PROCEDURE NextByte(): INTEGER;
+    BEGIN
+      IF at >= length THEN ok := FALSE; RETURN 0 END;
+      INC(at);
+      RETURN ORD(record[at - 1])
+    END NextByte;
+
+    PROCEDURE SkipBytes(n: INTEGER);
+    BEGIN
+      at := at + n;
+      IF at > length THEN ok := FALSE END
+    END SkipBytes;
+
+    (* a counted name, at most 31 characters, read into name *)
+    PROCEDURE ReadName;
+      VAR n, k: INTEGER;
+    BEGIN
+      n := NextByte();
+      IF n >= LEN(name) THEN ok := FALSE END;
+      k := 0;
+      WHILE ok & (k < n) DO name[k] := CHR(NextByte()); INC(k) END;
+      name[k] := 0X
+    END ReadName;
+
+  BEGIN
+    f := ObjectRecords.Open(path);
+    IF f = NIL THEN RETURN FALSE END;
+    last := symbols;
+    IF last # NIL THEN WHILE last.next # NIL DO last := last.next END END;
+    ok := TRUE;
+    WHILE ok & ObjectRecords.Get(f, record, length) DO
+      IF (length > 0) & (ORD(record[0]) = gsdRecord) THEN
+        at := 1;
+        WHILE ok & (at < length) DO
+          type := NextByte();
+          IF (type = sectionDefinition) OR (type = sharedSectionDefinition) THEN
+            SkipBytes(7); (* alignment, flags, allocation *)
+            IF type = sharedSectionDefinition THEN SkipBytes(4) END; (* base *)
+            ReadName
+          ELSIF (type = symbolSpecification) OR (type = wordSymbol) OR (type = localSymbol) THEN
+            SkipBytes(1); flags := NextByte(); SkipBytes(1); (* data type, flags *)
+            IF type = localSymbol THEN SkipBytes(2) END; (* environment *)
+            IF ODD(flags DIV 2) THEN (* a definition: section and value *)
+              IF type = symbolSpecification THEN SkipBytes(5) ELSE SkipBytes(6) END
+            END;
+            ReadName
+          ELSIF (type = entryPoint) OR (type = procedure) OR (type = wordEntryPoint) OR (type = wordProcedure)
+                OR (type = localEntryPoint) OR (type = localProcedure) THEN
+            SkipBytes(3); (* data type, flags *)
+            IF (type = localEntryPoint) OR (type = localProcedure) THEN SkipBytes(2) END; (* environment *)
+            IF (type = entryPoint) OR (type = procedure) THEN SkipBytes(7) ELSE SkipBytes(8) END;
+            ReadName;
+            IF (type = procedure) OR (type = wordProcedure) OR (type = localProcedure) THEN
+              SkipBytes(1); count := NextByte(); (* the arguments, at least and at most *)
+              i := 0;
+              WHILE ok & (i < count) DO SkipBytes(1); SkipBytes(NextByte()); INC(i) END
+            END;
+            IF ok & (type # localEntryPoint) & (type # localProcedure) THEN
+              NEW(u); COPY(name, u.name); u.next := NIL;
+              IF last = NIL THEN symbols := u ELSE last.next := u END;
+              last := u
+            END
+          ELSIF type = identCheck THEN
+            SkipBytes(2); ReadName; SkipBytes(NextByte()); ReadName (* flags, entity, ident, object *)
+          ELSIF type = environment THEN
+            SkipBytes(4); ReadName (* flags, environment *)
+          ELSE
+            ok := FALSE
+          END
+        END
+      END
+    END;
+    ObjectRecords.Close(f);
+    RETURN ok
+  END ReadObjectEntryPoints;
+
   (* The text file from copied to the file to, a line at a time, as
      poc on VMS can as well as on Unix (no cp there): a hand-written .mar
      put in a library (section 18). FALSE if either cannot be opened, or a
@@ -633,21 +727,24 @@ MODULE VaxToolchainDriver;
 
   (* The DCL procedures of the VAX library name in the directory dir (its
      tuple directory, section 18, proposal 1), units its modules, in the
-     order MACRO takes them, parts its hand-written .MAR files, needs the
-     libraries it needs, in link order, options lines for its image's
-     options file (poc -link), and symbols the global symbols of them
-     all. <name>_build.com, run on VMS in the directory that holds the
+     order MACRO takes them, parts its hand-written .MAR files, named the
+     object files named on the command line (section 13.1, proposal 6),
+     needs the libraries it needs, in link order, options lines for its
+     image's options file (poc -link), and symbols the global symbols of
+     them all. <name>_build.com, run on VMS in the directory that holds the
      library's files, assembles them - with objects, the modules are each
      <UNIT>.OBJ poc wrote, converted first when convertObjects, and only
      the parts are assembled (PLAN.md Phase 18 step 6; doc/developer/
-     vax-object-language.md, section 17, proposals 3 and 6) - makes the object library <NAME>.OLB,
+     vax-object-language.md, section 17, proposals 3 and 6), and each of
+     named is <OBJECT>.OBJ, converted first when convertNamedObjects -
+     makes the object library <NAME>.OLB,
      one module at a time (LIBRARY/INSERT refuses a global symbol the
      library has already, section 18.1), and links the shareable image
      <NAME>.EXE from them and the needed libraries' images - the modules
      taken from <NAME>.OLB by /INCLUDE, so that LINK holds one file open
      however many there are, not one for each, which the quotas of a
      process stop near a hundred (section 18.5); the hand-written parts,
-     whose module names need not be their files', as objects - with
+     whose module names need not be their files', and named, as objects - with
      every global symbol UNIVERSAL= (proposal 2) and no GSMATCH= (proposal
      3); it stops at a warning, as -build's does, and first, with a
      message, when a needed library's setup procedure has not been run.
@@ -658,12 +755,13 @@ MODULE VaxToolchainDriver;
      RMS takes a file specification without punctuation as a logical name
      (found on the development system, 2026-10-12). FALSE if a file could
      not be written. *)
-  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs: Unit; options: OptionLine;
-                                    symbols: Unit; objects: BOOLEAN): BOOLEAN;
+  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, named, needs: Unit;
+                                    options: OptionLine; symbols: Unit; objects: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u: Unit; o: OptionLine; libName, unitName: ARRAY 64 OF CHAR;
         line: ARRAY 300 OF CHAR; label: ARRAY 16 OF CHAR; file: ARRAY 64 OF CHAR;
-        path: ARRAY pathBufferLength OF CHAR; count: INTEGER;
+        path: ARRAY pathBufferLength OF CHAR; count: INTEGER; convertNamed: BOOLEAN;
   BEGIN
+    convertNamed := (named # NIL) & convertNamedObjects;
     Upper(name, libName);
     COPY(name, file); Append(file, "_build.com");
     Directories.MakePath(dir, file, path);
@@ -674,7 +772,9 @@ MODULE VaxToolchainDriver;
     Append(line, libName); Append(line, ".OLB and ");
     Append(line, libName); Append(line, ".EXE"); WriteLine(w, line);
     WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 18). Run it where");
-    IF ~objects THEN
+    IF ~objects & (named # NIL) THEN
+      WriteLine(w, "$ ! the library's .MAR and .OBJ files are, once the setup procedure of each")
+    ELSIF ~objects THEN
       WriteLine(w, "$ ! the library's .MAR files are, once the setup procedure of each")
     ELSIF parts # NIL THEN
       WriteLine(w, "$ ! the library's .OBJ and .MAR files are, once the setup procedure of each")
@@ -682,7 +782,7 @@ MODULE VaxToolchainDriver;
       WriteLine(w, "$ ! the library's .OBJ files are, once the setup procedure of each")
     END;
     WriteLine(w, "$ ! library it needs has been run.");
-    WriteConversionComment(w, objects & convertObjects);
+    WriteConversionComment(w, objects & convertObjects OR convertNamed);
     WriteLine(w, "$ ON WARNING THEN EXIT $STATUS");
     count := 0; u := needs;
     WHILE u # NIL DO
@@ -694,6 +794,7 @@ MODULE VaxToolchainDriver;
     END;
     count := 0;
     IF objects & convertObjects THEN WriteConversions(w, units, count) END;
+    IF convertNamed THEN WriteConversions(w, named, count) END;
     IF objects THEN u := NIL ELSE u := units END;
     WHILE u # NIL DO
       Upper(u.name, unitName);
@@ -721,6 +822,13 @@ MODULE VaxToolchainDriver;
       Append(line, unitName); Append(line, ".OBJ"); WriteLine(w, line);
       u := u.next
     END;
+    u := named;
+    WHILE u # NIL DO
+      Upper(u.name, unitName);
+      COPY("$ LIBRARY/INSERT ", line); Append(line, libName); Append(line, ".OLB ");
+      Append(line, unitName); Append(line, ".OBJ"); WriteLine(w, line);
+      u := u.next
+    END;
     COPY("$ CREATE ", line); Append(line, libName); Append(line, ".OPT"); WriteLine(w, line);
     IF units # NIL THEN
       COPY(libName, line); Append(line, ".OLB/INCLUDE=(-"); WriteLine(w, line);
@@ -732,6 +840,8 @@ MODULE VaxToolchainDriver;
       END
     END;
     u := parts;
+    WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, ".OBJ"); WriteLine(w, line); u := u.next END;
+    u := named;
     WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, ".OBJ"); WriteLine(w, line); u := u.next END;
     u := needs;
     WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, "/SHAREABLE"); WriteLine(w, line); u := u.next END;

@@ -1,0 +1,64 @@
+semantic OK, wrote Helper.obj
+POCRTL exit 0
+POCRTL from objects exit 0
+== poc -target vax-dec-vms -output-dir libs -library-path libs -library EXT ExtLib.mod Thrice.mar other/Helper.obj Every.obj
+exit 0
+libs/vax-dec-vms/O2/EXT_build.com matches expected-EXT_build.com
+manifest matches expected-EXT.library
+other/Helper.obj copied to Helper.obj
+Every.obj copied whole
+in the library directory: EXT.library
+in the library directory: EXT_build.com
+in the library directory: EXT_setup.com
+in the library directory: Every.obj
+in the library directory: ExtLib.mar
+in the library directory: ExtLib.owner
+in the library directory: ExtLib.sym
+in the library directory: Helper.obj
+in the library directory: Thrice.mar
+== poc -target vax-dec-vms -vax-objects -output-dir oext -library-path olibs -library EXT ExtLib.mod Thrice.mar other/Helper.obj Every.obj
+exit 0
+oext/vax-dec-vms/O2/EXT_build.com matches expected-EXT_build-objects.com
+== poc -target vax-dec-vms -library-path libs -output-dir inst -install-library EXT
+installed library EXT in inst/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -library-path libs -output-dir inst -install-library EXT
+installed library EXT in inst/vax-dec-vms/O2
+exit 0
+Helper.obj installed whole
+Every.obj installed whole
+== poc -target vax-dec-vms -output-dir libs -library-path libs -library EXT ExtLib.mod Thrice.mar
+exit 0
+== poc -target vax-dec-vms -library-path libs -output-dir inst -install-library EXT
+installed library EXT in inst/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar ExtLib.obj
+poc: ExtLib.obj has the file name of module ExtLib's .obj
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar Thrice.obj
+poc: Thrice.obj has the file name of the object of Thrice.mar
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar other/Helper.obj other/HELPER.OBJ
+poc: other/HELPER.OBJ has the file name of other/Helper.obj
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar POCRTL.obj
+poc: POCRTL.obj has the file name of poc's runtime, POCRTL.OBJ
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar bad.name.obj
+poc: bad.name.obj does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .obj)
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar missing.obj
+poc: cannot open missing.obj
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar Text.obj
+poc: Text.obj is not a VAX object in the counted form
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar Ftp.obj
+poc: Ftp.obj is not a VAX object in the counted form
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar BadType.obj
+poc: cannot read the global symbols of BadType.obj
+exit 1
+== poc -target vax-dec-vms -output-dir refused -library-path libs -library EXT ExtLib.mod Thrice.mar Short.obj
+poc: cannot read the global symbols of Short.obj
+exit 1

@@ -1,0 +1,12 @@
+POCRTL_BUILD: %X10000001
+EXT_BUILD: %X10000001
+USESHR.COM, against the shareable images: %X10000001
+quadruple 5: 20
+twice 7: 14
+thrice 7: 21
+run: %X00000001
+USEOLB.COM, against the object libraries: %X10000001
+quadruple 5: 20
+twice 7: 14
+thrice 7: 21
+run: %X00000001

@@ -495,7 +495,7 @@ MODULE EncoderForms;
       f := Files.New("forms.image"); Files.Set(w, f, 0);
       VaxImage.Print(w, m);
       Files.Register(f); Files.Close(f);
-      o := ObjectRecords.Open("forms.obj", VaxObjectWriter.recordSize);
+      o := ObjectRecords.Create("forms.obj", VaxObjectWriter.recordSize);
       VaxObjectWriter.Write(m, "EncoderForms.Mod", "EncoderForms", NIL, o);
       ObjectRecords.Close(o)
     END

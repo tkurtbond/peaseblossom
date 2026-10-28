@@ -974,7 +974,7 @@ Those done while Phase 18 was current, 5-7, are in
       back end has, as poc on VMS does, rather than ignoring them (the
       user, 2026-10-27) [done]. Fixture `poc-vax-target-llvm-options`.
     - Object files named on the command line, `.o` on Unix and `.obj` on
-      VMS, linked into the program or put in the library: next, designed
+      VMS, linked into the program or put in the library [done]: designed
       (2026-10-27) in seven proposals, 1-4 and 7 in
       `doc/developer/llvm-toolchain.md`, "Object files on the command
       line", 5 and 6, the VAX's, in `doc/developer/vax-macro32-backend.md`,
@@ -985,8 +985,10 @@ Those done while Phase 18 was current, 5-7, are in
       universal (the user, 2026-10-27). LLVM first, then the VAX. The
       LLVM side, 1-4 and 7, is done (2026-10-27; fixture
       `poc-object-files`); the VAX's 5, `-build`, too (2026-10-27;
-      fixture `vax-build-object-files`); 6, `-library`, next, its VMS
-      `ObjectRecords.Open` and `Get` over `RecordFiles`' below.
+      fixture `vax-build-object-files`); and 6, `-library`, too
+      (2026-10-27; fixture `vax-library-object-files`, run on the guest),
+      the entry points read from the object's GSD records by
+      `ObjectRecords.Open` and `Get`, VMS's over `RecordFiles`' below.
     - A program on VMS that writes an object in the counted form, the
       reverse of OBJCONVERT (the user, 2026-10-27) [done]: `OBJCONVERT
       -COUNTED <object> <counted file>` reads the object's records and
@@ -998,6 +1000,16 @@ Those done while Phase 18 was current, 5-7, are in
       section 13.2), with `RecordFiles.Open`, `Get` and `CreateFixed`.
       Fixtures `vax-objconvert-counted`, run on the guest, and
       `vax-build-object-files`.
+    - Options files named on the command line for vax-dec-vms, `.opt`
+      among `-build`'s or `-library`'s files (proposal 9, approved by
+      the user 2026-10-28, "recorded like -link") [done]: poc reads each
+      and adds its lines after the `-link` arguments, as `-link`'s, so a
+      library's manifest records them and every program linked with the
+      library gets them; blank and comment lines left out, a line ending
+      in `-` joined with the next (`doc/developer/vax-macro32-backend.md`,
+      section 13.3). The guest showed first (2026-10-28) that a recorded
+      `PSECT_ATTR` line is harmless in a program that does not need it.
+      Fixture `vax-options-files`, run on the guest.
 
 ## Open design questions
 

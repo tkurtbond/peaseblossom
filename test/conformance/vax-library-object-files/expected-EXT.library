@@ -1,0 +1,9 @@
+library EXT
+triple vax-dec-vms
+model O2
+needs POCRTL
+part Thrice
+object Helper.obj
+object Every.obj
+module ExtLib bbb0cb6667f8ebbd
+source ExtLib 0ce4fd966c2438f8

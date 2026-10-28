@@ -1,0 +1,9 @@
+; vax-library-object-files (doc/developer/vax-macro32-backend.md, section
+; 13.1, proposal 6): a hand-written part of the library EXT, beside its
+; object files, given to poc as Thrice.mar. THRICE(n) is 3 * n.
+	.TITLE	THRICE
+	.PSECT	$CODE, PIC, SHR, NOWRT, EXE, LONG
+	.ENTRY	THRICE, ^M<>
+	MULL3	#3, 4(AP), R0
+	RET
+	.END

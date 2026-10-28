@@ -20,7 +20,10 @@ MODULE Libraries;
                                          <name>.mar, as PocRtl is POCRTL's)
        c++                              (a module has a part in C++)
        object <name>                    (each object file of the command line in
-                                         it, by its file name: a record only)
+                                         it, by its file name: on LLVM a record
+                                         only, in a VAX library a file beside
+                                         the modules, which -install-library
+                                         copies)
        link <arg>                       (each -link <arg> it was built with)
        module <Module> <key>            (each module, with its key)
        import <Module> <Imported> <key> (each import, with the key compiled against)
