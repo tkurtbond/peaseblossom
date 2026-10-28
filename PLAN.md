@@ -663,6 +663,17 @@ A24, moved here 2026-09-26), are Phase 14 now.
    branch. That includes the new `FOR` end, the runtime's `Card`
    procedures, and `POC_CDIV`, `POC_CMOD` and `POC_CTOG`. The record is
    `vax-macro32-backend.md` section 20; `sdloberon`'s `CARDn` follows.
+6. **Arrays whose lengths are run-time values** (the user's question,
+   2026-10-27): `VAR buf: ARRAY n OF CHAR` with `n` not a constant, for
+   local variables (perhaps unexported module variables), never for
+   types, fields or element types. Analysed in
+   `doc/research/runtime-length-arrays.md`: storage made on entry as an
+   open-array value parameter's copy is now, lengths evaluated once in
+   declaration order under A23's rules, typed as an open array, a length
+   that is not positive trapping with exit 7, not an assignment target
+   at first; the risk is stack exhaustion. **Undecided**; the survey of
+   other languages (the Oberons, Algol, Ada, C99, Modula-2 and -3) is
+   still to do, as that file's section 8.
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
