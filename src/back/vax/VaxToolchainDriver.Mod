@@ -63,6 +63,10 @@ MODULE VaxToolchainDriver;
        Linux or a BSD and sent to VMS in binary does (section 17, proposal
        3): poc's procedures on any host but VMS *)
     convertObjects*: BOOLEAN;
+    (* whether they convert so the object files named on the command line
+       (section 13.1), whichever way the modules go: poc's on any host but
+       VMS *)
+    convertNamedObjects*: BOOLEAN;
     (* whether an object has the debugger records (poc -g) *)
     debug*: BOOLEAN;
     (* the compiler, as an object's language processor header names it:
@@ -323,11 +327,12 @@ MODULE VaxToolchainDriver;
      fixed-length records - poc's counted records, sent from Linux or a BSD
      in binary - with OBJCONVERT (tools/objconvert), the kit's SETUP.COM's
      symbol, into a new version, and delete the old one; an object already
-     converted is left alone (section 17, proposal 3) *)
-  PROCEDURE WriteConversions(VAR w: Files.Rider; units: Unit);
-    VAR u: Unit; name: ARRAY 64 OF CHAR; line: ARRAY 200 OF CHAR; label: ARRAY 24 OF CHAR; count: INTEGER;
+     converted is left alone (section 17, proposal 3). count numbers their
+     labels: those before, and on return those written too. *)
+  PROCEDURE WriteConversions(VAR w: Files.Rider; units: Unit; VAR count: INTEGER);
+    VAR u: Unit; name: ARRAY 64 OF CHAR; line: ARRAY 200 OF CHAR; label: ARRAY 24 OF CHAR;
   BEGIN
-    count := 0; u := units;
+    u := units;
     WHILE u # NIL DO
       Upper(u.name, name); INC(count);
       COPY("CONVERTED_", label); line[0] := 0X; AppendInt(line, count); Append(label, line);
@@ -343,9 +348,9 @@ MODULE VaxToolchainDriver;
 
   (* Lines of a procedure's opening comment that say it converts objects,
      when it does *)
-  PROCEDURE WriteConversionComment(VAR w: Files.Rider);
+  PROCEDURE WriteConversionComment(VAR w: Files.Rider; converts: BOOLEAN);
   BEGIN
-    IF convertObjects THEN
+    IF converts THEN
       WriteLine(w, "$ ! An object sent in binary from Linux or a BSD, fixed-length records,");
       WriteLine(w, "$ ! is converted first, by OBJCONVERT, which poc's SETUP.COM defines.")
     END
@@ -374,14 +379,17 @@ MODULE VaxToolchainDriver;
      command tables (Phase 17 step 5, section 23), each <TABLE>.CLD is
      compiled by SET COMMAND/OBJECT into <TABLE>.OBJ, listed after the
      modules. With options, lines for the options file (poc -link), they
-     follow the libraries. With debugging (poc -g) it links /DEBUG, and
-     assembles /DEBUG too (section 17, proposal 5). FALSE if the file
-     could not be written. *)
-  PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries, tables: Unit;
+     follow the libraries. With named, the object files named on the
+     command line (section 13.1), each <OBJECT>.OBJ is listed after the
+     command tables, converted first when convertNamedObjects. With
+     debugging (poc -g) it links /DEBUG, and assembles /DEBUG too (section
+     17, proposal 5). FALSE if the file could not be written. *)
+  PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries, tables, named: Unit;
                                  options: OptionLine; shared, objects, debugging: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u, main: Unit; o: OptionLine; name, imageName: ARRAY 64 OF CHAR;
-        line: ARRAY 200 OF CHAR; label: ARRAY 16 OF CHAR; count: INTEGER; rtlLibrary: BOOLEAN;
+        line: ARRAY 200 OF CHAR; label: ARRAY 16 OF CHAR; count: INTEGER; rtlLibrary, convertNamed: BOOLEAN;
   BEGIN
+    convertNamed := (named # NIL) & convertNamedObjects;
     rtlLibrary := FALSE; u := libraries;
     WHILE u # NIL DO
       IF IsSameVmsName(u.name, runtimeLibrary) THEN rtlLibrary := TRUE END;
@@ -400,7 +408,7 @@ MODULE VaxToolchainDriver;
       WriteLine(w, line);
       WriteLine(w, "$ ! (doc/developer/vax-object-language.md, section 17). Run it where");
       WriteLine(w, "$ ! the modules' .OBJ files are.");
-      WriteConversionComment(w)
+      WriteConversionComment(w, convertObjects OR convertNamed)
     ELSE
       IF image[0] # 0X THEN Append(line, ": assembles its modules and links ");
         Append(line, imageName); Append(line, ".EXE")
@@ -408,7 +416,8 @@ MODULE VaxToolchainDriver;
       END;
       WriteLine(w, line);
       WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 13). Run it where");
-      WriteLine(w, "$ ! the modules' .MAR files are.")
+      WriteLine(w, "$ ! the modules' .MAR files are.");
+      WriteConversionComment(w, convertNamed)
     END;
     IF (image[0] # 0X) & ~rtlLibrary THEN
       WriteLine(w, "$ ! poc's runtime, POCRTL.OBJ, is taken from POC$RTL: when that");
@@ -427,7 +436,9 @@ MODULE VaxToolchainDriver;
       WriteNeedCheck(w, line, name, label);
       u := u.next
     END;
-    IF objects & convertObjects THEN WriteConversions(w, units) END;
+    count := 0;
+    IF objects & convertObjects THEN WriteConversions(w, units, count) END;
+    IF convertNamed THEN WriteConversions(w, named, count) END;
     u := units; main := NIL;
     WHILE u # NIL DO
       IF ~objects THEN
@@ -455,6 +466,11 @@ MODULE VaxToolchainDriver;
         u := u.next
       END;
       u := tables;
+      WHILE u # NIL DO
+        Upper(u.name, name); COPY(name, line); Append(line, ".OBJ"); WriteLine(w, line);
+        u := u.next
+      END;
+      u := named;
       WHILE u # NIL DO
         Upper(u.name, name); COPY(name, line); Append(line, ".OBJ"); WriteLine(w, line);
         u := u.next
@@ -572,6 +588,13 @@ MODULE VaxToolchainDriver;
     RETURN ObjectRecords.Copy(from, to)
   END CopyObject;
 
+  (* Whether the file at path is an object poc can copy for VMS
+     (ObjectRecords.IsCounted; section 13.1) *)
+  PROCEDURE IsCountedObject*(path: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN ObjectRecords.IsCounted(path)
+  END IsCountedObject;
+
   (* The text file from copied to the file to, a line at a time, as
      poc on VMS can as well as on Unix (no cp there): a hand-written .mar
      put in a library (section 18). FALSE if either cannot be opened, or a
@@ -659,7 +682,7 @@ MODULE VaxToolchainDriver;
       WriteLine(w, "$ ! the library's .OBJ files are, once the setup procedure of each")
     END;
     WriteLine(w, "$ ! library it needs has been run.");
-    IF objects THEN WriteConversionComment(w) END;
+    WriteConversionComment(w, objects & convertObjects);
     WriteLine(w, "$ ON WARNING THEN EXIT $STATUS");
     count := 0; u := needs;
     WHILE u # NIL DO
@@ -669,7 +692,8 @@ MODULE VaxToolchainDriver;
       WriteNeedCheck(w, line, unitName, label);
       u := u.next
     END;
-    IF objects & convertObjects THEN WriteConversions(w, units) END;
+    count := 0;
+    IF objects & convertObjects THEN WriteConversions(w, units, count) END;
     IF objects THEN u := NIL ELSE u := units END;
     WHILE u # NIL DO
       Upper(u.name, unitName);
@@ -745,6 +769,6 @@ MODULE VaxToolchainDriver;
   END WriteLibraryProcedures;
 
 BEGIN
-  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; convertObjects := FALSE; debug := FALSE; processor := "Peaseblossom poc";
+  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; convertObjects := FALSE; convertNamedObjects := FALSE; debug := FALSE; processor := "Peaseblossom poc";
   encoded := NIL
 END VaxToolchainDriver.

@@ -7,7 +7,7 @@ Two.CLD copied to Two.cld
 poc: Tables.cld has the file name of module Tables's .mar
 exit 1
 == poc -target vax-dec-vms -build Tables.mod bad.name.cld
-poc: bad.name.cld does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .mar or .cld)
+poc: bad.name.cld does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .cld)
 exit 1
 == poc -target vax-dec-vms -build Tables.mod missing.cld
 poc: cannot open missing.cld

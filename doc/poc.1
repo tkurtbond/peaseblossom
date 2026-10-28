@@ -384,6 +384,12 @@ file after the program's file is a command table, which the procedure
 compiles by
 .Li SET COMMAND/OBJECT
 and links with them;
+a
+.Pa .obj
+file there, in any case, is an object file, copied beside them and
+linked after them; on Linux and the BSDs it must have the counted
+records poc's own objects have, and the procedure converts it as it does
+those;
 .Fl compile
 writes the named modules'
 .Pa .mar

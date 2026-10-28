@@ -332,6 +332,21 @@ name that is its name, else in `SYS$SHARE`. A line may be up to 512 characters, 
 `CREATE` reads, and may not start with `$`, which would end the options
 file; poc refuses either. The same line given twice is linked once.
 
+An object file of your own, a `.obj` named after the program's file, is
+copied beside the modules' files and linked after them and any command
+tables (chapter 10), before the libraries:
+
+    $ POC PROG.MOD TWICE.OBJ
+
+Its name may not be a module's, a command table's, another object's or
+`POCRTL`'s. On Unix it must be in the counted form poc's own objects
+have there (one poc wrote, say), and poc refuses any other: an object
+fetched from VMS by FTP has lost its records' boundaries, so name such a
+file on VMS by `-link` instead. Copy it to VMS in binary with the
+modules' files, and the procedure converts it as it does theirs, whether
+they are objects or MACRO-32. Only `-build` takes an object file; a
+library does not, yet.
+
 A library built with `-link` links its shareable image with the lines,
 and its manifest records them: every program that links the library, its
 object library or its image, gets them too, before its own, so name a

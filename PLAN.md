@@ -984,7 +984,16 @@ Those done while Phase 18 was current, 5-7, are in
       VAX library reads an object's global symbols to make them
       universal (the user, 2026-10-27). LLVM first, then the VAX. The
       LLVM side, 1-4 and 7, is done (2026-10-27; fixture
-      `poc-object-files`); the VAX's, 5 and 6, next.
+      `poc-object-files`); the VAX's 5, `-build`, too (2026-10-27;
+      fixture `vax-build-object-files`); 6, `-library`, after the next
+      item.
+    - A program on VMS that writes an object in the counted form, the
+      reverse of OBJCONVERT (the user, 2026-10-27): it reads the object's
+      records and writes each as its count, its bytes and a pad byte
+      after an odd count, into a file of fixed 512-byte records, so that
+      FTP in binary brings to Unix what poc's `-build` takes there. Next,
+      a step of its own; a fixture on the guest converts an object both
+      ways and compares it with the original.
 
 ## Open design questions
 

@@ -1,0 +1,54 @@
+semantic OK, wrote Helper.obj
+== poc -target vax-dec-vms -build Use.mod other/Twice.obj other/OTHER.OBJ
+exit 0
+Use.com matches expected-Use.com
+other/Twice.obj copied to Twice.obj
+other/OTHER.OBJ copied to OTHER.obj
+== poc -target vax-dec-vms -vax-objects -build Use.mod Table.cld other/Twice.obj
+exit 0
+Use.com matches expected-Use-objects.com
+== poc -target vax-dec-vms -build Use.mod Use.obj
+poc: Use.obj has the file name of module Use's .obj
+exit 1
+== poc -target vax-dec-vms -build Use.mod Table.cld Table.obj
+poc: Table.obj has the file name of the object of command table Table.cld
+exit 1
+== poc -target vax-dec-vms -build Use.mod other/Twice.obj TWICE.obj
+poc: TWICE.obj has the file name of other/Twice.obj
+exit 1
+== poc -target vax-dec-vms -build Use.mod POCRTL.obj
+poc: POCRTL.obj has the file name of poc's runtime, POCRTL.OBJ
+exit 1
+== poc -target vax-dec-vms -build Use.mod bad.name.obj
+poc: bad.name.obj does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .obj)
+exit 1
+== poc -target vax-dec-vms -build Use.mod missing.obj
+poc: cannot open missing.obj
+exit 1
+== poc -target vax-dec-vms -build Use.mod Text.obj
+poc: Text.obj is not a VAX object in the counted form
+exit 1
+== poc -target vax-dec-vms -build Use.mod Empty.obj
+poc: Empty.obj is not a VAX object in the counted form
+exit 1
+== poc -target vax-dec-vms -build Use.mod Ftp.obj
+poc: Ftp.obj is not a VAX object in the counted form
+exit 1
+== poc -target vax-dec-vms -build Use.mod Long.obj
+poc: Long.obj is not a VAX object in the counted form
+exit 1
+== poc -build Use.mod other/Twice.obj
+poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+exit 1
+== poc Use.mod other/Twice.obj
+poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -emit-macro32 Use.mod other/Twice.obj
+poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -compile Use.mod other/Twice.obj
+poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -library USE Use.mod other/Twice.obj
+poc: a VAX object file (.obj) is linked only by -build for vax-dec-vms
+exit 1

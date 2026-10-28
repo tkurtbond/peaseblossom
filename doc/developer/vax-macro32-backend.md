@@ -1039,6 +1039,15 @@ whole in one directory, as with the modules' own.
    `OBJCONVERT` step converts it as it does those, when it arrives as
    fixed 512-byte records; the procedure converts a foreign object
    whether the modules are objects or MACRO-32 (`-vax-macro32`).
+   *Done 2026-10-27* (fixture `vax-build-object-files`), but for the
+   check on VMS, which takes any file there until the reader of records
+   below exists (`ObjectRecords.IsCounted`, the host's a walk of the
+   counts). An object may not be named `POCRTL` either, the runtime's
+   object in the current directory when `POC$RTL` is not defined. Every
+   other command, and any other target, refuses a `.obj` ("a VAX object
+   file (.obj) is linked only by -build for vax-dec-vms"), `-library`
+   too until proposal 6. A name VMS cannot have is reported with the
+   file's own extension now, `.mar`, `.cld` or `.obj`.
 6. *`-library`.* The same copy and names. Each object is inserted in
    `<NAME>.OLB` and listed in the shareable image's options file after
    the modules and the `.mar` parts, its global entry points made
@@ -1069,12 +1078,13 @@ curl), so its record boundaries are lost, as `vax-object-language.md`,
 section 17 found for `test-vax-guest-poc`. Proposal 5 therefore takes,
 on Linux or a BSD, only an object in the counted form (one poc wrote,
 or one another host tool wrote in it), and poc checks it before copying:
-its counts must walk exactly to the end of the file, each record's
-first byte a record type (`OBJ$C_HDR` .. `OBJ$C_EOMW`, 0..7), else poc refuses
-it ("<file> is not a VAX object in the counted form"). An object made
-on VMS is named there instead: by poc running on VMS, which copies it
-with `ObjectRecords.Copy`, or by its file specification with `-link`
-from any host. (b) *Decided (the user, 2026-10-27): a library reads
+its counts must walk exactly to the end of the file, none above 512
+(the object language's longest record, and the most OBJCONVERT takes),
+each record's first byte a record type (`OBJ$C_HDR` .. `OBJ$C_EOMW`,
+0..7), else poc refuses it ("<file> is not a VAX object in the counted
+form"). An object made on VMS is named there instead: by poc running
+on VMS, which copies it with `ObjectRecords.Copy`, or by its file
+specification with `-link` from any host. (b) *Decided (the user, 2026-10-27): a library reads
 an object's global symbols* (proposal 6), so that an object behaves as
 a `.mar` part, its entry points universal, rather than usable only from
 inside the library.

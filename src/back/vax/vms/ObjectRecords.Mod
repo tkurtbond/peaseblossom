@@ -49,6 +49,14 @@ MODULE ObjectRecords;
     RETURN Platform.System(command) = 0
   END Copy;
 
+  (* Whether the file called name is an object in the form Put writes:
+     on VMS, any object, whose records VMS keeps (doc/developer/
+     vax-macro32-backend.md, section 13.1); the Linker checks the rest *)
+  PROCEDURE IsCounted*(name: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN TRUE
+  END IsCounted;
+
   (* The source file name, for the debugger records (poc -g;
      doc/developer/vax-object-language.md, section 16.6): its name and its
      RMS attributes, the creation time (8 bytes), end-of-file block, first

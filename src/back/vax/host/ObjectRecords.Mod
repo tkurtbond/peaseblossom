@@ -64,6 +64,34 @@ MODULE ObjectRecords;
     RETURN TRUE
   END Copy;
 
+  (* Whether the file called name is an object in the form Put writes, as
+     poc takes one named on the command line (doc/developer/
+     vax-macro32-backend.md, section 13.1): its counts walk exactly to its
+     end, none above 512, the object language's longest record and the
+     most OBJCONVERT takes, and each record's first byte is an object
+     record's type, OBJ$C_HDR (0) to OBJ$C_EOMW (7). An object fetched from
+     VMS by FTP in binary is not: its records arrive run together, with no
+     counts. *)
+  PROCEDURE IsCounted*(name: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File; r: Files.Rider; low, high, type: CHAR; length, position, size: LONGINT; ok: BOOLEAN;
+  BEGIN
+    f := Files.Old(name);
+    IF f = NIL THEN RETURN FALSE END;
+    size := Files.Length(f); position := 0; ok := size > 0;
+    WHILE ok & (position < size) DO
+      IF position + 3 > size THEN
+        ok := FALSE
+      ELSE
+        Files.Set(r, f, position); Files.Read(r, low); Files.Read(r, high); Files.Read(r, type);
+        length := ORD(low) + 256 * LONG(ORD(high));
+        position := position + 2 + length + length MOD 2;
+        ok := (length > 0) & (length <= 512) & (ORD(type) <= 7) & (position <= size)
+      END
+    END;
+    Files.Close(f);
+    RETURN ok
+  END IsCounted;
+
   (* The source file name, for the debugger records (poc -g;
      doc/developer/vax-object-language.md, section 16.6): its name for VMS,
      its last part, since a path of this system's means nothing there, and

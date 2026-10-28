@@ -160,6 +160,9 @@ MODULE Poc;
     (* -build's and -library's object files, in the order given; NIL for
        every other command *)
     objectFiles: ObjectFile;
+    (* -build for vax-dec-vms: its object files, .obj files (doc/developer/
+       vax-macro32-backend.md, section 13.1); NIL for every other command *)
+    vaxObjectFiles: VaxPart;
     (* Phase 12 step 2c: poc -library's modules, and poc -compile's (step
        2f); NIL for every other command *)
     members: LibraryMember;
@@ -1809,8 +1812,8 @@ MODULE Poc;
     RETURN HasExtension(file, ".cld")
   END IsCldFile;
 
-  (* file, a .mar or a .cld, added to the list parts, by its file name
-     without the extension, which must be a VMS file name *)
+  (* file, a .mar, a .cld or a .obj, added to the list parts, by its file
+     name without the extension, which must be a VMS file name *)
   PROCEDURE AddVaxPart(file: ARRAY OF CHAR; VAR parts: VaxPart; VAR ok: BOOLEAN);
     VAR part, p: VaxPart; i, start, j: INTEGER;
   BEGIN
@@ -1822,7 +1825,9 @@ MODULE Poc;
     part.name[j] := 0X;
     IF ~VaxToolchainDriver.IsVmsFileName(part.name) THEN
       failed := TRUE; Err.String("poc: "); Err.String(file);
-      Err.String(" does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .mar or .cld)"); Err.Ln;
+      Err.String(" does not name a VMS file (1 to 39 letters, digits, _, $ and -, then ");
+      FOR j := i - 4 TO i - 1 DO Err.Char(file[j]) END; (* its extension, as written *)
+      Err.String(")"); Err.Ln;
       ok := FALSE; RETURN
     END;
     p := parts;
@@ -1837,6 +1842,21 @@ MODULE Poc;
     Err.String("poc: a command table (.cld) is linked only by -build for "); Err.String(VaxToolchainDriver.triple);
     Err.Ln
   END NotForCommandTables;
+
+  (* Whether file's name ends in ".obj", in any case: an object file for
+     the VAX (doc/developer/vax-macro32-backend.md, section 13.1) *)
+  PROCEDURE IsObjFile(file: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN HasExtension(file, ".obj")
+  END IsObjFile;
+
+  (* a VAX object file given where only -build for vax-dec-vms takes one *)
+  PROCEDURE NotForVaxObjectFiles;
+  BEGIN
+    failed := TRUE;
+    Err.String("poc: a VAX object file (.obj) is linked only by -build for "); Err.String(VaxToolchainDriver.triple);
+    Err.Ln
+  END NotForVaxObjectFiles;
 
   (* Whether file's name ends in ".o" *)
   PROCEDURE IsDotO(file: ARRAY OF CHAR): BOOLEAN;
@@ -1875,18 +1895,25 @@ MODULE Poc;
 
   (* the files among the arguments from first on, after a command's own
      file: in commandTables the .cld files, -build's command tables
-     (section 23, proposal 5), and for the LLVM back end (~vax) in
+     (section 23, proposal 5), in vaxObjectFiles the .obj files, the VAX's
+     object files (section 13.1), and for the LLVM back end (~vax) in
      objectFiles the object files; a module's .o is refused when building,
      since -build finds the module through the import path, and would link
      it twice *)
   PROCEDURE CollectBuildFiles(first: INTEGER; vax, building: BOOLEAN; VAR ok: BOOLEAN);
     VAR i: INTEGER; file: Libraries.Path; f: Files.File;
   BEGIN
-    ok := TRUE; commandTables := NIL; objectFiles := NIL;
+    ok := TRUE; commandTables := NIL; objectFiles := NIL; vaxObjectFiles := NIL;
     FOR i := first TO argumentCount - 1 DO
       GetArgument(i, file);
       IF ~ok THEN
         (* reported *)
+      ELSIF IsObjFile(file) THEN
+        IF ~FileExists(file) THEN
+          failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
+        ELSE
+          AddVaxPart(file, vaxObjectFiles, ok)
+        END
       ELSIF IsCldFile(file) THEN
         f := Files.Old(file);
         IF f = NIL THEN
@@ -1944,7 +1971,10 @@ MODULE Poc;
     VaxToolchainDriver.writeImage := FALSE;
     (* an object written here but on VMS is sent there in binary (section
        17, proposal 3) *)
-    VaxToolchainDriver.convertObjects := vaxObjects & ~runningOnVms
+    VaxToolchainDriver.convertObjects := vaxObjects & ~runningOnVms;
+    (* and so is an object file named on the command line, which poc
+       copies (section 13.1) *)
+    VaxToolchainDriver.convertNamedObjects := ~runningOnVms
   END SetVaxWay;
 
   (* The units of modules, in their order, for a build procedure *)
@@ -2049,7 +2079,7 @@ MODULE Poc;
     VAR
       modules, m: ModuleLists.ModuleList; ok: BOOLEAN; options: VaxToolchainDriver.OptionLine;
       lib: Libraries.Library; libraries, librariesTail, u, units, tables, tablesTail: VaxToolchainDriver.Unit;
-      topName: SyntaxTree.Ident; table: VaxPart;
+      named, namedTail: VaxToolchainDriver.Unit; topName: SyntaxTree.Ident; table, object, other: VaxPart;
       comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR; path: Libraries.Path;
   BEGIN
     IF ~SetVaxTarget("-build", VaxToolchainDriver.triple) THEN RETURN END;
@@ -2107,9 +2137,52 @@ MODULE Poc;
       tablesTail := u;
       table := table.next
     END;
+    (* each object file copied there too (section 13.1): one in the form
+       poc's own have, its name no module's, command table's, other
+       object's or the runtime's *)
+    named := NIL; namedTail := NIL; object := vaxObjectFiles;
+    WHILE object # NIL DO
+      u := units;
+      WHILE (u # NIL) & ~VaxToolchainDriver.IsSameVmsName(u.name, object.name) DO u := u.next END;
+      table := commandTables;
+      WHILE (table # NIL) & ~VaxToolchainDriver.IsSameVmsName(table.name, object.name) DO table := table.next END;
+      other := vaxObjectFiles;
+      WHILE (other # object) & ~VaxToolchainDriver.IsSameVmsName(other.name, object.name) DO other := other.next END;
+      IF u # NIL THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path); Err.String(" has the file name of module ");
+        Err.String(u.name); Err.String("'s .obj"); Err.Ln;
+        RETURN
+      ELSIF table # NIL THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path);
+        Err.String(" has the file name of the object of command table "); Err.String(table.path); Err.Ln;
+        RETURN
+      ELSIF other # object THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path); Err.String(" has the file name of ");
+        Err.String(other.path); Err.Ln;
+        RETURN
+      ELSIF VaxToolchainDriver.IsSameVmsName(object.name, VaxToolchainDriver.runtimeLibrary) THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path);
+        Err.String(" has the file name of poc's runtime, POCRTL.OBJ"); Err.Ln;
+        RETURN
+      ELSIF ~VaxToolchainDriver.IsCountedObject(object.path) THEN
+        failed := TRUE; Err.String("poc: "); Err.String(object.path);
+        Err.String(" is not a VAX object in the counted form"); Err.Ln;
+        RETURN
+      END;
+      Directories.MakePath(outputDir, object.name, path); Strcat(path, ".obj");
+      IF ~VaxToolchainDriver.CopyObject(object.path, path) THEN
+        failed := TRUE; Err.String("poc: cannot copy "); Err.String(object.path); Err.String(" to ");
+        Err.String(path); Err.Ln;
+        RETURN
+      END;
+      NEW(u); COPY(object.name, u.name); u.next := NIL;
+      IF namedTail = NIL THEN named := u ELSE namedTail.next := u END;
+      namedTail := u;
+      object := object.next
+    END;
     SetVaxWay;
     IF WriteVaxModules(modules, outputDir, FALSE, FALSE)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, units, libraries, tables, options,
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, units, libraries, tables, named, options,
                                                  sharedLibraries, vaxObjects, VaxToolchainDriver.debug) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
@@ -2138,6 +2211,7 @@ MODULE Poc;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildVax(name, outputDir, exePath); RETURN END;
     IF commandTables # NIL THEN NotForCommandTables; RETURN END;
+    IF vaxObjectFiles # NIL THEN NotForVaxObjectFiles; RETURN END;
     IF ~PassObjectFiles() THEN RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
@@ -2203,6 +2277,8 @@ MODULE Poc;
         AddVaxPart(file, vaxParts, ok)
       ELSIF ok & IsCldFile(file) THEN
         NotForCommandTables; ok := FALSE
+      ELSIF ok & IsObjFile(file) THEN
+        NotForVaxObjectFiles; ok := FALSE
       ELSIF ok & ~forVax & IsObjectFile(file) THEN
         IF forLibrary THEN AddObjectFile(file, ok) ELSE NotForObjectFiles; ok := FALSE END
       ELSE
@@ -2283,7 +2359,7 @@ MODULE Poc;
     (* with objects there is nothing to assemble, so a procedure only to
        convert them (section 17, proposals 3 and 4) *)
     IF WriteVaxModules(modules, outputDir, TRUE, FALSE) & (~vaxObjects OR VaxToolchainDriver.convertObjects)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, NIL, FALSE,
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, NIL, NIL, FALSE,
                                                  vaxObjects, VaxToolchainDriver.debug) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
@@ -3314,6 +3390,7 @@ MODULE Poc;
     HelpLine("commands:");
     HelpLine("  -build <file>              build a program, as poc <file> does");
     HelpLine("  -build <file> <t>.cld...   for vax-dec-vms: and link command tables");
+    HelpLine("  -build <file> <o>.obj...   for vax-dec-vms: and link VAX object files");
     LLVMHelpLine("  -build <file> <o>.o...     and link object files, each with no .sym beside it");
     HelpLine("  -check <file>              check a module, writing nothing");
     HelpLine("  -compile <file>...         compile modules to .sym, .ll and .o, not linked");
@@ -3842,6 +3919,8 @@ MODULE Poc;
                 (* reported *)
               ELSIF (commandTables # NIL) & (arg # "-build") THEN
                 NotForCommandTables
+              ELSIF (vaxObjectFiles # NIL) & (arg # "-build") THEN
+                NotForVaxObjectFiles
               ELSIF (objectFiles # NIL) & (arg # "-build") THEN
                 NotForObjectFiles
               ELSE
