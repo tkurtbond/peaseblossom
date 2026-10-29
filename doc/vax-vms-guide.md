@@ -62,7 +62,7 @@ C. Further reading.
 ### On VMS
 
 A release carries poc for VMS as two text files, with the version's
-periods made hyphens (`POC-0-10-0.COM` for 0.10.0):
+periods made hyphens (`POC-0-10-1.COM` for 0.10.1):
 
 - `POC-<version>.COM`, the **base kit**: poc, and its runtime library
   `POCRTL`.
@@ -86,8 +86,8 @@ run in, and everything in it is text.
 
        $ CREATE/DIRECTORY [.POC]
        $ SET DEFAULT [.POC]
-       $ @[-]POC-0-10-0
-       $ @[-]POC-VMS-0-10-0
+       $ @[-]POC-0-10-1
+       $ @[-]POC-VMS-0-10-1
 
    The base kit makes `[.BIN]`, `[.KIT]` (poc's own MACRO-32, and in
    `[.KIT.OBJCONVERT]` that of `OBJCONVERT`, below),
@@ -125,7 +125,7 @@ run in, and everything in it is text.
 Check the installation with `POC -VERSION`:
 
     $ POC -VERSION
-    poc 0.10.0
+    poc 0.10.1
     target vax-dec-vms, size model -O2
 
 ### On Unix

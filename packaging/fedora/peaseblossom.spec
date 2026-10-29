@@ -25,7 +25,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.10.0
+Version:        0.10.1
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -110,6 +110,14 @@ test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-
 %{_docdir}/%{name}-vax/
 
 %changelog
+* Wed Oct 28 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.10.1-1
+- Update to 0.10.1: a library's manifest records which of its modules
+  allocate, so a program whose only NEW is in a library module gets
+  the collector: on VAX/VMS its main now sets the stack base (before,
+  objects held only on the stack could be freed), and an LLVM program
+  that never allocates no longer links the collector. A library from
+  an older poc must be rebuilt.
+
 * Wed Oct 28 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.10.0-1
 - Update to 0.10.0: external variables (VAR ["C", "environ"] x: T;
   and ["VMS"] for VAX/VMS), storage another object defines; object
