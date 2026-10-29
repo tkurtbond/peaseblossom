@@ -633,3 +633,21 @@ the names, and the variables that give them to the tools, are yours.
 
    Each binary package is for that one system release and architecture;
    on any other, poc is built from the tarball or from `packaging/`.
+8. **Install the kits on the VAX/VMS development system** (section 4),
+   in `DUA1:[POC]`, owned by `POC`: there the guest's other users get
+   the release's poc with `@DUA1:[POC]SETUP`, for work other than on poc
+   itself. Install them as the VAX/VMS Guide's chapter 1 says, with
+   the published kits (`build/dist`'s, the same bytes): unpack the base
+   kit and then the STARLET kit in `DUA1:[POC]`, `@BUILD`, and give the
+   tree world read and execute access, which `POC`'s default protection
+   does not:
+
+       $ SET FILE/PROTECTION=(S:RWED,O:RWED,G:RE,W:RE) DUA1:[POC...]*.*;*
+
+   `tools/vax-do` with `VAX_USER=poc` does it from atla: the kits are its
+   input files, and its procedure does `SET DEFAULT DUA1:[POC]` and runs
+   them from `POC`'s home (`@'HOME'POC-<version>`). It takes a few
+   minutes (0.10.1: unpacking and `@BUILD` about 6). A kit refuses a
+   directory that holds an installation, so the previous release's tree
+   is deleted first. Then check it as another user, `POC2`: `@DUA1:[POC]SETUP`,
+   `POC -VERSION`, and the guide's chapter 2, `HELLO.MOD` built and run.
