@@ -516,7 +516,9 @@ the kits; the record is in `PLAN.md`, "Peaseblossom 0.9.0"). Object
 files on the command line, external variables, the VAX link's options
 from `-link` and `.opt` files, and one fix were released as
 **Peaseblossom 0.10.0 on 2026-10-28** (tag `v0.10.0`, with the kits; the
-record is in `PLAN.md`, "Peaseblossom 0.10.0"). Bugs found by using
+record is in `PLAN.md`, "Peaseblossom 0.10.0"), and **0.10.1**
+followed the same day with one fix (a library's manifest records which
+of its modules allocate; tag `v0.10.1`). Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library

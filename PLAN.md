@@ -923,6 +923,40 @@ section 7 says:
   against `SHA256SUMS` and the signatures, the RPMs' with the key in a
   scratch rpm database.
 
+## Peaseblossom 0.10.1
+
+One fix was released as **Peaseblossom 0.10.1** on 2026-10-28: a
+library's manifest records which of its modules allocate (`module <M>
+<key> allocates|-`; `2424aea`), so a program whose only `NEW` is in a
+library module gets the collector. On VAX/VMS its main now sets the
+stack base (before, an object held only on the stack could be freed),
+and an LLVM program that never allocates no longer links the collector.
+A library an older poc wrote is refused ("rebuild it"). It was made as
+`doc/developer/DEVELOPER.md` section 7 says:
+
+- **The version** was set in `84cde99` by `make set-version`, which also
+  removed `BUGS.md`; the gate passed on atla, cymoril, artos and alerik
+  (494 fixtures at each stage, the fixed point, `check-strict`,
+  `check-install` and `check-seed` on each, and `check-o2` on atla).
+  rackhir passed `2424aea`, and `make check-vax-kit
+  CHECK_VAX_KIT_FLAGS=-full` passed on the guest.
+- **The tarball** came from `make distcheck` (SHA-256 `f4070d8e...`,
+  13440342 bytes). It is signed, with the signed tag `v0.10.1`, and
+  published as a GitHub release with the kits `POC-0-10-1.COM` and
+  `POC-VMS-0-10-1.COM`.
+- **Each package** was made from the published tarball, as for 0.10.0
+  (only the `distinfo` files changed, packing lists unchanged), on
+  alerik, rackhir, cymoril, jherek, artos and yishana, replacing 0.10.0
+  and checked against the installed poc. yishana's check first failed
+  for a full `/tmp` (a 768 MB tmpfs), filled by the package scripts'
+  leftover directories; they were removed and the check passed. `mock`
+  built and checked the RPMs, and on atla 0.10.1 replaces 0.10.0, with
+  `peaseblossom-vax`, checked the same way.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (20 files) and attached to the release; every
+  file was downloaded again and checked against `SHA256SUMS` and the
+  signatures, the RPMs' with the key in a scratch rpm database.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
