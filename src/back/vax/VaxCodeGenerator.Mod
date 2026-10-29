@@ -334,11 +334,16 @@ MODULE VaxCodeGenerator;
        type-check under -O2 (AGENTS.md, "How poc itself is built"); poc runs
        built under -OC, where they are exact *)
     two31, two32: LONGINT;
-    (* the program allocates (NEW), so its start initializes rtl/vax's
+    (* the program may allocate (NEW), so its start initializes rtl/vax's
        GarbageCollectedHeap and gives it the stack's base, as on LLVM
        (section 15, proposal 9); set by the driver before the main module
-       is written *)
+       is written, also when only a module from a library calls NEW, as its
+       library's manifest says (Poc.VaxProgramUsesCollector) *)
     withCollector*: BOOLEAN;
+    (* the module last written calls the collector (NEW or SYSTEM.NEW), for
+       its library's manifest (PLAN.md, "Ongoing bug fixing", 11); its
+       start's setup of the collector does not count *)
+    allocates*: BOOLEAN;
     (* the program contains Modules, so every module written has a
        descriptor, which its initializer registers (section 19.5,
        proposals 2 to 4); set by the driver before any module is written *)
@@ -4948,7 +4953,7 @@ MODULE VaxCodeGenerator;
     ELSE Instruction2("MOVAB", tag, Specifier(ListEntry(list, 2, 2)))
     END;
     FreeR0R1(line, column);
-    VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate);
+    VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate); allocates := TRUE;
     AddExternal(allocate);
     Instruction2("CALLG", Specifier(ListEntry(list, 2, 0)), ExternalRef(allocate));
     HeapCheck(line, column);
@@ -5030,7 +5035,7 @@ MODULE VaxCodeGenerator;
     Release(n);
     Emit1("CLRL", ListEntry(list, 2, 2));
     FreeR0R1(line, column);
-    VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate);
+    VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate); allocates := TRUE;
     AddExternal(allocate);
     Instruction2("CALLG", Specifier(ListEntry(list, 2, 0)), ExternalRef(allocate));
     HeapCheck(line, column);
@@ -7492,7 +7497,7 @@ MODULE VaxCodeGenerator;
     errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword(); narrowings := NIL;
     debugRecords := NIL;
-    nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; initRecords := NIL; anonymousInits := 0; code := NIL; codeLast := NIL;
+    nextLabel := 0; usesTrap := FALSE; allocates := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; initRecords := NIL; anonymousInits := 0; code := NIL; codeLast := NIL;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
     out := NIL; outLast := NIL; outEncoded := NIL; NEW(pending, 256); pending[0] := 0X; pendingLength := 0;

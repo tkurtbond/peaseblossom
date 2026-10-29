@@ -9026,7 +9026,9 @@ MODULE LLVMCodeGenerator;
     IF LLVMTypes.StructCount() > 0 THEN WriteLn(w) END;
     Files.Set(r, Files.Base(body), 0);
     Files.Read(r, ch);
-    WHILE ~r.eof DO Files.Write(w, ch); Files.Read(r, ch) END
+    WHILE ~r.eof DO Files.Write(w, ch); Files.Read(r, ch) END;
+    (* for its library's manifest (PLAN.md, "Ongoing bug fixing", 11) *)
+    target.usesCollector := cg.usedAllocate
   END GenerateModule;
 
 END LLVMCodeGenerator.

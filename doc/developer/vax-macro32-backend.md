@@ -2193,7 +2193,10 @@ program prints the same on Linux and on the guest.
   `POC_ROOT_TABLES`.
 - *The program's start*, when the program calls `NEW`, calls the
   collector's initializer and then `SetStackBase` with its own `FP`,
-  before the main module's initializer.
+  before the main module's initializer. Since 2026-10-28 (`PLAN.md`,
+  "Ongoing bug fixing", 11) it does so too when the program has
+  `GarbageCollectedHeap`, or a module from a library whose manifest says
+  it allocates (`module <Module> <key> allocates`), as on LLVM.
 - *`SYSTEM.ADR`, `GET`, `PUT` and `VAL`* are lowered, for the collector:
   an address in a register of its own, then a move of the variable's
   type or the value's; `VAL` retypes a value of its target's size or

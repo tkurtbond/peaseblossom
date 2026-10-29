@@ -3,5 +3,5 @@ triple vax-dec-vms
 model O2
 needs POCRTL
 link SYMBOL=SEVEN_VALUE,7
-module SevenLib c15f31acf502cb1a
+module SevenLib c15f31acf502cb1a -
 source SevenLib fff0dbcbcc9c1229

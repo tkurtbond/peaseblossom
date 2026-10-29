@@ -4,8 +4,8 @@ poc <version>
 triple <triple>
 model O2
 needs poc-rtl
-module Lists <key>
-module Stacks <key>
+module Lists <key> allocates
+module Stacks <key> -
 source Lists <key>
 source Stacks <key>
 import Lists Out <key>

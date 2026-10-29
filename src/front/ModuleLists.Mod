@@ -29,7 +29,10 @@ MODULE ModuleLists;
          declared like a library's, not generated, its object linked *)
       compiled*: BOOLEAN;
       objectPath*: SourcePath;
-      usesCollector*: BOOLEAN; (* its object calls GarbageCollectedHeap *)
+      (* its code calls GarbageCollectedHeap: its object or IR's does, its
+         library's manifest says it allocates, or its code, once generated,
+         calls NEW or SYSTEM.NEW (PLAN.md, "Ongoing bug fixing", 11) *)
+      usesCollector*: BOOLEAN;
       (* Phase 12 step 2g: a module given as its .sym and .ll, irPath: not
          generated, its IR compiled like a generated module's *)
       irPath*: SourcePath;

@@ -1065,7 +1065,7 @@ MODULE Poc;
       module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
       entry: ModuleLists.ModuleList; errorCountBefore: INTEGER;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR; savedStrict: BOOLEAN;
-      symPath: ModuleLists.SourcePath;
+      symPath: ModuleLists.SourcePath; member: Libraries.Member;
   BEGIN
     ModuleInterface.ReadSource(name, buffer, length, found);
     Directories.MakePath(lib.dir, name, symPath); Strcat(symPath, ".sym");
@@ -1105,6 +1105,7 @@ MODULE Poc;
       Libraries.Use(lib);
       NEW(entry); entry.module := module; entry.scope := scope; entry.next := NIL;
       COPY(symPath, entry.fileName); entry.inLibrary := TRUE; entry.compiled := FALSE;
+      member := Libraries.FindMember(lib, name); entry.usesCollector := (member # NIL) & member.allocates;
       IF tail = NIL THEN modules := entry ELSE tail.next := entry END;
       tail := entry
     END
@@ -1334,6 +1335,19 @@ MODULE Poc;
     RETURN m
   END TakeModule;
 
+  (* Whether the program needs the collector: a module compiled in
+     this run calls NEW or SYSTEM.NEW, or one compiled already calls the
+     collector - as its object or IR says, or its library's manifest
+     (PLAN.md, "Ongoing bug fixing", 11) *)
+  PROCEDURE NeedsCollector(modules: ModuleLists.ModuleList): BOOLEAN;
+    VAR m: ModuleLists.ModuleList;
+  BEGIN
+    IF PredeclaredProcedures.NewWasCalled() THEN RETURN TRUE END;
+    m := modules;
+    WHILE (m # NIL) & ~m.usesCollector DO m := m.next END;
+    RETURN m # NIL
+  END NeedsCollector;
+
   (* PLAN.md Phase 9 step 5: NEW allocates through the runtime's collector
      (rtl/llvm's GarbageCollectedHeap, which registers module root tables
      through ModuleTable), which no source module has to IMPORT for it - so
@@ -1348,23 +1362,9 @@ MODULE Poc;
   PROCEDURE AddRuntimeModules(outputDir: ARRAY OF CHAR; VAR modules: ModuleLists.ModuleList;
                               VAR ok: BOOLEAN);
     VAR
-      table, heap, front, frontTail, m: ModuleLists.ModuleList; visited: VisitedModule;
-      fromLibrary, usesCollector: BOOLEAN;
+      table, heap, front, frontTail: ModuleLists.ModuleList; visited: VisitedModule;
   BEGIN
-    IF ~ok OR forVax THEN RETURN END;
-    (* a module from a library may call NEW too, and its .sym, which has no
-       bodies, cannot say (Phase 12 step 2d): with one in the program, the
-       runtime is added whenever a library has it *)
-    fromLibrary := FALSE; usesCollector := FALSE; m := modules;
-    WHILE m # NIL DO
-      IF m.inLibrary THEN fromLibrary := TRUE END;
-      IF (m.compiled OR (m.irPath[0] # 0X)) & m.usesCollector THEN usesCollector := TRUE END;
-      m := m.next
-    END;
-    IF ~PredeclaredProcedures.NewWasCalled() & ~usesCollector
-       & ~(fromLibrary & (Libraries.FindModule("GarbageCollectedHeap") # NIL)) THEN
-      RETURN
-    END;
+    IF ~ok OR forVax OR ~NeedsCollector(modules) THEN RETURN END;
     (* their .sym files, which the program's own imports did not ask for *)
     visited := NIL;
     RegenerateInterfaces("GarbageCollectedHeap", outputDir, visited, ok);
@@ -1398,7 +1398,7 @@ MODULE Poc;
   END AddRuntimeModules;
 
   (* Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section 15,
-     proposal 9): a VAX program that calls NEW allocates from rtl/vax's
+     proposal 9): a VAX program that calls NEW (NeedsCollector) allocates from rtl/vax's
      GarbageCollectedHeap, which -build adds to it first, as
      AddRuntimeModules does LLVM's, but alone: the root tables are
      registered with poc's runtime (POC_ROOTS), not ModuleTable. *)
@@ -1406,7 +1406,7 @@ MODULE Poc;
                             VAR ok: BOOLEAN);
     VAR heap, front, frontTail: ModuleLists.ModuleList; visited: VisitedModule;
   BEGIN
-    IF ~ok OR ~PredeclaredProcedures.NewWasCalled() THEN RETURN END;
+    IF ~ok OR ~NeedsCollector(modules) THEN RETURN END;
     visited := NIL;
     RegenerateInterfaces("GarbageCollectedHeap", outputDir, visited, ok);
     heap := TakeModule(modules, "GarbageCollectedHeap");
@@ -1614,6 +1614,21 @@ MODULE Poc;
     RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (~onlyMembers OR (FindMember(m.module.name^) # NIL))
   END IsVaxUnit;
 
+  (* Whether a VAX program's start sets up rtl/vax's GarbageCollectedHeap
+     (VaxCodeGenerator.withCollector): when it needs the collector
+     (NeedsCollector), a library's module that calls NEW included, or has
+     GarbageCollectedHeap. Without it the stack's base stays 0, and a
+     collection does not mark from the stack (PLAN.md, "Ongoing bug
+     fixing", 11). *)
+  PROCEDURE VaxProgramUsesCollector(modules: ModuleLists.ModuleList): BOOLEAN;
+    VAR m: ModuleLists.ModuleList;
+  BEGIN
+    IF NeedsCollector(modules) THEN RETURN TRUE END;
+    m := modules;
+    WHILE (m # NIL) & ~Names.Equals(m.module.name, "GarbageCollectedHeap") DO m := m.next END;
+    RETURN m # NIL
+  END VaxProgramUsesCollector;
+
   (* Each unit of modules written in outputDir as VaxToolchainDriver's
      writeMacro, writeObject and writeImage say, <Module>.mar, .obj or
      .image, the program's start in the main module, the last, unless
@@ -1693,7 +1708,7 @@ MODULE Poc;
     END;
     errorsBefore := Diagnostics.errorCount;
     VaxCodeGenerator.unsupportedCount := 0;
-    VaxCodeGenerator.withCollector := PredeclaredProcedures.NewWasCalled();
+    VaxCodeGenerator.withCollector := VaxProgramUsesCollector(modules);
     (* section 19.5, proposal 3: descriptors only in a program with Modules *)
     VaxCodeGenerator.withModules := FALSE;
     m := modules;
@@ -1739,6 +1754,7 @@ MODULE Poc;
            OR ~VaxToolchainDriver.EmitModule(module, scope, key, outputDir, ~onlyMembers & (m.next = NIL), path) THEN
           written := FALSE
         END;
+        m.usesCollector := VaxCodeGenerator.allocates;
         module := NIL; scope := NIL;
         MemoryCensus.Take(m.module.name^)
       END;
@@ -2739,7 +2755,7 @@ MODULE Poc;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
         IF ~ModuleInterface.KeyOf(m.module.name^, key) THEN key[0] := 0X END;
-        libMember := Libraries.AddMember(lib, m.module.name^, key);
+        libMember := Libraries.AddMember(lib, m.module.name^, key); libMember.allocates := m.usesCollector;
         IF ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
         imp := m.module.imports;
         WHILE imp # NIL DO
@@ -2898,7 +2914,7 @@ MODULE Poc;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
         IF ~ModuleInterface.KeyOf(m.module.name^, key) THEN key[0] := 0X END;
-        libMember := Libraries.AddMember(lib, m.module.name^, key);
+        libMember := Libraries.AddMember(lib, m.module.name^, key); libMember.allocates := m.usesCollector;
         IF ~m.compiled & (m.irPath[0] = 0X) & ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
         imp := m.module.imports;
         WHILE imp # NIL DO

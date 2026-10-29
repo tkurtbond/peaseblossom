@@ -1,0 +1,32 @@
+== poc -target vax-dec-vms -vax-objects -output-dir libs -library POCRTL rtl/vax/*.Mod rtl/vax/PocRtl.mar
+exit 0
+== poc -target vax-dec-vms -vax-objects -output-dir libs -library-path libs -library HOLDLIB HoldLib.mod PlainLib.mod
+exit 0
+HOLDLIB's modules:
+module HoldLib <key> allocates
+module PlainLib <key> -
+emit/HoldUse.mar's start:
+	.ENTRY	HOLDUSE_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
+	CALLS	#0, HOLDUSE_INIT
+	MOVL	#1, R0
+	RET
+emit/PlainUse.mar's start:
+	.ENTRY	PLAINUSE_MAIN, ^M<>
+	CALLS	#0, PLAINUSE_INIT
+	MOVL	#1, R0
+	RET
+== poc -target vax-dec-vms -library-path libs -output-dir main -o HoldUse -build HoldUse.mod
+exit 0
+main/HoldUse.mar's start:
+	.ENTRY	HOLDUSE_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
+	CALLS	#0, HOLDUSE_INIT
+	MOVL	#1, R0
+	RET
+== poc -target vax-dec-vms -vax-objects -library-path libs -output-dir main -o HoldUse -build HoldUse.mod
+exit 0

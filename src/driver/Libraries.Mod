@@ -25,7 +25,12 @@ MODULE Libraries;
                                          the modules, which -install-library
                                          copies)
        link <arg>                       (each -link <arg> it was built with)
-       module <Module> <key>            (each module, with its key)
+       module <Module> <key> <heap>     (each module, with its key; <heap> is
+                                         "allocates" when its code calls the
+                                         collector - NEW, SYSTEM.NEW - so that
+                                         a program with it sets the collector
+                                         up, else "-": PLAN.md, "Ongoing bug
+                                         fixing", 11)
        import <Module> <Imported> <key> (each import, with the key compiled against)
        source <Module> <key>            (each module's source file, hashed as a key is)
 
@@ -35,7 +40,9 @@ MODULE Libraries;
      a program that uses the library. A library
      another version of poc wrote, or one written before manifests recorded
      the version, is refused (Phase 13 step 1): nothing promises that two
-     versions' objects link together. Beside it, for
+     versions' objects link together, and so is one whose module lines
+     do not say whether the module allocates, which a poc 0.10.0 wrote
+     before they did. Beside it, for
      each of its modules, <Module>.owner holds the library's name: that is
      how a module an import names is found without listing a directory. A
      module belongs to one library only.
@@ -92,6 +99,9 @@ MODULE Libraries;
       name*: Name;
       key*: Key;
       source*: Key; (* of the file it was compiled from; "" when unknown *)
+      (* its code calls the collector (NEW, SYSTEM.NEW), so a program with
+         it needs the collector set up at its start *)
+      allocates*: BOOLEAN;
       imports*: ImportKey;
       next*: Member
     END;
@@ -501,7 +511,8 @@ MODULE Libraries;
   PROCEDURE AddMember*(lib: Library; name, key: ARRAY OF CHAR): Member;
     VAR m, tail: Member;
   BEGIN
-    NEW(m); COPY(name, m.name); COPY(key, m.key); m.source[0] := 0X; m.imports := NIL; m.next := NIL;
+    NEW(m); COPY(name, m.name); COPY(key, m.key); m.source[0] := 0X; m.allocates := FALSE; m.imports := NIL;
+    m.next := NIL;
     IF lib.modules = NIL THEN lib.modules := m
     ELSE
       tail := lib.modules;
@@ -587,7 +598,7 @@ MODULE Libraries;
   PROCEDURE Load(name, dir: ARRAY OF CHAR; check: BOOLEAN): Library;
     VAR
       lib: Library; path: Path; f: Files.File; r: Files.Rider; line: ARRAY lineLength OF CHAR;
-      w0, w1, w2, w3: Name; m: Member; ok: BOOLEAN; i: INTEGER;
+      w0, w1, w2, w3: Name; m: Member; ok, unrecorded: BOOLEAN; i: INTEGER;
   BEGIN
     IF check THEN
       lib := loaded;
@@ -606,7 +617,7 @@ MODULE Libraries;
     lib := NewLibrary(name, dir); lib.triple[0] := 0X; lib.model[0] := 0X; lib.pocVersion[0] := 0X;
     lib.refused := TRUE;
     IF check THEN lib.next := loaded; loaded := lib END;
-    ok := TRUE; m := NIL;
+    ok := TRUE; unrecorded := FALSE; m := NIL;
     Files.Set(r, f, 0);
     REPEAT
       Files.ReadLine(r, line);
@@ -629,7 +640,12 @@ MODULE Libraries;
           line[i - 5] := 0X;
           AddLinkArgument(lib.links, line)
         END
-      ELSIF w0 = "module" THEN m := AddMember(lib, w1, w2)
+      ELSIF w0 = "module" THEN
+        m := AddMember(lib, w1, w2);
+        IF w3 = "allocates" THEN m.allocates := TRUE
+        ELSIF w3[0] = 0X THEN unrecorded := TRUE
+        ELSE ok := w3 = "-"
+        END
       ELSIF w0 = "import" THEN
         m := FindMember(lib, w1);
         ok := m # NIL;
@@ -660,6 +676,11 @@ MODULE Libraries;
       ELSE Err.String(" was written by poc "); Err.String(lib.pocVersion)
       END;
       Err.String(", not "); Err.String(Version.number); Err.String(": rebuild it"); Err.Ln;
+      INC(errors);
+      RETURN NIL
+    ELSIF unrecorded THEN
+      Err.String("poc: the library "); Err.String(name); Err.String(" in "); Err.String(dir);
+      Err.String(" does not record which of its modules allocate: rebuild it"); Err.Ln;
       INC(errors);
       RETURN NIL
     END;
@@ -778,7 +799,12 @@ MODULE Libraries;
     a := lib.links;
     WHILE a # NIL DO WriteLine(w, "link", a.arg, "", ""); a := a.next END;
     m := lib.modules;
-    WHILE m # NIL DO WriteLine(w, "module", m.name, m.key, ""); m := m.next END;
+    WHILE m # NIL DO
+      IF m.allocates THEN WriteLine(w, "module", m.name, m.key, "allocates")
+      ELSE WriteLine(w, "module", m.name, m.key, "-")
+      END;
+      m := m.next
+    END;
     m := lib.modules;
     WHILE m # NIL DO
       IF m.source[0] # 0X THEN WriteLine(w, "source", m.name, m.source, "") END;

@@ -95,8 +95,8 @@ library fromobjects
 poc <version>
 model O2
 needs poc-rtl
-module Greet <key>
-module Twice <key>
+module Greet <key> -
+module Twice <key> -
 import Greet Out <key>
 import Twice Greet <key>
 hi 3

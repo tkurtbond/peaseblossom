@@ -944,6 +944,33 @@ Those fixed while Phase 16 was current, 7, are in
 Those fixed while Phase 18 was current, 8-10, are in
 `doc/history/phases/phase-18.md`.
 
+11. **[fixed] On the VAX, a program whose main module calls no `NEW`
+    got no collector setup, even when a library module it uses
+    allocates.** Found 2026-10-28 by poDateTime's VAX port, with 0.10.0:
+    `TimeZones.FromFile`, from the prebuilt `podatetime` library, lost
+    the zone it was building to a collection (an ACCVIO under `-OC`).
+    The driver set `VaxCodeGenerator.withCollector`, which makes
+    `<MAIN>_MAIN` call `GarbageCollectedHeap`'s initializer and
+    `SetStackBase(FP)`, only when a module compiled in that run called
+    `NEW`. A library module's `.sym` cannot say whether it does, so
+    `stackBase` stayed 0 and no collection marked from the stack. Now a
+    library's manifest says which of its modules allocate (`module
+    <Module> <key> allocates`, else `-`: their generated code calls
+    `GarbageCollectedHeap.Allocate`, by `NEW` or `SYSTEM.NEW`), and a
+    library without it is refused ("rebuild it"). Both back ends use it
+    (`Poc.NeedsCollector`), so LLVM's `AddRuntimeModules` no longer adds
+    the collector to every program with a module from a library while a
+    library has `GarbageCollectedHeap`: a program using only poc-rtl's
+    `Out` now links without it. Fixture `vax-collector-library`:
+    HOLDLIB's manifest, `MAIN_MAIN` from `-emit-macro32` and `-build`
+    against a library that allocates and none against one that does not,
+    and on the guest, objects held only by a local survive the
+    collections the library forces (without the fix the run fails with
+    `%X10000022`); the expected manifests of `llvm-cxx-part` (its
+    `greeter` no longer needs `poc-rtl`), `llvm-libraries`,
+    `llvm-using-modules`, `poc-object-files`, `vax-library`,
+    `vax-library-object-files` and `vax-options-files`.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

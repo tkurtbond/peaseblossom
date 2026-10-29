@@ -25,7 +25,6 @@ Greet.o
 30
 -1
 == a library that needs it
-needs poc-rtl
 needs greet
 30
 30
