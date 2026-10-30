@@ -10,7 +10,7 @@
 # UseCounters built against the pair, reading them from the .sym. The IR
 # has each as an external global and defines none of them.
 unset POC_IMPORT_PATH POC_LIBRARY_PATH
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 : >../result
 echo "== from source" >>../result
 poc -import-path ../part -o fromsource -build ../usecounters.mod >>../result 2>&1

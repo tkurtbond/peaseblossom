@@ -9,7 +9,7 @@
 # them. A module with both a C and a C++ part is refused.
 unset POC_IMPORT_PATH POC_LIBRARY_PATH
 triple=$(clang -dumpmachine)
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 here=$PWD
 mask() { sed -e "s|$triple|<triple>|g" -e "s|$here|<work>|g" -e 's/[0-9a-f]\{16\}/<key>/g'; }
 : >../result

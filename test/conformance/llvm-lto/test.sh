@@ -26,7 +26,7 @@ mask() {
 twice() {
   if nm "$1" | grep -q 'Small\.Twice'; then echo "Small.Twice in $1"; else echo "no Small.Twice in $1"; fi
 }
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 : >../result
 echo "== 1. from source" >>../result
 mkdir one && cp ../src/Small.Mod ../src/main.mod one/

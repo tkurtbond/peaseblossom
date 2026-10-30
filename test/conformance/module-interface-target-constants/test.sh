@@ -9,7 +9,7 @@
 consts() { grep -E '^ *(PtrSize|RecSize|LongMax|SetMax)' "$1" | tr -s ' ' | tr '\n' ' '; echo; }
 rm -rf work && mkdir work
 cp lib.mod client.mod work/
-cd work
+cd work || exit 1
 : >../result
 for flags in "-target i686-unknown-linux-gnu" \
              "-target i686-unknown-linux-gnu -OC" \

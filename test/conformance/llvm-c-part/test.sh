@@ -9,7 +9,7 @@
 unset POC_IMPORT_PATH POC_LIBRARY_PATH
 triple=$(clang -dumpmachine)
 mask() { sed -e "s|$triple|<triple>|g" -e 's/[0-9a-f]\{16\}/<key>/g' -e 's/libtwice\.so\.0\.0/libtwice.so/'; }
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 : >../result
 echo "== from source" >>../result
 poc -import-path ../part -o fromsource -build ../usetwice.mod 2>&1 | mask >>../result

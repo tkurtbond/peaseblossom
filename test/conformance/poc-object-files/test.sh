@@ -16,7 +16,7 @@ mask() {
   sed -e "s|$triple|<triple>|g" -e 's/[0-9a-f]\{16\}/<key>/g' \
       -e 's/^poc [0-9][0-9.]*$/poc <version>/'
 }
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 : >../result
 clang -x c -c -fPIC ../twice-source.txt -o twice.o
 echo "== -build" >>../result

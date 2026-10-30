@@ -10,7 +10,7 @@
 rm -rf work && mkdir work
 cp client.mod work/
 cp libv1.mod work/lib.mod
-cd work
+cd work || exit 1
 poc -emit-interface lib.mod >/dev/null
 cp lib.sym lib.sym.v1
 cp ../libv2.mod lib.mod

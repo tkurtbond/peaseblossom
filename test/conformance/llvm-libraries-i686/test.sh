@@ -39,7 +39,7 @@ run() {
   file "$1" | grep -q 'ELF 32-bit' && echo "$1: 32-bit" || echo "$1: NOT 32-BIT"
   "./$1"
 }
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 : >../result
 for model in O2 OC; do
   echo "== -$model" >>../result

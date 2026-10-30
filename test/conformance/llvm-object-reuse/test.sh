@@ -26,7 +26,7 @@ build() {
     echo "poc failed:"; cat build.out
   fi
 }
-rm -rf work && mkdir work && cp src/* work/ && cd work
+rm -rf work && mkdir work && cp src/* work/ && cd work || exit 1
 : >../result
 echo "== 1." >>../result
 build "first build" >>../result

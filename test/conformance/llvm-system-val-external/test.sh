@@ -7,7 +7,7 @@
 # to qsort, compares it with the address Compare itself takes, and takes
 # the address of a ["C"] procedure it declares itself and of an Oberon one.
 unset POC_IMPORT_PATH
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 poc -import-path ../part -o sortints -build ../sortints.mod >../result 2>&1
 ./sortints >>../result 2>&1
 cd ..

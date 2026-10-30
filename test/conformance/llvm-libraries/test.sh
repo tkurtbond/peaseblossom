@@ -18,7 +18,7 @@ mask() {
       -e 's/libshapes\.so\.0\.0/libshapes.so/'
 }
 poc() { command poc -clear-library-path "$@"; }
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 : >../result
 echo "== poc-rtl and shapes" >>../result
 poc -output-dir lib -library poc-rtl ../../../../rtl/llvm/*.Mod 2>&1 | mask >>../result

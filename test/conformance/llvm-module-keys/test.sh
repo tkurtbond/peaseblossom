@@ -14,7 +14,7 @@ export POC_IMPORT_PATH
 exe=$(basename "$PWD")
 rm -rf work && mkdir work
 cp client.mod libonly.mod work/
-cd work
+cd work || exit 1
 cp ../libv1.mod lib.mod
 : >../result
 echo "== client and lib v1" >>../result

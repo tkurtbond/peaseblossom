@@ -4,7 +4,7 @@
 # part/Hash.c includes include/fnv.h, so without -c-flag -I.../include its
 # compile fails, and with it the program builds - with no -o, as UseHash, the
 # program module's name - and prints FNV-1a of "hello" (1335831723).
-rm -rf work && mkdir work && cd work
+rm -rf work && mkdir work && cd work || exit 1
 : >../result
 echo "== without -c-flag" >>../result
 poc -import-path ../part ../UseHash.Mod >/dev/null 2>&1
