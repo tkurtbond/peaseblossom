@@ -1005,6 +1005,30 @@ Those fixed while Phase 18 was current, 8-10, are in
     `llvm-using-modules`, `poc-object-files`, `vax-library`,
     `vax-library-object-files` and `vax-options-files`.
 
+12. **[fixed] An import of a file that declares another module got a
+    false error.** Found 2026-11-01, asking how module names and file
+    names relate. A module is named by the identifier after `MODULE`,
+    and an import finds `<Name>.Mod` or `<Name>.mod` by the name
+    imported, so `IMPORT Named` of a `Named.Mod` holding `MODULE Other`
+    can never work. poc said "unknown imported module: Named" and then
+    "no Named.Mod, Named.mod or Named.sym in the current directory", of
+    a directory that has that file. Now `RegenerateInterfaces` compares
+    the two: "Named.Mod:1:1: error: this file declares module Other, so
+    it cannot be imported as Named". A name differing only in case
+    differs, which also gives this message where a case-insensitive
+    file system finds the file for the wrong spelling. A file named on
+    the command line, or a library's member, may still have any name:
+    its outputs are named after its module. Fixture
+    `poc-import-wrong-module`.
+
+13. **[fixed] That failure left a `.sym` behind.** Found with 12: the
+    file's interface was written before the import was found to fail,
+    under the name the file declares, so the failed build above left an
+    `Other.sym`, which no command had asked for and a later `IMPORT
+    Other` would have read. The check of 12 comes first, so nothing
+    is written. `poc-import-wrong-module` lists the `.sym` files after
+    each failure.
+
 14. **[fixed] Two tracked files differed only in case, so the repository
     would not check out on a case-insensitive file system.** Reported
     by a user on macOS, 2026-11-01:

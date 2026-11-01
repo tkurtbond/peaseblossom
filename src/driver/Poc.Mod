@@ -1276,6 +1276,7 @@ MODULE Poc;
       sourcePath: ModuleLists.SourcePath;
       errorCountBefore: INTEGER; savedStrict: BOOLEAN; member: LibraryMember;
       name: SyntaxTree.Ident;
+      wrongModule: ARRAY 600 OF CHAR; (* two SyntaxTree.Idents and the words *)
   BEGIN
     IF ~ok THEN RETURN END;
     COPY(moduleName, name);
@@ -1317,14 +1318,23 @@ MODULE Poc;
     Parser.InitParser(parser, buffer, length);
     module := Parser.ParseModule(parser);
     IF Diagnostics.errorCount = errorCountBefore THEN
-      imp := module.imports;
-      WHILE (imp # NIL) & ok DO
-        RegenerateInterfaces(imp.moduleName^, outputDir, visited, ok);
-        imp := imp.next
-      END;
-      IF ok THEN
-        scope := SemanticActions.CheckModule(module, ParseModuleAdapter);
-        CheckVaxModuleName(module)
+      (* the file was found by the name imported, but the module is named
+         by its source, and so is its .sym, which no importer would find
+         ("Ongoing bug fixing" 12 and 13) *)
+      IF module.name^ # name THEN
+        COPY("this file declares module ", wrongModule); Strcat(wrongModule, module.name^);
+        Strcat(wrongModule, ", so it cannot be imported as "); Strcat(wrongModule, name);
+        Diagnostics.Error(module.line, module.column, wrongModule)
+      ELSE
+        imp := module.imports;
+        WHILE (imp # NIL) & ok DO
+          RegenerateInterfaces(imp.moduleName^, outputDir, visited, ok);
+          imp := imp.next
+        END;
+        IF ok THEN
+          scope := SemanticActions.CheckModule(module, ParseModuleAdapter);
+          CheckVaxModuleName(module)
+        END
       END
     END;
     IF ~ok THEN

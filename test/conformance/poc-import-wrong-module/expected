@@ -1,0 +1,32 @@
+== poc -build direct.mod
+Named.Mod:1:1: error: this file declares module Other, so it cannot be imported as Named
+1 error(s) in imported module Named
+exit=1
+== poc -compile direct.mod
+Named.Mod:1:1: error: this file declares module Other, so it cannot be imported as Named
+1 error(s) in imported module Named
+1 error(s)
+exit=1
+== poc -emit-llvm-ir direct.mod
+Named.Mod:1:1: error: this file declares module Other, so it cannot be imported as Named
+1 error(s) in imported module Named
+exit=1
+== poc -target vax-dec-vms -build direct.mod
+Named.Mod:1:1: error: this file declares module Other, so it cannot be imported as Named
+1 error(s) in imported module Named
+exit=1
+== poc -build deep.mod
+Named.Mod:1:1: error: this file declares module Other, so it cannot be imported as Named
+1 error(s) in imported module Named
+exit=1
+== poc -build incase.mod
+Lower.Mod:1:1: error: this file declares module LOWER, so it cannot be imported as Lower
+1 error(s) in imported module Lower
+exit=1
+== poc -output-dir . -library named Named.Mod
+exit=0
+== a file of another name on the command line
+exit=0
+Hello
+Hello.sym
+from a file of another name

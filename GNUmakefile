@@ -159,7 +159,7 @@ check-stage1:
 # have build/lib/poc's. The fixtures that compile for the VAX are left out
 # too (VAX_TARGET_TESTS): -target vax-dec-vms refuses -opt and -lto, which
 # only the LLVM back end has (2026-10-27).
-VAX_TARGET_TESTS := $(filter vax-%,$(ALL_TESTS)) doc-vax-guide poc-vax-runtime-missing \
+VAX_TARGET_TESTS := $(filter vax-%,$(ALL_TESTS)) doc-vax-guide poc-import-wrong-module poc-vax-runtime-missing \
   poc-vax-target-llvm-options semantic-vms-arguments
 OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
 OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
