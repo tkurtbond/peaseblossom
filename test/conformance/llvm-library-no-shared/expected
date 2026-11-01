@@ -20,6 +20,14 @@ poc: building library greet failed
 poc: its shared library did not link; -no-shared-library builds only the archive
 == the same with the option
 exit=0
+== a shared library needing an archive
+poc: library uses's shared library cannot link library greet, which has none: build uses with -no-shared-library
+exit=1
+library files: 0
+== an archive needing an archive
+exit=0
+== an archive needing a shared library
+exit=0
 == a program reads the manifest
 exit=0
 hello from an archive

@@ -2840,6 +2840,29 @@ MODULE Poc;
     RETURN TRUE
   END ObjectFilesFit;
 
+  (* FALSE, said why, when library name is to have a shared library and
+     needs a library that has none. The linker would take that library's
+     archive without a word, and the shared library would hold its own copy
+     of those modules (doc/developer/static-only-libraries.md, item 4). *)
+  PROCEDURE NeedsHaveSharedLibraries(name: ARRAY OF CHAR): BOOLEAN;
+    VAR lib: Libraries.Library; ok: BOOLEAN;
+  BEGIN
+    ok := TRUE;
+    IF ~noSharedLibrary THEN
+      lib := Libraries.linkOrder;
+      WHILE lib # NIL DO
+        IF lib.noShared THEN
+          ok := FALSE; failed := TRUE;
+          Err.String("poc: library "); Err.String(name); Err.String("'s shared library cannot link library ");
+          Err.String(lib.name); Err.String(", which has none: build "); Err.String(name);
+          Err.String(" with -no-shared-library"); Err.Ln
+        END;
+        lib := lib.linkNext
+      END
+    END;
+    RETURN ok
+  END NeedsHaveSharedLibraries;
+
   PROCEDURE BuildLibrary(name: ARRAY OF CHAR; firstFile: INTEGER; outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
       triple: ARRAY tripleLength OF CHAR;
@@ -2896,7 +2919,7 @@ MODULE Poc;
     END;
     IF ~ObjectFilesFit(modules, name) OR ~PassObjectFiles() THEN RETURN END;
     (* the libraries its modules use, as shared ones for its shared library *)
-    IF ~PrepareLibraries(modules, TRUE) THEN RETURN END;
+    IF ~PrepareLibraries(modules, TRUE) OR ~NeedsHaveSharedLibraries(name) THEN RETURN END;
     IF ~LLVMBackEnd.BuildLibrary(modules, name, triple, dir, ~noSharedLibrary) THEN
       IF LLVMBackEnd.UnsupportedCount() > 0 THEN ReportUnsupportedConstructs
       ELSIF Diagnostics.errorCount > 0 THEN ReportGenerationErrors
