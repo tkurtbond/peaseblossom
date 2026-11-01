@@ -3523,7 +3523,7 @@ MODULE Poc;
   PROCEDURE InstallLibrary(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
       triple: ARRAY tripleLength OF CHAR;
-      base, dir, file: Libraries.Path; program: Libraries.Path; owner: Libraries.Name;
+      base, dir, file, sharedPath: Libraries.Path; program: Libraries.Path; owner: Libraries.Name;
       command: ARRAY 16 * Libraries.pathLength OF CHAR; lib, old: Libraries.Library;
       m: Libraries.Member; ok: BOOLEAN; status: INTEGER; f: Files.File; model: ARRAY 3 OF CHAR;
   BEGIN
@@ -3594,7 +3594,14 @@ MODULE Poc;
     COPY("cd", command); ok := AppendQuoted(command, lib.dir); Strcat(command, " && cp");
     COPY(name, file); Strcat(file, ".library"); ok := AppendQuoted(command, file);
     COPY("lib", file); Strcat(file, name); Strcat(file, ".a"); ok := AppendQuoted(command, file);
-    LLVMBackEnd.SharedLibraryName(name, triple, file); ok := AppendQuoted(command, file);
+    LLVMBackEnd.SharedLibraryName(name, triple, file);
+    IF lib.noShared THEN
+      (* a copy installed before may have one, which -l<name> would find
+         (doc/developer/static-only-libraries.md, item 3) *)
+      Directories.MakePath(dir, file, sharedPath); status := Platform.Unlink(sharedPath)
+    ELSE
+      ok := AppendQuoted(command, file)
+    END;
     m := lib.modules;
     WHILE m # NIL DO
       COPY(m.name, file); Strcat(file, ".sym"); ok := AppendQuoted(command, file);

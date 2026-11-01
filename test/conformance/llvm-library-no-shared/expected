@@ -28,6 +28,17 @@ library files: 0
 exit=0
 == an archive needing a shared library
 exit=0
+== installed
+installed library greet in inst/<triple>/O2
+libgreet.a
+-- over one with a shared library
+installed library greet in inst/<triple>/O2
+libgreet.a
+libgreet.so
+installed library greet in inst/<triple>/O2
+libgreet.a
+exit=0
+hello from an archive
 == a program reads the manifest
 exit=0
 hello from an archive

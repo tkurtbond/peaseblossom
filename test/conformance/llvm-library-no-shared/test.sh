@@ -10,7 +10,8 @@
 # A shared link that fails says the option exists; with the option that
 # link is not made, so a bad -link is not found. A library with a shared
 # library cannot need one without, whose code it would hold a copy of; the
-# reverse is fine.
+# reverse is fine. An install copies only the files there are, deletes the
+# shared library of a copy installed before, and a program links from it.
 unset POC_IMPORT_PATH
 triple=$(clang -dumpmachine)
 manifest() { grep -c '^no-shared$' "$1/$triple/O2/greet.library"; }
@@ -56,6 +57,18 @@ echo "== an archive needing a shared library" >>../result
 poc -output-dir both -library greet ../Greet.Mod >>../result 2>&1
 poc -library-path both -output-dir needs2 -no-shared-library -library uses ../Uses.Mod >>../result 2>&1
 echo "exit=$?" >>../result
+echo "== installed" >>../result
+install() {
+  poc -library-path "$1" -output-dir inst -install-library greet 2>&1 | sed "s|$triple|<triple>|" >>../result
+  files inst
+}
+install before
+echo "-- over one with a shared library" >>../result
+install both
+install before
+poc -library-path inst -o installed -build ../main.mod >>../result 2>&1
+echo "exit=$?" >>../result
+./installed >>../result 2>&1
 echo "== a program reads the manifest" >>../result
 poc -library-path before -o main -build ../main.mod >>../result 2>&1
 echo "exit=$?" >>../result
