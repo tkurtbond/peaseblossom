@@ -39,6 +39,31 @@ installed library greet in inst/<triple>/O2
 libgreet.a
 exit=0
 hello from an archive
+== -shared-libraries
+poc: warning: library greet has no shared library, so its archive is linked
+exit=0
+hello from an archive
+libpoc-rtl.so
+-- with a library that has one, no warning
+exit=0
+hello from an archive
+libgreet.so
+libpoc-rtl.so
+-- two archives, each warned of
+poc: warning: library uses has no shared library, so its archive is linked
+poc: warning: library greet has no shared library, so its archive is linked
+exit=0
+hello from an archive
+hello from an archive
+libpoc-rtl.so
+== -lto
+exit=0
+1
+exit=0
+hello from an archive
+poc: warning: library greet has no shared library, so its archive is linked
+exit=0
+hello from an archive
 == a program reads the manifest
 exit=0
 hello from an archive

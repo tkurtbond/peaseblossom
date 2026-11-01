@@ -12,6 +12,9 @@
 # library cannot need one without, whose code it would hold a copy of; the
 # reverse is fine. An install copies only the files there are, deletes the
 # shared library of a copy installed before, and a program links from it.
+# -shared-libraries links such a library's archive, with a warning, beside a
+# shared poc-rtl, so the program needs no libgreet at run time. An LTO
+# archive still gets -flto, the link being shared or not.
 unset POC_IMPORT_PATH
 triple=$(clang -dumpmachine)
 manifest() { grep -c '^no-shared$' "$1/$triple/O2/greet.library"; }
@@ -69,6 +72,36 @@ install before
 poc -library-path inst -o installed -build ../main.mod >>../result 2>&1
 echo "exit=$?" >>../result
 ./installed >>../result 2>&1
+echo "== -shared-libraries" >>../result
+# the shared libraries of ours the program asks for at run time
+needed() {
+  readelf -d "$1" | grep NEEDED | grep -E -o 'lib(greet|uses|poc-rtl)[^]]*' |
+    sed 's/\.so\.0\.0$/.so/' | LC_ALL=C sort >>../result
+}
+poc -library-path before -shared-libraries -o shared -build ../main.mod >>../result 2>&1
+echo "exit=$?" >>../result
+./shared >>../result 2>&1
+needed shared
+echo "-- with a library that has one, no warning" >>../result
+poc -library-path both -shared-libraries -o shared2 -build ../main.mod >>../result 2>&1
+echo "exit=$?" >>../result
+./shared2 >>../result 2>&1
+needed shared2
+echo "-- two archives, each warned of" >>../result
+poc -library-path before -library-path needs -shared-libraries -o shared3 -build ../twice.mod >>../result 2>&1
+echo "exit=$?" >>../result
+./shared3 >>../result 2>&1
+needed shared3
+echo "== -lto" >>../result
+poc -lto -output-dir lto -no-shared-library -library greet ../Greet.Mod >>../result 2>&1
+echo "exit=$?" >>../result
+grep -c '^lto$' "lto/$triple/O2/greet.library" >>../result
+poc -library-path lto -o ltoStatic -build ../main.mod >>../result 2>&1
+echo "exit=$?" >>../result
+./ltoStatic >>../result 2>&1
+poc -library-path lto -shared-libraries -o ltoShared -build ../main.mod >>../result 2>&1
+echo "exit=$?" >>../result
+./ltoShared >>../result 2>&1
 echo "== a program reads the manifest" >>../result
 poc -library-path before -o main -build ../main.mod >>../result 2>&1
 echo "exit=$?" >>../result

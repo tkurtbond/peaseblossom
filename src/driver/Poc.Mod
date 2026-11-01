@@ -739,6 +739,23 @@ MODULE Poc;
     RETURN ok
   END PrepareLibraries;
 
+  (* -shared-libraries, for a program: each library it links that has no
+     shared library, whose archive LLVMBackEnd.PrepareLibraries names
+     instead. The difference can show: such a library's modules are not
+     visible to a plugin (doc/developer/static-only-libraries.md, item 5). *)
+  PROCEDURE WarnLibrariesWithoutShared;
+    VAR lib: Libraries.Library;
+  BEGIN
+    lib := Libraries.linkOrder;
+    WHILE lib # NIL DO
+      IF lib.noShared THEN
+        Err.String("poc: warning: library "); Err.String(lib.name);
+        Err.String(" has no shared library, so its archive is linked"); Err.Ln
+      END;
+      lib := lib.linkNext
+    END
+  END WarnLibrariesWithoutShared;
+
   (* Explicit -target flag wins; otherwise LLVMToolchainDriver.HostTriple's
      auto-detected default (PLAN.md Phase 8 step 2). *)
   PROCEDURE ResolveTriple(explicitTriple: ARRAY OF CHAR; VAR triple: ARRAY OF CHAR): BOOLEAN;
@@ -2348,6 +2365,7 @@ MODULE Poc;
       SetLibraryTarget(triple);
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
       IF ok & PrepareLibraries(modules, sharedLibraries) THEN
+        IF sharedLibraries THEN WarnLibrariesWithoutShared END;
         ProgramTopName(modules, topName);
         (* Phase 13 step 2: without -o, the executable is named after the
            program's module, in the current directory, as voc names it *)

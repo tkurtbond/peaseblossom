@@ -150,21 +150,22 @@ MODULE LLVMBackEnd;
   (* ---- Libraries ---- *)
 
   (* The libraries of Libraries.linkOrder, which the driver has checked,
-     for the link: each one's archive, or with shared its shared library,
-     then the link arguments their manifests record, each once (Ongoing
-     implementation enhancements, item 1). FALSE, said why, when they are
-     too many. *)
+     for the link: each one's archive, or with shared its shared library
+     if it has one, then the link arguments their manifests record, each
+     once (Ongoing implementation enhancements, item 1). FALSE, said why,
+     when they are too many. *)
   PROCEDURE PrepareLibraries*(shared: BOOLEAN): BOOLEAN;
-    VAR lib: Libraries.Library; seen, link, other: Libraries.LinkArgument; ok: BOOLEAN;
+    VAR lib: Libraries.Library; seen, link, other: Libraries.LinkArgument; ok, useShared: BOOLEAN;
   BEGIN
     LLVMToolchainDriver.ClearLibraries;
     LLVMToolchainDriver.ltoLink := FALSE;
     lib := Libraries.linkOrder;
     WHILE lib # NIL DO
-      LLVMToolchainDriver.AddLibrary(lib.name, lib.dir, shared, Libraries.IsInstalled(lib.dir));
+      useShared := shared & ~lib.noShared;
+      LLVMToolchainDriver.AddLibrary(lib.name, lib.dir, useShared, Libraries.IsInstalled(lib.dir));
       (* an LTO library's archive is bitcode, which only -flto links (Phase
          12 step 2g); its shared library is not *)
-      IF lib.lto & ~shared THEN LLVMToolchainDriver.ltoLink := TRUE END;
+      IF lib.lto & ~useShared THEN LLVMToolchainDriver.ltoLink := TRUE END;
       IF lib.cxx THEN LLVMToolchainDriver.cxxLibrary := TRUE END;
       lib := lib.linkNext
     END;
