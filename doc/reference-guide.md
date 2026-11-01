@@ -732,7 +732,7 @@ together, and one compile writes each file they name.
 | `-strict` | The module named may use only `Oberon2.pdf`'s language (section 3). |
 | `-static` | Links a fully static executable. |
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
-| `-no-shared-library` | With `-library`, makes an archive and no shared object, and says so in the manifest (`no-shared`). Not for `vax-dec-vms`. |
+| `-no-shared-library` | With `-library`, makes an archive and no shared object, says so in the manifest (`no-shared`), and deletes a shared library left in the directory by an earlier build. A library that has a shared object cannot need such a library: poc refuses it, and it needs this option too. `-install-library` copies the archive and deletes any shared library of an earlier copy. `-shared-libraries` links the archive, by its path, and warns. Without the shared link, `-link`'s arguments are not tried until a program links the library. Not for `vax-dec-vms`. |
 | `-vax-objects` | For `vax-dec-vms`, builds from poc's own objects: `-build` and `-compile` write each module's `.obj`, not its `.mar`, and the build procedure assembles nothing. On Linux and the BSDs the procedure first converts each object sent to VMS in binary, with the kit's `OBJCONVERT`, and `-compile` writes one that only converts; on VMS `-compile` writes none. The default for poc on VMS. |
 | `-vax-macro32` | For `vax-dec-vms`, builds from MACRO-32: `-build` and `-compile` write each module's `.mar` and a procedure that assembles them. The default for poc elsewhere. |
 | `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. With `-library`, also recorded in the manifest, for every program that links the library. For `vax-dec-vms`, `<arg>` is a line of the link's options file, after the objects and libraries (`MYLIB.OLB/LIBRARY`, `MYSHR/SHAREABLE`): at most 512 characters, not starting with `$`, each line once; with `-library` also in the options file of the library's shareable image. An options file, `.opt`, among `-build`'s or `-library`'s files gives such lines too, after the `-link` arguments: poc reads it, leaves out blank lines and comments (`!`), and joins a line ending in `-` with the next. |
@@ -835,7 +835,8 @@ END Args.
 in a directory `<base>/<triple>/<O2|OC>/` (with `-g`, `<O2|OC>-g/`), where
 `<base>` is `-output-dir`, or a directory of the library path. There are:
 
-- `lib<name>.a` and the shared object `lib<name>.so`;
+- `lib<name>.a` and, unless built with `-no-shared-library`, the shared
+  object `lib<name>.so` (`.so.0.0` on OpenBSD);
 - each module's `<Module>.sym`, `.ll` and `.o`;
 - `<Module>.owner` for each module, holding the library's name: a module
   belongs to one library;
@@ -850,6 +851,7 @@ The manifest is text, one fact a line, words separated by a space:
 | `triple <triple>` | the target |
 | `model <O2\|OC>` | the size model |
 | `lto` | its objects are LLVM bitcode |
+| `no-shared` | built with `-no-shared-library`: it has an archive and no shared object |
 | `needs <library>` | a library its modules import from, one line each |
 | `part <name>` | for `vax-dec-vms`, each hand-written `<name>.mar` built with it, one line each |
 | `c++` | a module of it has a C++ part, so clang++ links a program that uses it |

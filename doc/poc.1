@@ -505,7 +505,15 @@ Link the libraries' shared objects instead of their archives.
 .It Fl no-shared-library
 With
 .Fl library ,
-make an archive and no shared object.
+make an archive and no shared object, for code that cannot go into one,
+such as a static library built without
+.Fl fPIC .
+A library with a shared object cannot need such a library, so a library
+that needs it must be built this way too.
+.Fl install-library
+copies the archive and removes any shared library from before, and
+.Fl shared-libraries
+links the archive, with a warning.
 Not for vax-dec-vms.
 .It Fl vax-objects
 For vax-dec-vms, build from poc's own objects:

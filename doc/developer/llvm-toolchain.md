@@ -33,7 +33,12 @@ shells out to these rather than linking against LLVM's own C++ API.
   `<poc's dir>/../lib/poc`; `-clear-library-path` drops all three. A
   module a library on the path has is taken from it, never from source;
   `-build` links the libraries' archives, `-shared-libraries` their shared
-  libraries. poc refuses a module two libraries have, a library
+  libraries. `-no-shared-library` builds a library with no shared object
+  (`no-shared` in the manifest), for code that cannot be linked into one;
+  `doc/developer/static-only-libraries.md` has why and the rules: a
+  library with a shared object cannot need it, and `-shared-libraries`
+  names its archive by path, with a warning, library by library. poc
+  refuses a module two libraries have, a library
   compiled against another's old keys (`src/driver/Libraries.Mod`), and,
   since Phase 13 step 1, a library whose manifest's `poc <version>` line
   is missing or names another version than `Version.number`; it warns

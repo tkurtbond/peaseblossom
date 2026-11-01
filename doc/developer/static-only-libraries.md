@@ -6,10 +6,11 @@ systems whose FLTK is only static libraries built without `-fPIC`, the
 shared object cannot be linked, so `make install` fails. This document
 is what that implies, read from the source and tried on 2026-10-31, the
 plan for a `-no-shared-library` option, and how pofltk decides when to
-use it. Nothing here is implemented yet. Its entry in `PLAN.md` is
-"Ongoing implementation enhancements", 10.
+use it. Steps 1-7 of the plan are done (2026-11-01); steps 8 and 9, the
+release and pofltk's part, remain. Its entry in `PLAN.md` is "Ongoing
+implementation enhancements", 10.
 
-## What happens now
+## What happened before
 
 - `LLVMToolchainDriver.BuildLibrary` runs `ar`, then `clang -shared`. A
   failure of the second leaves a `lib<name>.a`, but `Poc.BuildLibrary`

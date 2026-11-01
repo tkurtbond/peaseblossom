@@ -326,6 +326,24 @@ and another version refuses it ("rebuild it"). With `-g`, `-library` builds
 a library with debug information beside the plain one, in
 `<triple>/<O2|OC>-g/` (section 8).
 
+Some code cannot go into a shared library: a binding to a static library
+built without `-fPIC`, for one. Then the shared link fails, and poc says
+that `-no-shared-library` builds only the archive:
+
+```
+$ poc -no-shared-library -library greet Greet.Mod
+```
+
+poc does not do this by itself, since the same failure could be a misspelt
+`-link`, and it does not try that link, so a mistake in `-link`'s arguments
+is found by the first program to link the library. A library with a shared
+library cannot need one without (poc refuses it, naming both), so a library
+that needs one built this way must be built this way too; the reverse is
+fine. `-shared-libraries` links such a library's archive and warns ("has no
+shared library, so its archive is linked"). The program then has its own
+copy of those modules, and a plugin it loads sees them only with `-link
+-rdynamic`.
+
 ## 6. Checking a module without building it
 
 `poc -check <file>` checks a module against the interfaces of the modules

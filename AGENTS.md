@@ -170,6 +170,10 @@ on the BSDs their plain `clang` (19 on OpenBSD and FreeBSD, 21 on NetBSD).
   `-library-path`, `POC_LIBRARY_PATH`, `<poc's dir>/../lib/poc`. `make`
   builds `rtl/llvm` as `poc-rtl`; the bootstrap stages compile it from
   source. A library from another poc version is refused.
+  `-no-shared-library` makes only the archive (`no-shared` in the
+  manifest), which a library with a shared object cannot need, and which
+  `-shared-libraries` links with a warning
+  (`doc/developer/static-only-libraries.md`).
 - `<M>.c` beside `<M>.Mod` is the module's part in C, compiled and linked
   with it (`rtl/llvm/Platform.c`).
 - `src/driver/Version.Mod` holds the version, `tools/build-info` the
