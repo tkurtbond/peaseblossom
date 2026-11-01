@@ -2897,10 +2897,16 @@ MODULE Poc;
     IF ~ObjectFilesFit(modules, name) OR ~PassObjectFiles() THEN RETURN END;
     (* the libraries its modules use, as shared ones for its shared library *)
     IF ~PrepareLibraries(modules, TRUE) THEN RETURN END;
-    IF ~LLVMBackEnd.BuildLibrary(modules, name, triple, dir) THEN
+    IF ~LLVMBackEnd.BuildLibrary(modules, name, triple, dir, ~noSharedLibrary) THEN
       IF LLVMBackEnd.UnsupportedCount() > 0 THEN ReportUnsupportedConstructs
       ELSIF Diagnostics.errorCount > 0 THEN ReportGenerationErrors
-      ELSE failed := TRUE; Err.String("poc: building library "); Err.String(name); Err.String(" failed"); Err.Ln
+      ELSE
+        failed := TRUE; Err.String("poc: building library "); Err.String(name); Err.String(" failed"); Err.Ln;
+        IF LLVMBackEnd.SharedLinkFailed() THEN
+          (* not done for the user: this could as well be a misspelt -link
+             (doc/developer/static-only-libraries.md) *)
+          Err.String("poc: its shared library did not link; -no-shared-library builds only the archive"); Err.Ln
+        END
       END;
       RETURN
     END;

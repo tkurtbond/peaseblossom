@@ -142,10 +142,15 @@ MODULE LLVMBackEnd;
     RETURN FALSE
   END Build;
 
-  PROCEDURE BuildLibrary*(modules: ModuleLists.ModuleList; name, triple, dir: ARRAY OF CHAR): BOOLEAN;
+  PROCEDURE BuildLibrary*(modules: ModuleLists.ModuleList; name, triple, dir: ARRAY OF CHAR; shared: BOOLEAN): BOOLEAN;
   BEGIN
     RETURN FALSE
   END BuildLibrary;
+
+  PROCEDURE SharedLinkFailed*(): BOOLEAN;
+  BEGIN
+    RETURN FALSE
+  END SharedLinkFailed;
 
   PROCEDURE TypeLiteral*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
   BEGIN

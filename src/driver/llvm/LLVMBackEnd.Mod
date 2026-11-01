@@ -230,11 +230,18 @@ MODULE LLVMBackEnd;
     RETURN LLVMToolchainDriver.Build(modules, topName, triple, outputDir, exePath)
   END Build;
 
-  (* -library: the library name's archive and shared library, in dir *)
-  PROCEDURE BuildLibrary*(modules: ModuleLists.ModuleList; name, triple, dir: ARRAY OF CHAR): BOOLEAN;
+  (* -library: the library name's archive and, if shared, its shared
+     library, in dir *)
+  PROCEDURE BuildLibrary*(modules: ModuleLists.ModuleList; name, triple, dir: ARRAY OF CHAR; shared: BOOLEAN): BOOLEAN;
   BEGIN
-    RETURN LLVMToolchainDriver.BuildLibrary(modules, name, triple, dir)
+    RETURN LLVMToolchainDriver.BuildLibrary(modules, name, triple, dir, shared)
   END BuildLibrary;
+
+  (* whether BuildLibrary failed at linking the shared library *)
+  PROCEDURE SharedLinkFailed*(): BOOLEAN;
+  BEGIN
+    RETURN LLVMToolchainDriver.sharedLinkFailed
+  END SharedLinkFailed;
 
   (* -dump-llvm-types: t's LLVM type under sizeModel, every record spelled
      out *)

@@ -7,6 +7,19 @@ exit=0
 == without it
 exit=0
 0
+== the files
+libgreet.a
+libgreet.a
+libgreet.a
+libgreet.so
+== rebuilt without the shared library
+exit=0
+libgreet.a
+== a shared link that fails
+poc: building library greet failed
+poc: its shared library did not link; -no-shared-library builds only the archive
+== the same with the option
+exit=0
 == a program reads the manifest
 exit=0
 hello from an archive

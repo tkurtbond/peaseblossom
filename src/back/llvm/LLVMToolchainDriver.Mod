@@ -50,6 +50,9 @@ MODULE LLVMToolchainDriver;
        <arg> to that command (AddLinkArgument), after the program's objects and
        before -lm, so a library named there can itself use libm. *)
     staticLink*, verbose*: BOOLEAN;
+    (* BuildLibrary got as far as the shared link, and it failed: what a
+       message about the failure can add to *)
+    sharedLinkFailed*: BOOLEAN;
     (* Phase 12 step 2g: poc -lto compiles every module to LLVM bitcode, for
        an optimization of the whole program when it is linked; ltoLink
        links with -flto, which bitcode anywhere in the link needs - an LTO
@@ -879,12 +882,16 @@ MODULE LLVMToolchainDriver;
 
   (* Phase 12 step 2c: the library name, in dir: every module of modules not
      from a library compiled to a position-independent object, archived in
-     lib<name>.a and linked into its shared library (SharedLibraryName)
-     against the libraries AddLibrary named, as shared ones, and the -link
-     arguments *)
-  PROCEDURE BuildLibrary*(modules: ModuleLists.ModuleList; name, triple, dir: ARRAY OF CHAR): BOOLEAN;
+     lib<name>.a and, if shared, linked into its shared library
+     (SharedLibraryName) against the libraries AddLibrary named, as shared
+     ones, and the -link arguments. If not shared, a shared library an
+     earlier build left in dir is deleted, or -l<name> would find it
+     (doc/developer/static-only-libraries.md). A failure of that link sets
+     sharedLinkFailed. *)
+  PROCEDURE BuildLibrary*(modules: ModuleLists.ModuleList; name, triple, dir: ARRAY OF CHAR; shared: BOOLEAN): BOOLEAN;
     VAR path, file: ARRAY pathBufferLength OF CHAR; linker: ARRAY 8 OF CHAR; deleteResult: INTEGER;
   BEGIN
+    sharedLinkFailed := FALSE;
     IF ~EmitIR(modules, name, triple, dir, path) THEN RETURN FALSE END;
     IF ~CompileModules(modules, triple, dir, FALSE) THEN RETURN FALSE END;
     COPY(dir, path); Strcat(path, "/lib"); Strcat(path, name); Strcat(path, ".a");
@@ -894,6 +901,10 @@ MODULE LLVMToolchainDriver;
     IF ~RunCommand() THEN RETURN FALSE END;
     SharedLibraryName(name, triple, file);
     COPY(dir, path); Strcat(path, "/"); Strcat(path, file);
+    IF ~shared THEN
+      deleteResult := Platform.Unlink(path);
+      RETURN TRUE
+    END;
     Linker(modules, dir, linker);
     COPY(linker, command); Strcat(command, " -shared"); AppendTargetOptions(command, triple);
     AppendLTOOptions(triple); AppendHardeningOptions(triple);
@@ -903,7 +914,8 @@ MODULE LLVMToolchainDriver;
     AppendRunPath(dir, TRUE);
     Strcat(command, linkArguments);
     Strcat(command, " -lm");
-    RETURN RunCommand()
+    sharedLinkFailed := ~RunCommand();
+    RETURN ~sharedLinkFailed
   END BuildLibrary;
 
   (* Phase 12 step 2f, poc -compile: the IR and object of every module of
