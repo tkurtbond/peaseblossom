@@ -1126,6 +1126,14 @@ Those done while Phase 18 was current, 5-7, are in
       `PSECT_ATTR` line is harmless in a program that does not need it.
       Fixture `vax-options-files`, run on the guest.
 
+10. Libraries without a shared object (the user, 2026-10-31; found by
+    pofltk, whose `make install` fails where FLTK is static libraries
+    built without `-fPIC`): `poc -library` always links a shared object,
+    and that step fails before the manifest is written. What that
+    implies, the plan for a `-no-shared-library` option, in nine steps,
+    and how pofltk detects when to pass it are in
+    `doc/developer/static-only-libraries.md`.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on
