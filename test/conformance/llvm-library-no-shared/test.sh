@@ -13,8 +13,10 @@
 # reverse is fine. An install copies only the files there are, deletes the
 # shared library of a copy installed before, and a program links from it.
 # -shared-libraries links such a library's archive, with a warning, beside a
-# shared poc-rtl, so the program needs no libgreet at run time. An LTO
-# archive still gets -flto, the link being shared or not.
+# shared poc-rtl, so the program needs no libgreet at run time: the link
+# names the archive by path, with no -L, -l or run-time search path. An LTO
+# archive still gets -flto, the link being shared or not. A -g copy, with a
+# manifest of its own, takes the option as the plain one does.
 unset POC_IMPORT_PATH
 triple=$(clang -dumpmachine)
 manifest() { grep -c '^no-shared$' "$1/$triple/O2/greet.library"; }
@@ -82,6 +84,11 @@ poc -library-path before -shared-libraries -o shared -build ../main.mod >>../res
 echo "exit=$?" >>../result
 ./shared >>../result 2>&1
 needed shared
+echo "-- how the archive is named" >>../result
+link=$(poc -verbose -library-path before -shared-libraries -o named -build ../main.mod 2>&1 | grep -F -e "-o 'named'")
+echo "by path: $(echo "$link" | grep -c "before/$triple/O2/libgreet\.a")" >>../result
+echo "-lgreet: $(echo "$link" | grep -c -e '-lgreet')" >>../result
+echo "search paths: $(echo "$link" | grep -c -E "(-L|rpath,)[^ ]*before")" >>../result
 echo "-- with a library that has one, no warning" >>../result
 poc -library-path both -shared-libraries -o shared2 -build ../main.mod >>../result 2>&1
 echo "exit=$?" >>../result
@@ -102,6 +109,14 @@ echo "exit=$?" >>../result
 poc -library-path lto -shared-libraries -o ltoShared -build ../main.mod >>../result 2>&1
 echo "exit=$?" >>../result
 ./ltoShared >>../result 2>&1
+echo "== -g" >>../result
+poc -g -output-dir debug -no-shared-library -library greet ../Greet.Mod >>../result 2>&1
+echo "exit=$?" >>../result
+grep -c '^no-shared$' "debug/$triple/O2-g/greet.library" >>../result
+ls "debug/$triple/O2-g" | grep '^libgreet' | sed 's/\.so\.0\.0$/.so/' | LC_ALL=C sort >>../result
+poc -g -library-path debug -o debugged -build ../main.mod >>../result 2>&1
+echo "exit=$?" >>../result
+./debugged >>../result 2>&1
 echo "== a program reads the manifest" >>../result
 poc -library-path before -o main -build ../main.mod >>../result 2>&1
 echo "exit=$?" >>../result

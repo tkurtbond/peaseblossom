@@ -219,6 +219,7 @@ test/conformance/poc-link-flags/poc-link-flags
 test/conformance/llvm-relro/llvm-relro
 test/conformance/llvm-using-modules/work/
 test/conformance/llvm-lto/work/
+test/conformance/llvm-library-no-shared/work/
 test/conformance/llvm-libraries-i686/work/
 test/conformance/poc-object-files/work/
 test/conformance/llvm-system-val-external/work/
