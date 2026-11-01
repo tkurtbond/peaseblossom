@@ -1089,6 +1089,15 @@ Those done while Phase 17 was current, 3, are in
    `llvm-external-variable`, `semantic-reject-external-variable`,
    `vax-external-variable`).
 
+5. **Predeclared unsigned types** (decided 2026-11-01, `000-todo.org`):
+   `SHORTCARD`, `CARDINAL`, `LONGCARD` and `HUGECARD`, as wide in each size
+   model as `SHORTINT`, `INTEGER`, `LONGINT` and `HUGEINT`, a family apart
+   with the rules of `SYSTEM.CARDn`, which stay. A program with no `SYSTEM`
+   import also needs a way across the families and a way to read one, so
+   the plan adds a predeclared `VAL(T, x)` and `In.HugeCard`, accepted by the
+   user 2026-11-01. The plan, its six steps and what they change are in
+   `doc/developer/predeclared-unsigned-types.md`.
+
 ## Ongoing implementation enhancements
 
 Changes to how poc builds, links and packages programs and libraries that
