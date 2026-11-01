@@ -22,6 +22,7 @@ run -build Empty.mod -target vax-dec-vms -lto
 run -lto Empty.mod -target vax-dec-vms
 run -target vax-dec-vms -verbose -compile Empty.mod
 run -target vax-dec-vms -static -library Lib Empty.mod
+run -target vax-dec-vms -no-shared-library -library Lib Empty.mod
 run -opt 2 -emit-macro32 Empty.mod
 run -emit-vax-object Empty.mod -lto
 run -emit-vax-image -static Empty.mod

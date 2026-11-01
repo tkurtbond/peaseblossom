@@ -1,0 +1,29 @@
+== before the command
+exit=0
+1
+== after the file
+exit=0
+1
+== without it
+exit=0
+0
+== a program reads the manifest
+exit=0
+hello from an archive
+== other commands
+-- -build ../main.mod
+poc: -no-shared-library is an option to -library, not to -build
+run poc -help for the commands and options
+exit=1
+-- -compile ../main.mod
+poc: -no-shared-library is an option to -library, not to -compile
+run poc -help for the commands and options
+exit=1
+-- -check ../main.mod
+poc: -no-shared-library is an option to -library, not to -check
+run poc -help for the commands and options
+exit=1
+-- ../main.mod
+poc: -no-shared-library is an option to -library, not to ../main.mod
+run poc -help for the commands and options
+exit=1

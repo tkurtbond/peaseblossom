@@ -175,6 +175,9 @@ MODULE Poc;
     membersOnly: BOOLEAN;
     (* poc -shared-libraries: link the libraries dynamically *)
     sharedLibraries: BOOLEAN;
+    (* poc -no-shared-library: -library builds an archive and no shared
+       object (doc/developer/static-only-libraries.md) *)
+    noSharedLibrary: BOOLEAN;
     (* how a VAX program is built (PLAN.md Phase 18 step 6; doc/developer/
        vax-object-language.md, section 17, proposals 1 and 2): from poc's
        own objects (-vax-objects) or from MACRO-32 (-vax-macro32), and
@@ -2904,6 +2907,7 @@ MODULE Poc;
     (* the manifest: each module's key and the keys of its imports *)
     lib := Libraries.NewLibrary(name, dir);
     lib.lto := LLVMBackEnd.Lto();
+    lib.noShared := noSharedLibrary;
     lib.cxx := LLVMBackEnd.HasCxxPart(modules, dir);
     lib.links := linkArguments;
     object := objectFiles;
@@ -3644,6 +3648,7 @@ MODULE Poc;
     HelpLine("  -range-checks              SHORT and CHR of a value that does not fit trap");
     LLVMHelpLine("  -static                    link a fully static executable");
     HelpLine("  -shared-libraries          link libraries dynamically");
+    LLVMHelpLine("  -no-shared-library         for -library: an archive and no shared object");
     HelpLine("  -vax-objects               for vax-dec-vms: build from poc's objects (on VMS)");
     HelpLine("  -vax-macro32               for vax-dec-vms: build from MACRO-32 (elsewhere)");
     LLVMHelpLine("  -link <arg>                add <arg> to the link (-lz, -L<dir>)");
@@ -3740,7 +3745,7 @@ MODULE Poc;
   BEGIN
     RETURN (option = "-emit-llvm-ir") OR (option = "-dump-llvm-types")
       OR (option = "-opt") OR (option = "-lto") OR (option = "-rebuild") OR (option = "-static")
-      OR (option = "-c-flag") OR (option = "-verbose")
+      OR (option = "-c-flag") OR (option = "-verbose") OR (option = "-no-shared-library")
   END IsLLVMOption;
 
   (* whether option is one of the commands that write a VAX module's files,
@@ -3759,6 +3764,14 @@ MODULE Poc;
     IF onVms & (arg[0] = "-") THEN OptionOnVms(arg) END;
     RETURN IsVaxEmit(arg)
   END IsVaxEmitArgument;
+
+  (* Whether argument n is the command -library *)
+  PROCEDURE IsLibraryCommand(n: INTEGER): BOOLEAN;
+    VAR arg: ARRAY 256 OF CHAR;
+  BEGIN
+    GetArgument(n, arg);
+    RETURN arg = "-library"
+  END IsLibraryCommand;
 
   (* The kind of file option, one IsVaxEmit accepts, asks for, asked for *)
   PROCEDURE SetVaxEmit(option: ARRAY OF CHAR);
@@ -3944,6 +3957,9 @@ MODULE Poc;
             INC(i); done := TRUE
           ELSIF arg = "-shared-libraries" THEN
             sharedLibraries := TRUE;
+            INC(i)
+          ELSIF arg = "-no-shared-library" THEN
+            noSharedLibrary := TRUE;
             INC(i)
           ELSIF (arg = "-vax-objects") OR (arg = "-vax-macro32") THEN
             (* PLAN.md Phase 18 step 6: how a VAX program is built *)
@@ -4178,6 +4194,10 @@ MODULE Poc;
           GetArgument(command, arg);
           BadUsage("-emit-macro32, -emit-vax-object and -emit-vax-image are commands, not options to ", arg);
           finished := TRUE
+        ELSIF noSharedLibrary & ~IsLibraryCommand(command) THEN
+          GetArgument(command, arg);
+          BadUsage("-no-shared-library is an option to -library, not to ", arg);
+          finished := TRUE
         ELSE
           RemoveOptions(isOption, command); i := command; optionsOnly := FALSE; finished := FALSE
         END
@@ -4188,7 +4208,7 @@ MODULE Poc;
 BEGIN
   vaxObjects := FALSE; vaxWayGiven := FALSE; runningOnVms := FALSE; llvmOption := "";
   emitMacro := FALSE; emitObject := FALSE; emitImage := FALSE;
-  failed := FALSE; forVax := FALSE; helpToErr := FALSE; vaxRuntimeExplained := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
+  failed := FALSE; forVax := FALSE; helpToErr := FALSE; vaxRuntimeExplained := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; noSharedLibrary := FALSE; libraryPathCleared := FALSE;
   Run;
   IF failed OR (Diagnostics.errorCount > 0) OR (LLVMBackEnd.UnsupportedCount() > 0) THEN
     Platform.Exit(1)

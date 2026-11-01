@@ -13,6 +13,8 @@ MODULE Libraries;
        triple <triple>
        model <O2|OC>
        lto                              (its objects are LLVM bitcode, for -flto)
+       no-shared                        (built with -no-shared-library: an archive
+                                         and no shared object)
        objects                          (a VAX library's modules are poc's own .obj
                                          files, not .mar ones: PLAN.md Phase 18 step 6)
        needs <library>                  (each library its modules import from)
@@ -155,6 +157,8 @@ MODULE Libraries;
       needs*: Need;
       parts*: Need; (* a VAX library's hand-written .mar files, by name (Phase 17) *)
       lto*: BOOLEAN; (* its objects are LLVM bitcode (Phase 12 step 2g) *)
+      noShared*: BOOLEAN; (* it has an archive and no shared object (doc/developer/
+                             static-only-libraries.md) *)
       objects*: BOOLEAN; (* a VAX library of poc's own objects, not MACRO-32 (Phase 18 step 6) *)
       cxx*: BOOLEAN; (* a module of it has a part in C++, so clang++ links it *)
       objectFiles*: Need; (* the object files named on -library's command line, by file name *)
@@ -584,7 +588,7 @@ MODULE Libraries;
   BEGIN
     NEW(lib); COPY(name, lib.name); COPY(dir, lib.dir);
     COPY(triple, lib.triple); COPY(model, lib.model);
-    lib.modules := NIL; lib.needs := NIL; lib.parts := NIL; lib.lto := FALSE; lib.objects := FALSE; lib.cxx := FALSE; lib.objectFiles := NIL; lib.links := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
+    lib.modules := NIL; lib.needs := NIL; lib.parts := NIL; lib.lto := FALSE; lib.noShared := FALSE; lib.objects := FALSE; lib.cxx := FALSE; lib.objectFiles := NIL; lib.links := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
     RETURN lib
   END NewLibrary;
 
@@ -629,6 +633,7 @@ MODULE Libraries;
       ELSIF w0 = "needs" THEN AddNeed(lib, w1)
       ELSIF w0 = "part" THEN AddPart(lib, w1)
       ELSIF w0 = "lto" THEN lib.lto := TRUE
+          ELSIF w0 = "no-shared" THEN lib.noShared := TRUE
       ELSIF w0 = "objects" THEN lib.objects := TRUE
       ELSIF w0 = "c++" THEN lib.cxx := TRUE
       ELSIF w0 = "object" THEN AddObjectFile(lib, w1)
@@ -788,6 +793,7 @@ MODULE Libraries;
     WriteLine(w, "triple", lib.triple, "", "");
     WriteLine(w, "model", lib.model, "", "");
     IF lib.lto THEN WriteLine(w, "lto", "", "", "") END;
+    IF lib.noShared THEN WriteLine(w, "no-shared", "", "", "") END;
     IF lib.objects THEN WriteLine(w, "objects", "", "", "") END;
     n := lib.needs;
     WHILE n # NIL DO WriteLine(w, "needs", n.name, "", ""); n := n.next END;

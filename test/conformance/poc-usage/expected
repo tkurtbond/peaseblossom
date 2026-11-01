@@ -44,6 +44,7 @@ options, before or after the command (the last one counts, except those that add
   -range-checks              SHORT and CHR of a value that does not fit trap
   -static                    link a fully static executable
   -shared-libraries          link libraries dynamically
+  -no-shared-library         for -library: an archive and no shared object
   -vax-objects               for vax-dec-vms: build from poc's objects (on VMS)
   -vax-macro32               for vax-dec-vms: build from MACRO-32 (elsewhere)
   -link <arg>                add <arg> to the link (-lz, -L<dir>)

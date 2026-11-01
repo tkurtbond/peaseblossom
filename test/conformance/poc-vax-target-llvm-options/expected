@@ -28,6 +28,9 @@ exit 1
 == poc -target vax-dec-vms -static -library Lib Empty.mod
 poc: -static is for the LLVM back end, which has no -target vax-dec-vms
 exit 1
+== poc -target vax-dec-vms -no-shared-library -library Lib Empty.mod
+poc: -no-shared-library is for the LLVM back end, which has no -target vax-dec-vms
+exit 1
 == poc -opt 2 -emit-macro32 Empty.mod
 poc: -opt is for the LLVM back end, which has no -target vax-dec-vms
 exit 1
