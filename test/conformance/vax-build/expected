@@ -23,9 +23,6 @@ exit 1
 VaxClashBetweenModulesB.mod:3:7: error: module VaxClashBetweenModulesB: VaxClashBetweenModulesB.clashfHvJRlcQIjum and VaxClashBetweenModulesA.clashcQfgBVxgojQf have the same VAX symbol, VAXCLASHBETWEENMODULES_TV649M8G, in one program
 1 error(s); nothing written
 exit 1
-== poc -target vax-dec-vms -build VaxBuildCase.mod
-poc: modules VaxCase and VAXCASE differ only in case, and VMS does not tell their files or symbols apart
-exit 1
 procedure: VaxBuild.com
 procedure: VaxBuildSums.com
 procedure: vaxprog.com

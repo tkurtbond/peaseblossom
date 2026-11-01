@@ -1005,6 +1005,17 @@ Those fixed while Phase 18 was current, 8-10, are in
     `llvm-using-modules`, `poc-object-files`, `vax-library`,
     `vax-library-object-files` and `vax-options-files`.
 
+14. **[fixed] Two tracked files differed only in case, so the repository
+    would not check out on a case-insensitive file system.** Reported
+    by a user on macOS, 2026-11-01:
+    `test/conformance/vax-build/VAXCASE.mod` and `VaxCase.mod`, which
+    `vax-build` compiles to show that two modules with the same VMS
+    init symbol are refused. git showed one as modified from the start.
+    The fixture now writes them, with `VaxBuildCase.mod`, into a
+    directory it makes, and compares that part with `expected-case`.
+    Where the second file would overwrite the first it says `SKIPPED:`
+    and goes on, its `result` the same on every host.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

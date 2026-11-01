@@ -270,6 +270,7 @@ test/conformance/vax-asts-heap/*.mar
 test/conformance/vax-asts-heap/*.sym
 test/conformance/vax-asts-heap/AstHeap.com
 # the command language fixtures' work (Phase 17 step 5)
+test/conformance/vax-build/case-modules/
 test/conformance/vax-build-command-tables/work/
 test/conformance/vax-build-object-files/work/
 test/conformance/vax-objconvert-counted/work/
