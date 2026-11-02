@@ -25,7 +25,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.10.1
+Version:        0.11.0
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -110,6 +110,16 @@ test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-
 %{_docdir}/%{name}-vax/
 
 %changelog
+* Mon Nov 02 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.11.0-1
+- Update to 0.11.0: predeclared unsigned types SHORTCARD, CARDINAL,
+  LONGCARD and HUGECARD, and VAL(T, x) with no import; libraries
+  without a shared object (-no-shared-library); a function procedure
+  called as a statement is now an error, as the report requires, so
+  programs that did so must use its result; no .sym is written after
+  an error in a module's interface; an import of a file declaring
+  another module says so; a file on the command line is no longer
+  called an imported module.
+
 * Wed Oct 28 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.10.1-1
 - Update to 0.10.1: a library's manifest records which of its modules
   allocate, so a program whose only NEW is in a library module gets
