@@ -957,6 +957,50 @@ A library an older poc wrote is refused ("rebuild it"). It was made as
   file was downloaded again and checked against `SHA256SUMS` and the
   signatures, the RPMs' with the key in a scratch rpm database.
 
+## Peaseblossom 0.11.0
+
+What `main` had gained since 0.10.1 was released as **Peaseblossom
+0.11.0** on 2026-11-02: the predeclared unsigned types and `VAL`
+(`d2a9350`; `AGENTS.md`, "Predeclared unsigned types"), with
+`In.HugeCard` and `InStr.HugeCard`, and libraries without a shared
+object (`1a925cd`..`c633ba3`; `doc/developer/static-only-libraries.md`).
+A function called as a statement is now a compile-time error (`6a8ca4b`):
+the sweep of the other poc projects found seven such statements, all in
+pofltk's tests, fixed there before the release. Four fixes: no `.sym`
+after an error in a module's interface or an import of a file that
+declares another module (`6a8ca4b`), such an import says so (`f4d36fc`),
+`-compile` no longer calls a file on the command line an imported module
+(`984db44`), and the repository checks out on a case-insensitive file
+system (`950b2a3`). It was made as `doc/developer/DEVELOPER.md` section 7
+says:
+
+- **The version** was set in `0c335b8` by `make set-version`; the gate
+  passed on atla, cymoril, artos and alerik (505 fixtures at each stage,
+  the fixed point, `check-strict`, `check-install` and `check-seed` on
+  each, and `check-o2` on atla). rackhir passed `0c335b8`, and `make
+  check-vax-kit CHECK_VAX_KIT_FLAGS=-full` passed on the guest.
+- **The tarball** came from `make distcheck` (SHA-256 `3ad9d45b...`,
+  13721120 bytes). It is signed, with the signed tag `v0.11.0`, and
+  published as a GitHub release with the kits `POC-0-11-0.COM` and
+  `POC-VMS-0-11-0.COM`.
+- **Each package** was made from the published tarball, as for 0.10.0
+  (only the `distinfo` files changed, packing lists unchanged), on
+  alerik, rackhir, cymoril, jherek, artos and yishana, replacing 0.10.1
+  and checked against the installed poc. The hosts' work trees had been
+  cleaned since 0.10.1, so `ports-work/packages/All` and pkgsrc's
+  `distfiles` had to be made again first. `mock` built and checked the
+  RPMs, and on atla 0.11.0 replaces 0.10.1, with `peaseblossom-vax`,
+  checked the same way.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (20 files) and attached to the release; every
+  file was downloaded again and checked against `SHA256SUMS` and the
+  signatures, the RPMs' with the key in a scratch rpm database.
+- **The guest's `DUA1:[POC]`** holds 0.11.0, from the published kits.
+  The tree under it held poDMSFIELDS's and poPOISE-DMS's installations
+  too, built with 0.10.1, which a new poc refuses: they were deleted
+  with it, by the user's decision, to be installed again built with
+  0.11.0.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -

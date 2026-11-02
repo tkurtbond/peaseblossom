@@ -534,7 +534,11 @@ from `-link` and `.opt` files, and one fix were released as
 **Peaseblossom 0.10.0 on 2026-10-28** (tag `v0.10.0`, with the kits; the
 record is in `PLAN.md`, "Peaseblossom 0.10.0"), and **0.10.1**
 followed the same day with one fix (a library's manifest records which
-of its modules allocate; tag `v0.10.1`). Bugs found by using
+of its modules allocate; tag `v0.10.1`). The predeclared unsigned types
+and `VAL`, libraries without a shared object, a function called as a
+statement refused, and four fixes were released as **Peaseblossom 0.11.0
+on 2026-11-02** (tag `v0.11.0`, with the kits; the record is in
+`PLAN.md`, "Peaseblossom 0.11.0"). Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library
