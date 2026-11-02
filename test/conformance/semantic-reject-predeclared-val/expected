@@ -70,17 +70,14 @@ MODULE hiddenval;
 END hiddenval.
 == exportedval
 exportedval.mod:3:9: error: a module with its own VAL in its interface cannot export a constant of a predeclared unsigned type
-1 error(s) in imported module exportedval
 1 error(s)
 exportedval.mod
 == exportedtype
 exportedtype.mod:3:9: error: a module with this type name in its interface cannot export a constant of the predeclared type: CARDINAL
-1 error(s) in imported module exportedtype
 1 error(s)
 exportedtype.mod
 == importedval
 importedval.mod:3:9: error: a module with its own VAL in its interface cannot export a constant of a predeclared unsigned type
-1 error(s) in imported module importedval
 1 error(s)
 importedval.mod
 == poc -emit-interface exportedval.mod

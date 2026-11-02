@@ -1080,7 +1080,7 @@ Those fixed while Phase 18 was current, 8-10, are in
     `semantic-reject-predeclared-val` shows `-emit-interface`, `-build` and
     an importer's `-compile` leaving only the sources.
 
-17. **`-compile` calls the file it was given an imported module.** Found
+17. **`-compile` calls the file it was given an imported module** [fixed]. Found
     2026-11-01 with 16: an error in the command-line file itself, with
     nothing imported, prints `1 error(s) in imported module bad` and then
     `1 error(s)` under `poc -compile bad.mod`, where `-build` and `-check`
@@ -1088,6 +1088,10 @@ Those fixed while Phase 18 was current, 8-10, are in
     regenerates an importer's modules (`RegenerateInterfaces` in
     `src/driver/Poc.Mod`), whose message assumes an importer. Only the
     message is wrong: the exit status is 1 and nothing is written.
+    Fixed: `ReportImportedErrors` prints that line only for a module that is
+    not named on the command line, so `-compile`, `-library` and the VAX's
+    two say only the total for such a file, whoever imports it.
+    `module-import-error-path` and `vax-module-name-length` show them.
 
 ## Ongoing library enhancements
 

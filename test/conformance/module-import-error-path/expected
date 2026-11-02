@@ -2,3 +2,16 @@ lib/Bad.Mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
 1 error(s) in imported module Bad
 low.mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
 1 error(s) in imported module low
+== poc -compile low.mod
+low.mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
+1 error(s)
+== poc -compile toplow.mod
+low.mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
+1 error(s) in imported module low
+1 error(s)
+== poc -compile toplow.mod low.mod
+low.mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
+1 error(s)
+== poc -output-dir lib -library lowlib low.mod
+low.mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
+1 error(s)

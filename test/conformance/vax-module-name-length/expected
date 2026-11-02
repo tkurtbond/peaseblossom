@@ -8,3 +8,6 @@ exit 1
 ABCDEFGHIJKLMNOPQRSTUVWXYZa.mod:1:1: error: a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol
 1 error(s) in imported module ABCDEFGHIJKLMNOPQRSTUVWXYZa
 exit 1
+ABCDEFGHIJKLMNOPQRSTUVWXYZa.mod:1:1: error: a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol
+1 error(s)
+exit 1

@@ -474,6 +474,16 @@ MODULE Poc;
     RETURN m
   END FindMember;
 
+  (* The summary of a module only an import reached. A file named on the
+     command line is not such a module, whoever imports it, and the command
+     prints the whole count when it stops ("Ongoing bug fixing" 17). *)
+  PROCEDURE ReportImportedErrors(name: ARRAY OF CHAR; count: INTEGER);
+  BEGIN
+    IF FindMember(name) = NIL THEN
+      Err.Int(count, 0); Err.String(" error(s) in imported module "); Err.String(name); Err.Ln
+    END
+  END ReportImportedErrors;
+
   (* ModuleInterface.libraryLookup: a module's .sym comes from the library
      that has it *)
   PROCEDURE LibraryInterfaceDir(name: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR): BOOLEAN;
@@ -1212,8 +1222,7 @@ MODULE Poc;
       END
     END;
     IF Diagnostics.errorCount > errorCountBefore THEN
-      Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
-      Err.String(" error(s) in imported module "); Err.String(name); Err.Ln;
+      ReportImportedErrors(name, Diagnostics.errorCount - errorCountBefore);
       ok := FALSE
     ELSE
       imp := module.imports;
@@ -1342,13 +1351,11 @@ MODULE Poc;
     IF ~ok THEN
       (* an import of this module already reported its own failure *)
     ELSIF Diagnostics.errorCount > errorCountBefore THEN
-      Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
-      Err.String(" error(s) in imported module "); Err.String(name); Err.Ln;
+      ReportImportedErrors(name, Diagnostics.errorCount - errorCountBefore);
       ok := FALSE
     ELSIF ~ModuleInterface.Write(module, scope, outputDir, path) THEN
       IF Diagnostics.errorCount > errorCountBefore THEN
-        Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
-        Err.String(" error(s) in imported module "); Err.String(name); Err.Ln
+        ReportImportedErrors(name, Diagnostics.errorCount - errorCountBefore)
       ELSE
         failed := TRUE; Err.String("poc: cannot write "); Err.String(path); Err.Ln
       END;

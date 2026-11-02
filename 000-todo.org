@@ -1,6 +1,6 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * General Improvements
-** TODO SHORTCARD, CARDINAL, LONGCARD, HUGECARD types that are not in system.
+** DONE SHORTCARD, CARDINAL, LONGCARD, HUGECARD types that are not in system.
 These are unsigned types with the same number of bits in each size modle as
 SHORTINT, INTEGER, LONGINT, HUGEINT have in that size model.  These are regular types, available everywhere, not part of the SySTEM module.  They are separate from the integer types.
 ** TODO `++` concatenates strings (arrays of characters), stopping each piece at a NUL, and `+++` concatenates arrays, always copying the whole array (even arrays of characters).

@@ -14,6 +14,10 @@ poc -emit-macro32 ABCDEFGHIJKLMNOPQRSTUVWXYZa.mod >>result 2>&1
 echo "exit $?" >>result
 poc -emit-macro32 LongNameImport.mod >>result 2>&1
 echo "exit $?" >>result
+# "Ongoing bug fixing" 17 in PLAN.md: a file named on the command line is not
+# an imported module
+poc -target vax-dec-vms -compile ABCDEFGHIJKLMNOPQRSTUVWXYZa.mod >>result 2>&1
+echo "exit $?" >>result
 ls *.sym *.mar >>result 2>/dev/null
 rm -f *.sym *.mar
 . ../../testresult.sh
