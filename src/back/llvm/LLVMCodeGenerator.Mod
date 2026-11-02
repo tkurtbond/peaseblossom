@@ -6437,9 +6437,8 @@ MODULE LLVMCodeGenerator;
     AssignToAddress(w, cg, addrText, EffectiveVarType(cg, obj), s.value, s.copiesArray)
   END GenerateAssignStatement;
 
-  (* A function procedure called as a bare statement discards its result -
-     legal Oberon-2 (see SemanticActions.CheckCallStatement's own header
-     comment); GenerateCall's own result is simply never used further. *)
+  (* A proper procedure's call: a function procedure cannot be called as a
+     statement (SemanticActions.CheckCallStatement). *)
   PROCEDURE GenerateCallStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.CallStatementNode);
     VAR result: Value;
   BEGIN

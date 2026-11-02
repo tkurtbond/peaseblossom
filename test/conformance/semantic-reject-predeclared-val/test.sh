@@ -27,15 +27,29 @@ MOD
     fi
   done
 done <statements.txt
-rm -f t.mod
+rm -f t.mod exportedval.sym exportedval.ll exportedval.o
+rm -f exportedtype.sym exportedtype.ll exportedtype.o
+rm -f importedval.sym importedval.ll importedval.o
 for program in ownval hiddenval exportedval exportedtype importedval
 do
   echo "== $program" >>result
   poc -compile $program.mod >out 2>&1
   if grep -q 'error:' out
-  then grep -v '^semantic OK' out >>result
+  then
+    grep -v '^semantic OK' out >>result
+    ls $program.* | LC_ALL=C sort >>result
   else cat $program.sym >>result
   fi
+done
+# Nothing is left of a module whose interface cannot be written, however it
+# was reached, and an importer stops there too.
+for command in "-emit-interface exportedval.mod" "-build exportedval.mod" "-compile usesexported.mod"
+do
+  echo "== poc $command" >>result
+  poc $command >out 2>&1
+  echo "exit $?" >>out
+  grep -v '^semantic OK' out >>result
+  ls exportedval* usesexported* | LC_ALL=C sort >>result
 done
 rm -f t.out out
 . ../../testresult.sh

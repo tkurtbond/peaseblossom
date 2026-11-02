@@ -148,7 +148,7 @@ MODULE nestedbasic;
     x := 1; y := 2; Swap(x, y); Report(10, (x = 2) & (y = 1));
     Report(11, Length("hello") = 5);
     Report(12, Half(3.0) = 1.5);
-    Twice(1);                          (* a function called as a statement *)
+    x := Twice(1);                     (* the result is not used *)
     Report(13, calls = 6)              (* Twice ran once, twice, twice, once *)
   END Outer;
 

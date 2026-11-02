@@ -245,12 +245,15 @@ MODULE ModuleInterface;
        call (reset at its start). Write* runs the whole declaration-
        printing pass repeatedly with dryRun TRUE (WriteStr/WriteLn then
        write nothing at all) until a pass finds no further unexported type
-       it must print (needChanged stays FALSE), then once more for real.
-       Marking and printing therefore share every lookup and traversal
-       rule by construction - there is no separate "mark" walker to keep
-       in sync with the printer. *)
+       it must print (needChanged stays FALSE), then once with reporting
+       TRUE, still writing nothing, for what cannot be written, and only
+       if that found nothing, once more for real: a module whose interface
+       cannot be written leaves no .sym behind. Marking and printing
+       therefore share every lookup and traversal rule by construction -
+       there is no separate "mark" walker to keep in sync with the
+       printer. *)
     neededHead: NeededType;
-    dryRun, needChanged: BOOLEAN;
+    dryRun, needChanged, reporting: BOOLEAN;
     (* The TYPE declaration currently being printed (NIL while printing
        anything after the TYPE section): a name may only be used for a
        type inside a declaration if it is declared *earlier* in the
@@ -950,7 +953,7 @@ MODULE ModuleInterface;
     ELSIF v.kind = Types.stringValue THEN
       WriteStringLiteral(w, v.stringVal^, ok);
       IF ~ok THEN
-        IF ~dryRun THEN
+        IF reporting THEN
           Diagnostics.Error(line, column,
             "exported string constant containing both quote characters is not yet supported")
         END;
@@ -967,7 +970,7 @@ MODULE ModuleInterface;
       IF ok THEN
         WriteStr(w, buf)
       ELSE
-        IF ~dryRun THEN
+        IF reporting THEN
           Diagnostics.Error(line, column,
             "failed to find a round-trip-safe text representation for this REAL/LONGREAL constant")
         END;
@@ -1169,7 +1172,7 @@ MODULE ModuleInterface;
          names them directly). Diagnosed rather than silently emitting
          nothing, matching this codebase's "trust internal invariants,
          but do not fail silently when one breaks" posture. *)
-      Diagnostics.Error(0, 0, "internal: ModuleInterface cannot print this type")
+      IF reporting THEN Diagnostics.Error(0, 0, "internal: ModuleInterface cannot print this type") END
     END
   END PrintStructural;
 
@@ -1315,7 +1318,9 @@ MODULE ModuleInterface;
     VAR name: ARRAY 64 OF CHAR;
   BEGIN
     Types.TypeName(v.type, name);
-    IF HidesUniverseName(scope, "VAL") THEN
+    IF ~reporting THEN
+      (* a dry pass *)
+    ELSIF HidesUniverseName(scope, "VAL") THEN
       Diagnostics.Error(d.line, d.column,
         "a module with its own VAL in its interface cannot export a constant of a predeclared unsigned type")
     ELSIF HidesUniverseName(scope, name) THEN
@@ -1357,7 +1362,7 @@ MODULE ModuleInterface;
           IF imported.moduleScope = SymbolTable.SystemScope THEN
             WriteStr(w, qualifier); WriteStr(w, ".VAL(")
           ELSE
-            IF HidesUniverseName(scope, "VAL") THEN
+            IF reporting & HidesUniverseName(scope, "VAL") THEN
               Diagnostics.Error(d.line, d.column,
                 "a module with its own VAL in its interface cannot export this constant")
             END;
@@ -1589,7 +1594,7 @@ MODULE ModuleInterface;
   PROCEDURE PrintDeclarations(VAR w: Files.Rider; module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope);
   BEGIN
     IF module.declarations # NIL THEN
-      IF ~dryRun THEN PrintConsts(w, scope, module.declarations.constDecls, FALSE) END;
+      IF reporting THEN PrintConsts(w, scope, module.declarations.constDecls, FALSE) END;
       PrintTypes(w, scope, module.declarations.typeDecls);
       (* while dry too: a constant's type may be one to declare (NeedType) *)
       PrintConsts(w, scope, module.declarations.constDecls, TRUE);
@@ -1628,12 +1633,16 @@ MODULE ModuleInterface;
      Register of the same file found a File that Files.Old had opened by
      the whole path, voc renamed it by that path from inside outputDir and
      halted (ENOENT; doc/developer/bootstrapping-with-voc.md), now and
-     then, as the collector's timing decided. *)
+     then, as the collector's timing decided.
+
+     FALSE also means the interface holds something a .sym cannot say: the
+     error is reported, so Diagnostics.errorCount has grown, and no file
+     is made. *)
   PROCEDURE Write*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
                    outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
       name: ARRAY nameBufferLength OF CHAR;
-      f: Files.File; w: Files.Rider; ok: BOOLEAN;
+      f: Files.File; w: Files.Rider; ok: BOOLEAN; errorsBefore: INTEGER;
   BEGIN
     SymFileName(module.name^, name);
     ok := TRUE;
@@ -1644,20 +1653,26 @@ MODULE ModuleInterface;
       COPY(name, pathOut)
     END;
     IF ok THEN
-      f := Files.New(pathOut);
-      Files.Set(w, f, 0);
       (* Dry passes first (nothing is written), to a fixpoint: each one
          may find another unexported type some already-marked declaration
          reaches - see the writer-state comment on neededHead. The pass
          of the other constants is skipped while dry (it can never mark a
          type); a record or array constant's can (Phase 14), and
-         PrintConstValue reports nothing while dry. *)
+         nothing is reported until the fixpoint is reached. *)
       neededHead := NIL; printingDecl := NIL; forwardBaseOK := FALSE;
-      dryRun := TRUE;
+      dryRun := TRUE; reporting := FALSE;
       REPEAT
         needChanged := FALSE;
         PrintDeclarations(w, module, scope)
       UNTIL ~needChanged;
+      errorsBefore := Diagnostics.errorCount;
+      reporting := TRUE;
+      PrintDeclarations(w, module, scope);
+      ok := Diagnostics.errorCount = errorsBefore
+    END;
+    IF ok THEN
+      f := Files.New(pathOut);
+      Files.Set(w, f, 0);
       dryRun := FALSE; lineUsed := 0; breakAt := -1;
       WriteStr(w, "MODULE "); WriteStr(w, module.name^); WriteStr(w, ";");
       WriteLn(w);
@@ -1685,7 +1700,7 @@ MODULE ModuleInterface;
     VAR w: Files.Rider;
   BEGIN
     neededHead := NIL; printingDecl := NIL; forwardBaseOK := FALSE;
-    dryRun := FALSE; exportedView := TRUE; toConsole := TRUE; lineUsed := 0; breakAt := -1;
+    dryRun := FALSE; reporting := TRUE; exportedView := TRUE; toConsole := TRUE; lineUsed := 0; breakAt := -1;
     WriteStr(w, "MODULE "); WriteStr(w, module.name^); WriteStr(w, ";");
     WriteLn(w);
     PrintImports(w, scope);

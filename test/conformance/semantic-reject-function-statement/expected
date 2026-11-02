@@ -1,0 +1,20 @@
+functionstatement.mod:37:5: error: a function procedure cannot be called as a statement: Nested
+functionstatement.mod:41:3: error: a function procedure cannot be called as a statement: F
+functionstatement.mod:42:3: error: a function procedure cannot be called as a statement: F
+functionstatement.mod:43:3: error: a function procedure cannot be called as a statement: G
+functionstatement.mod:44:3: error: a function procedure cannot be called as a statement: pv
+functionstatement.mod:45:3: error: a function procedure cannot be called as a statement: value
+functionstatement.mod:46:3: error: a function procedure cannot be called as a statement: table
+functionstatement.mod:47:3: error: a function procedure cannot be called as a statement: Method
+functionstatement.mod:48:3: error: a function procedure cannot be called as a statement: ProcessId
+functionstatement.mod:49:3: error: a function procedure cannot be called as a statement: Length
+functionstatement.mod:50:3: error: a function procedure cannot be called as a statement: ABS
+functionstatement.mod:51:3: error: a function procedure cannot be called as a statement: MAX
+functionstatement.mod:52:3: error: a function procedure cannot be called as a statement: ODD
+functionstatement.mod:53:3: error: a function procedure cannot be called as a statement: LEN
+functionstatement.mod:54:3: error: a function procedure cannot be called as a statement: VAL
+functionstatement.mod:55:3: error: a function procedure cannot be called as a statement: VAL
+functionstatement.mod:56:3: error: ABS requires a numeric argument: a string constant
+functionstatement.mod:57:5: error: argument is not assignment compatible with the parameter: a string constant to INTEGER
+functionstatement.mod:57:3: error: a function procedure cannot be called as a statement: G
+19 error(s)

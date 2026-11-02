@@ -840,6 +840,8 @@ MODULE Poc;
         ModuleInterface.Show(module, scope)
       ELSIF ModuleInterface.Write(module, scope, outputDir, path) THEN
         Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
+      ELSIF Diagnostics.errorCount > 0 THEN
+        Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln
       ELSE
         failed := TRUE; Err.String("poc: cannot write "); Err.String(path); Err.Ln
       END
@@ -1344,7 +1346,12 @@ MODULE Poc;
       Err.String(" error(s) in imported module "); Err.String(name); Err.Ln;
       ok := FALSE
     ELSIF ~ModuleInterface.Write(module, scope, outputDir, path) THEN
-      failed := TRUE; Err.String("poc: cannot write "); Err.String(path); Err.Ln;
+      IF Diagnostics.errorCount > errorCountBefore THEN
+        Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
+        Err.String(" error(s) in imported module "); Err.String(name); Err.Ln
+      ELSE
+        failed := TRUE; Err.String("poc: cannot write "); Err.String(path); Err.Ln
+      END;
       ok := FALSE
     END;
     COPY(savedFileName, Diagnostics.fileName); Diagnostics.strict := savedStrict
@@ -1551,7 +1558,11 @@ MODULE Poc;
       ELSIF ~ModuleInterface.Write(module, scope, outputDir, path) THEN
         (* the main module's .sym too, as every other module's: its key
            (Phase 12 step 2b) is the hash of it *)
-        failed := TRUE; Err.String("poc: cannot write "); Err.String(path); Err.Ln
+        IF Diagnostics.errorCount > 0 THEN
+          Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln
+        ELSE
+          failed := TRUE; Err.String("poc: cannot write "); Err.String(path); Err.Ln
+        END
       ELSE
         BuildProgramModuleList(module, scope, outputDir, modules, ok)
       END

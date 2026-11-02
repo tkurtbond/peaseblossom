@@ -112,6 +112,10 @@ lengths, one word each, followed by the elements (voc's layout).
   fonts there).
 - **The order of module initialization**: a module's body runs once, after
   the bodies of the modules it imports, in the order of its `IMPORT` list.
+- **A function procedure called as a statement** is a compile-time error,
+  predeclared ones and external ones included: `Oberon2.pdf` §10 activates a
+  function procedure only from an expression. Assign the result to a
+  variable to ignore it.
 
 ## 3. Extensions
 

@@ -3202,20 +3202,39 @@ MODULE SemanticActions;
     END
   END CheckAssignStatement;
 
-  (* A function procedure called as a bare statement (its result
-     discarded) is legal - Appendix B's Statement production does not
-     distinguish proper from function procedure calls, and the existing
-     CheckDesignatorExpr-only "a proper procedure has no result value"
-     check is specific to expression context - so this never makes that
-     check itself. *)
+  (* The name a call statement's error gives: the last field selected,
+     so r.M for r.M(), else the designator's own name. *)
+  PROCEDURE CalledName(d: SyntaxTree.Designator): Names.Name;
+    VAR selector: SyntaxTree.Selector; name: Names.Name;
+  BEGIN
+    name := d.name;
+    selector := d.selectors;
+    WHILE selector # NIL DO
+      IF selector IS SyntaxTree.FieldSelector THEN name := selector(SyntaxTree.FieldSelector).name END;
+      selector := selector.next
+    END;
+    RETURN name
+  END CalledName;
+
+  (* Section 10 of the report keeps the two kinds of procedure apart: a
+     function procedure is activated by a function designator in an
+     expression, a proper one by a procedure call. So a statement cannot
+     throw a function's result away, any more than an expression can use
+     a proper procedure's (CheckDesignatorExpr). *)
   PROCEDURE CheckCallStatement(scope: SymbolTable.Scope; s: SyntaxTree.CallStatementNode);
-    VAR baseType: Types.Type; readOnly, isVariable, isProperProcedure: BOOLEAN; pt: Types.ProcedureType;
+    CONST functionAsStatement = "a function procedure cannot be called as a statement";
+    VAR
+      baseType: Types.Type; readOnly, isVariable, isProperProcedure: BOOLEAN; pt: Types.ProcedureType;
+      name: Names.Name;
   BEGIN
     baseType := CheckDesignator(scope, s.designator, readOnly, isVariable);
     IF baseType = Types.PredeclaredProcedureType THEN
       baseType := PredeclaredProcedures.CheckCall(scope, s.designator.name^, s.args, s.line, s.column,
                                                     CheckExpr, CheckDesignator,
-                                                    s.designator.qualifier # NIL, isProperProcedure)
+                                                    s.designator.qualifier # NIL, isProperProcedure);
+      IF ~isProperProcedure & (baseType # Types.Undefined) THEN
+        Diagnostics.ErrorAbout(s.line, s.column, functionAsStatement, s.designator.name^)
+      END
     ELSIF baseType = Types.Undefined THEN
       CheckExprList(scope, s.args)
     ELSIF ~(baseType IS Types.ProcedureType) THEN
@@ -3223,7 +3242,11 @@ MODULE SemanticActions;
       CheckExprList(scope, s.args)
     ELSE
       pt := baseType(Types.ProcedureType);
-      CheckArguments(scope, pt.params, pt.isVms, s.args, s.line, s.column)
+      CheckArguments(scope, pt.params, pt.isVms, s.args, s.line, s.column);
+      IF pt.resultType # NIL THEN
+        name := CalledName(s.designator);
+        Diagnostics.ErrorAbout(s.line, s.column, functionAsStatement, name^)
+      END
     END
   END CheckCallStatement;
 

@@ -1040,7 +1040,7 @@ Those fixed while Phase 18 was current, 8-10, are in
     Where the second file would overwrite the first it says `SKIPPED:`
     and goes on, its `result` the same on every host.
 
-15. **A function procedure can be called as a statement.** Found
+15. **A function procedure can be called as a statement** [fixed]. Found
     2026-11-01 writing `semantic-reject-predeclared-val`: `VAL(CARDINAL,
     n)` alone as a statement was accepted, and so, in a probe, are
     `F()`, `F`, a procedure value's `pv()`, a type-bound `r.M()`,
@@ -1054,11 +1054,15 @@ Those fixed while Phase 18 was current, 8-10, are in
     should say which procedure, and it needs a `semantic-reject-` fixture.
     voc's refusal keeps it out of `src/`, which Stage 0 compiles, but not
     out of what only poc compiles, so `rtl/llvm`, `rtl/vax` and the
-    fixtures may have calls to correct. To be fixed before the next
-    release.
+    fixtures may have calls to correct. Fixed:
+    `SemanticActions.CheckCallStatement` says "a function procedure cannot
+    be called as a statement" and the name, for ordinary, external,
+    type-bound and predeclared procedures and procedure values. `rtl/llvm`,
+    `rtl/vax` and the VMS libraries had no such call, and one fixture did
+    (`llvm-nested-basic`). Fixture `semantic-reject-function-statement`.
 
 16. **An error found while writing a `.sym` leaves the file behind, and
-    the compile carries on.** Found 2026-11-01 with the refusals of the
+    the compile carries on** [fixed]. Found 2026-11-01 with the refusals of the
     predeclared unsigned types (`exportedval.mod` in
     `semantic-reject-predeclared-val`): `ModuleInterface.Write` reports
     the error but still registers the file and returns TRUE, so `poc
@@ -1068,7 +1072,22 @@ Those fixed while Phase 18 was current, 8-10, are in
     (`ModuleInterface.PrintConstValue`) take the same path. `Write` should
     leave nothing behind and its callers stop, as they do for an error
     before it; the fixture should then list the files after each refusal.
-    To be fixed before the next release.
+    Fixed: after its dry passes `Write` makes one more with errors
+    reported, and makes the file only if that found none; its three
+    callers stop and say how many errors there were, for a module
+    regenerated for an importer too. `poc -check` writes no interface, so
+    it still passes a module whose interface would be refused, and
+    `semantic-reject-predeclared-val` shows `-emit-interface`, `-build` and
+    an importer's `-compile` leaving only the sources.
+
+17. **`-compile` calls the file it was given an imported module.** Found
+    2026-11-01 with 16: an error in the command-line file itself, with
+    nothing imported, prints `1 error(s) in imported module bad` and then
+    `1 error(s)` under `poc -compile bad.mod`, where `-build` and `-check`
+    print only `1 error(s)`. The file is checked through the code that
+    regenerates an importer's modules (`RegenerateInterfaces` in
+    `src/driver/Poc.Mod`), whose message assumes an importer. Only the
+    message is wrong: the exit status is 1 and nothing is written.
 
 ## Ongoing library enhancements
 
