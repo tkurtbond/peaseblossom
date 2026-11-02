@@ -1,5 +1,6 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * General Improvements
+** TODO Change In.Card() to use CARDINAL, add LongCard using LONGCARD.
 ** DONE SHORTCARD, CARDINAL, LONGCARD, HUGECARD types that are not in system.
 These are unsigned types with the same number of bits in each size modle as
 SHORTINT, INTEGER, LONGINT, HUGEINT have in that size model.  These are regular types, available everywhere, not part of the SySTEM module.  They are separate from the integer types.
