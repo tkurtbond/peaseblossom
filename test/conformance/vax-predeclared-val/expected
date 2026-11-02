@@ -1,0 +1,10 @@
+semantic OK, wrote valchecks.mar
+exit 0
+valchecks.mar matches expected-vax.mar
+valchecks.image matches expected-vax.image
+VAX build valplain -O2 exit 0
+VAX build valchecked -O2 exit 0
+VAX build constants -O2 exit 0
+VAX build valplain -OC exit 0
+VAX build valchecked -OC exit 0
+VAX build constants -OC exit 0

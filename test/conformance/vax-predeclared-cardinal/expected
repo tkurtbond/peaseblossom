@@ -1,0 +1,20 @@
+semantic OK, wrote LineOutput.mar
+semantic OK, wrote RealDigits.mar
+semantic OK, wrote FormattedText.mar
+semantic OK, wrote FormattedOutput.mar
+semantic OK, wrote Out.mar
+semantic OK, wrote cardinal.mar
+VAX emit -O2 exit 0
+cardinal.mar matches expected-vax-O2.mar
+cardinal.image matches expected-vax-O2.image
+VAX build -O2 exit 0
+semantic OK, wrote LineOutput.mar
+semantic OK, wrote RealDigits.mar
+semantic OK, wrote FormattedText.mar
+semantic OK, wrote FormattedOutput.mar
+semantic OK, wrote Out.mar
+semantic OK, wrote cardinal.mar
+VAX emit -OC exit 0
+cardinal.mar matches expected-vax-OC.mar
+cardinal.image matches expected-vax-OC.image
+VAX build -OC exit 0

@@ -48,8 +48,9 @@
 ; Traps and HALT (design section 14, item 10). A trap's message is the
 ; LLVM backend's, a counted string here for each code, 2 to 14 (section
 ; 9; LLVMCodeGenerator's trap messages), and CHR's for 14 when the code's
-; high word is 1, SHORT's being the other; and 15, the VAX's alone,
-; GarbageCollectedHeap's when an AST re-enters it (section 22.7)
+; high word is 1 and VAL's when it is 2, SHORT's being the other; and
+; 15, the VAX's alone, GarbageCollectedHeap's when an AST re-enters it
+; (section 22.7)
 ; the table in POC_ADDR, the constants that hold addresses, so that
 ; POC_CONST stays shareable in a shareable image (section 18, proposal 5)
 	.PSECT	POC_ADDR
@@ -57,7 +58,7 @@ POC_TRAP_TEXTS:
 	.ADDRESS	POC_TX_0, POC_TX_0, POC_TX_2, POC_TX_3, POC_TX_4
 	.ADDRESS	POC_TX_5, POC_TX_6, POC_TX_7, POC_TX_8, POC_TX_9
 	.ADDRESS	POC_TX_10, POC_TX_11, POC_TX_12, POC_TX_13, POC_TX_14
-	.ADDRESS	POC_TX_15, POC_TX_CHR
+	.ADDRESS	POC_TX_15, POC_TX_CHR, POC_TX_VAL
 	.PSECT	POC_CONST
 POC_TX_0:	.ASCIC	/trap/
 POC_TX_2:	.ASCIC	/index out of range/
@@ -75,6 +76,7 @@ POC_TX_13:	.ASCIC	/record assigned to a variable whose dynamic type extends its 
 POC_TX_14:	.ASCIC	/SHORT argument out of range/
 POC_TX_15:	.ASCIC	/heap re-entered at AST level: import AsynchronousTraps/
 POC_TX_CHR:	.ASCIC	/CHR argument out of range/
+POC_TX_VAL:	.ASCIC	/VAL argument out of range/
 ; -trap-location's form: file:line:column: message (in procedure)
 POC_TRAP_WHERE:
 	.ASCID	"!AC:!UL:!UL: !AC (in !AC)"
@@ -115,8 +117,8 @@ POC_ASSERT_OUT:
 	.PSECT	POC_CODE
 ; POC_TRAP(code, module, line, column[, file, procedure]), module, file
 ; and procedure counted strings, the code in the low word of its
-; longword and which of its messages in the high word (1 for 14, CHR's;
-; n + 1 for 10, ASSERT(x, n)'s "assertion failed (n)"): the message
+; longword and which of its messages in the high word (1 for 14, CHR's,
+; 2 VAL's; n + 1 for 10, ASSERT(x, n)'s "assertion failed (n)"): the message
 ; written to SYS$ERROR, as the LLVM backend writes it to the standard
 ; error, then the program ends with %X10000000 + 8 * code + 2, severity
 ; error, message number code, with STS$M_INHIB_MSG set so that DCL adds
@@ -131,9 +133,9 @@ POC_ASSERT_OUT:
 	BGTRU	5$
 	CMPL	R3, #14
 	BNEQ	10$
-	TSTW	6(AP)
+	MOVZWL	6(AP), R0
 	BEQL	10$
-	MOVL	#16, R3
+	ADDL3	#15, R0, R3
 	BRB	10$
 5$:	CLRL	R3
 10$:	MOVL	POC_TRAP_TEXTS[R3], R3

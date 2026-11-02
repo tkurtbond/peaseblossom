@@ -10,6 +10,7 @@ MODULE inextra;
     r: REAL;
     name, line: ARRAY 16 OF CHAR;
     ch: CHAR;
+    wide: HUGECARD;
 
   PROCEDURE Done;
   BEGIN
@@ -63,6 +64,12 @@ BEGIN
   In.Real(r); Out.String("Real "); ShowShort(r); Done;
   r := 1.0;
   In.Real(r); Out.String("Real "); ShowShort(r); Done;
+
+  (* the predeclared HUGECARD: all of it, hexadecimal, and no minus sign *)
+  In.HugeCard(wide); Out.String("HugeCard "); Out.Card(wide, 0); Done;
+  In.HugeCard(wide); Out.String("HugeCard "); Out.CardHex(wide, 16); Done;
+  In.HugeCard(wide); Out.String("HugeCard "); Out.Card(wide, 0); Done;
+  In.Line(line);
 
   (* the end of the input *)
   In.LongReal(x); Out.String("LongReal at the end"); Done;

@@ -1,0 +1,7 @@
+strict.mod:3:8: error: SHORTCARD is not in the Oberon-2 report (-strict)
+strict.mod:4:8: error: CARDINAL is not in the Oberon-2 report (-strict)
+strict.mod:5:8: error: LONGCARD is not in the Oberon-2 report (-strict)
+strict.mod:6:8: error: HUGECARD is not in the Oberon-2 report (-strict)
+strict.mod:9:8: error: VAL is not in the Oberon-2 report (-strict)
+5 error(s)
+semantic OK

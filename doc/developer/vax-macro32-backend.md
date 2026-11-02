@@ -1807,11 +1807,23 @@ the process-permanent file, or makes the file it is defined as, and
 (RMS 4.1 and 5.23). Then it exits with `%X10000000 + 8*c + 2`.
 `POC_HALT` exits with `SS$_NORMAL` for `HALT(0)`, else with the same
 status for *n*. `$EXIT` runs the exit handlers (System Services,
-`$DCLEXH`), so `Out`'s unfinished line is still written. Two codes have more than one message: 14 is
-`SHORT`'s and `CHR`'s. So the call passes the code in the low word of its
-longword, and in the high word which message: `CHR`'s code is pushed as
-`#^X0001000E`. `ASSERT`'s *n* can go there too. The debugger stub keeps
+`$DCLEXH`), so `Out`'s unfinished line is still written. Three messages
+share code 14: `SHORT`'s, `CHR`'s and predeclared `VAL`'s. So the call
+passes the code in the low word of its longword, and in the high word which
+message: `CHR`'s code is pushed as `#^X0001000E`, `VAL`'s as
+`#^X0002000E`. `ASSERT`'s *n* can go there too. The debugger stub keeps
 only the low word, so the runs' logs are unchanged.
+
+**Predeclared `VAL` under `-range-checks`** (2026-11-01,
+`doc/developer/predeclared-unsigned-types.md`, step 4;
+`VaxCodeGenerator.ValRangeCheck`). `SYSTEM.VAL` is never checked, and
+nothing is emitted when every value of `x`'s type fits the target. Otherwise
+the check is made on `x` before its bits are taken. Signed to signed, `x`
+is converted with `CVT` to a scratch of the target's width and `BVC` passes
+over the trap. Any other pair compares `x`, as unsigned, with the largest
+value that fits (`BLEQU`), so a negative `x` for an unsigned target looks
+too large and fails. A quadword `x`, which has no `CMP`, is judged by its
+high longword, then by its low one the same way.
 
 Under `-trap-location` the call has two more arguments, so that the
 message is LLVM's, `file:line:column: message (in procedure)`:

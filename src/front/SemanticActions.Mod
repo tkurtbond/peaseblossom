@@ -2184,7 +2184,8 @@ MODULE SemanticActions;
   BEGIN
     RETURN (formal = Types.Byte)
       & ((actual = Types.Char) OR (actual = Types.Boolean) OR (actual = Types.Card8)
-         OR (actual = Types.ShortInt) & (Types.IntegerBytes(Types.ShortInt) = 1))
+         OR ((actual = Types.ShortInt) OR (actual = Types.ShortCard))
+            & (Types.IntegerBytes(actual) = 1))
   END IsByteVarFormal;
 
   (* Whether t is an open ARRAY OF CHAR *)
@@ -2447,7 +2448,8 @@ MODULE SemanticActions;
            here for what folding reports *)
         RETURN FoldConstantType(scope, node, resultType)
       ELSIF (resultType # Types.Undefined) & (node.designator.qualifier = NIL)
-            & ConstantEvaluator.IsValueFunctionName(node.designator.name^)
+            & (ConstantEvaluator.IsValueFunctionName(node.designator.name^)
+               OR Names.Equals(node.designator.name, "VAL"))
             & ConstantEvaluator.IsConstantExpr(node, scope) THEN
         (* Phase 11 (C9): ORD ABS CHR CAP ENTIER LONG SHORT ODD of a constant
            are folded here too, so an argument that does not fit (CHR(300),
@@ -2631,7 +2633,7 @@ MODULE SemanticActions;
       IF Types.MixesFamilies(l, r) THEN
         (* the unsigned integers are a family of their own ("Unsigned
            integer types"): SYSTEM.VAL is the only way across *)
-        ReportTypes(node.line, node.column, "an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL)",
+        ReportTypes(node.line, node.column, "an unsigned and a signed integer cannot be mixed (use VAL)",
                     l, " and ", r);
         RETURN Types.Undefined
       END

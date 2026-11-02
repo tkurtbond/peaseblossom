@@ -6,26 +6,28 @@ LongInt -7 Done
 pos 10
 HugeInt 9223372036854775807 Done
 pos 30
+HugeCard 18446744073709551615 Done
+pos 51
 Name word Done
-pos 35
+pos 56
 String a quoted string Done
-pos 53
+pos 74
 Char 10 Done
-pos 54
+pos 75
 Real 3.25E+00 Done
-pos 58
+pos 79
 LongReal -1.5D-003 Done
-pos 68
+pos 89
 Name x Done
-pos 72
+pos 93
 Line  the rest of a line Done
-pos 92
+pos 113
 Int 0 not Done
-pos 92
+pos 113
 Name  not Done
-pos 92
+pos 113
 Char 0 not Done
-pos 92
+pos 113
 -- InStr only
 12ab: pos 0 not Done  0
 then Name: pos 6 Done 12ab

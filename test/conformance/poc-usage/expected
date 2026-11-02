@@ -41,7 +41,7 @@ options, before or after the command (the last one counts, except those that add
   -rebuild                   compile every module, reusing no object
   -trap-location             a trap's message names its file, line, procedure
   -trap-heap-exhausted       a NEW that finds no memory stops the program
-  -range-checks              SHORT and CHR of a value that does not fit trap
+  -range-checks              SHORT, CHR and VAL of a value that does not fit trap
   -static                    link a fully static executable
   -shared-libraries          link libraries dynamically
   -no-shared-library         for -library: an archive and no shared object

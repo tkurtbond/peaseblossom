@@ -1,0 +1,107 @@
+sc := sc
+ca := sc
+sc := ca
+lc := ca
+ca := lc
+hc := lc
+lc := hc
+hc := sc
+sc := hc
+a := sc
+sc := a
+w := sc
+sc := w
+w := ca
+ca := w
+d := ca
+ca := d
+d := lc
+lc := d
+q := lc
+lc := q
+q := hc
+hc := q
+n := ca
+ca := n
+ca := 1
+ca := -1
+ca := 255
+sc := 256
+sc := 65536
+ca := 65536
+lc := 4294967296
+hc := big
+lc := big
+ca := big
+ca := ca + sc
+n := n + ca
+ca := ca + n
+IF ca < n THEN END
+IF ca < 0 THEN END
+IF ca < -1 THEN END
+x := ca
+x := hc * 1.5
+ca := x
+sc := LONG(sc)
+ca := LONG(sc)
+lc := LONG(ca)
+ca := LONG(ca)
+hc := LONG(lc)
+lc := LONG(lc)
+hc := LONG(hc)
+lc := LONG(hc)
+sc := SHORT(sc)
+a := SHORT(sc)
+sc := SHORT(ca)
+ca := SHORT(lc)
+sc := SHORT(lc)
+ca := SHORT(hc)
+lc := SHORT(hc)
+sc := SHORT(hc)
+w := LONG(a)
+d := LONG(w)
+q := LONG(d)
+a := SHORT(w)
+w := SHORT(d)
+d := SHORT(q)
+ca := ca + 70000
+sc := sc + 300
+w := sc + 300
+ca := MAX(CARDINAL) + 1
+hc := MAX(HUGECARD)
+lc := MAX(LONGCARD)
+hc := MIN(HUGECARD)
+ca := ABS(ca)
+ca := -ca
+b := sc
+b := ca
+b := a
+Byte1(sc)
+Byte1(ca)
+VarByte(sc)
+VarByte(ca)
+VarCardinal(ca)
+VarCardinal(w)
+VarCardinal(d)
+VarCardinal(lc)
+VarLongCard(lc)
+VarLongCard(hc)
+Bytes(ca)
+sc := ORD(ch)
+n := ORD(ch)
+ch := CHR(ca)
+ca := SIZE(CARDINAL)
+ca := LEN(arr)
+n := arr[ca]
+FOR ca := 0 TO 10 DO END
+FOR ca := 10 TO 0 BY -1 DO END
+FOR ca := 0 TO n DO END
+FOR n := 0 TO ca DO END
+CASE ca OF 0: | 65535: ELSE END
+CASE ca OF -1: ELSE END
+ca := ASH(ca, 1)
+ca := SYSTEM.LSH(ca, 1)
+ca := SYSTEM.VAL(CARDINAL, n)
+n := SYSTEM.VAL(INTEGER, ca)
+n := SYSTEM.VAL(INTEGER, MAX(CARDINAL))
+ca := SYSTEM.VAL(CARDINAL, 300)

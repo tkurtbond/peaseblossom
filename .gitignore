@@ -308,4 +308,7 @@ test/conformance/poc-options-after-file/objs/
 test/conformance/llvm-cardinal/llvm-cardinal
 test/conformance/llvm-cardinal-import/llvm-cardinal-import
 test/conformance/llvm-cardinal-traps/*.exe
+test/conformance/llvm-predeclared-cardinal/llvm-predeclared-cardinal
+test/conformance/llvm-predeclared-cardinal-import/llvm-predeclared-cardinal-import
+test/conformance/llvm-predeclared-val/*.exe
 test/conformance/llvm-for-loop-end/llvm-for-loop-end

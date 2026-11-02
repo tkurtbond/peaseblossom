@@ -141,7 +141,9 @@ Errors.Mod:7:11: error: undeclared identifier: total
 implementation. poc has two, as voc has: `-O2` (the default), where
 `SHORTINT`, `INTEGER` and `LONGINT` have 8, 16 and 32 bits, and `-OC`, the
 sizes of Component Pascal, where they have 16, 32 and 64. `HUGEINT` has 64
-bits and `SET` 32 under both. A program and every module it uses are
+bits and `SET` 32 under both. The unsigned `SHORTCARD`, `CARDINAL`,
+`LONGCARD` and `HUGECARD`, an extension, have the same widths as those
+four. A program and every module it uses are
 compiled under one model, and the runtime is there for both.
 
 <!-- example: sizes/Sizes.Mod -->
@@ -430,7 +432,7 @@ writes what happened on standard error and exits with a status of its own.
 | 11 | with `-trap-heap-exhausted`: a `NEW` the heap cannot satisfy |
 | 12 | a function procedure that reaches its `END` |
 | 13 | a record assigned to a variable whose dynamic type extends its static type |
-| 14 | with `-range-checks`: `SHORT` or `CHR` of a value that does not fit |
+| 14 | with `-range-checks`: `SHORT`, `CHR` or predeclared `VAL` of a value that does not fit |
 
 <!-- example: traps/Lookup.Mod -->
 ```
@@ -990,7 +992,8 @@ written for voc usually builds unchanged. What differs:
 poc also takes some of voc's extensions, among them `HUGEINT`,
 `SYSTEM.INT8` to `SYSTEM.INT64`, `ASSERT`, and hexadecimal constants of 16
 digits as 64-bit patterns, and has some of its own, among them the unsigned
-integer types `SYSTEM.CARD8` to `SYSTEM.CARD64` and `SYSTEM.CARD`, which
+integer types `SHORTCARD` to `HUGECARD`, `SYSTEM.CARD8` to `SYSTEM.CARD64`
+and `SYSTEM.CARD`, with `VAL` to cross to the signed ones, which
 voc does not have (Reference Guide, "Unsigned integer types"). `-strict`
 rejects them all.
 

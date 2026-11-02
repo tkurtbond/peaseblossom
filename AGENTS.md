@@ -442,8 +442,8 @@ constant is a private constant global of each module that uses it.
 `SYSTEM.CARD8`, `CARD16`, `CARD32` and `CARD64`, 0..2^n - 1 in exactly n
 bits under both size models, and `SYSTEM.CARD`, as wide as `ADDRESS`, a type
 of its own. A family apart from the signed integers, included in `REAL`:
-mixing the two is an error, and `SYSTEM.VAL` (which zero-extends a CARD) the
-only way across; `LONG` and `SHORT` within it. A non-negative constant that
+mixing the two is an error, and `SYSTEM.VAL` (which zero-extends a CARD) or
+the predeclared `VAL` the way across; `LONG` and `SHORT` within it. A non-negative constant that
 fits is usable with them (with `c` a `CARD8`, `c + 300` is a `CARD16`); one
 above `MAX(HUGEINT)` only as a hexadecimal pattern. Arithmetic wraps, unary
 minus is allowed, `ABS` is the identity; comparison, `DIV` and `MOD` are
@@ -452,6 +452,18 @@ unsigned, and `ASH` and `LSH` shift in zeros. `Out`, `Err` and `OutStr` have
 through `CardinalTypes`, whose `rtl/voc` twin Stage 0 compiles. `-strict`
 rejects them. The VAX backend has them too (Phase 17;
 `vax-macro32-backend.md`, section 20).
+
+### Predeclared unsigned types (decided and implemented 2026-11-01)
+
+`SHORTCARD`, `CARDINAL`, `LONGCARD` and `HUGECARD`: as many bits in each size
+model as `SHORTINT`..`HUGEINT`, four new types under every rule of the
+`SYSTEM.CARDn`, which they mix with by inclusion. `LONG`, `SHORT` and a
+constant's widening stay among these names. Predeclared `VAL(T, x)`, on
+integers of either family, gives `SYSTEM.VAL`'s bits with no import, traps a
+value that does not fit under `-range-checks`, refuses a constant that does
+not, and is itself a constant. `.sym` writes `VAL(CARDINAL, k)`. `In` and
+`InStr` get `HugeCard`. `-strict` rejects all five. The VAX backend has
+them too (`doc/developer/predeclared-unsigned-types.md` has the plan).
 
 ## Project state
 

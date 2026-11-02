@@ -122,7 +122,7 @@ MODULE VaxCodeGenerator;
      pieces past 65535; HALT by a call of POC_HALT (rtl/vax/PocRtl.mar);
      ASSERT by a branch on its condition over trap 10 (section 14, item
      11). With -range-checks (rangeChecks) CHR of a value outside 0..255,
-     and SHORT of one that does not fit, trap. *)
+     and SHORT or the predeclared VAL of one that does not fit, trap. *)
 
   IMPORT Names, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
     ModuleInterface, DecimalToDouble, MethodSlots, VaxTypes, VaxImage, VaxInstructions, VaxEncoder, NestedProcedures;
@@ -140,8 +140,9 @@ MODULE VaxCodeGenerator;
     maxMove = 65535; (* bytes one MOVC3 or MOVC5 moves, its length a word *)
     realTextLength = 32; (* an immediate real's text: a longer numeral is written by its value *)
     (* a unit of POC_TRAP's code's high word, which chooses its message:
-       1 for code 14, CHR's, not SHORT's; n + 1 for code 10, ASSERT(x, n)'s,
-       "assertion failed (n)" (section 14, items 10 and 11) *)
+       1 for code 14, CHR's, 2 the predeclared VAL's, neither SHORT's; n + 1
+       for code 10, ASSERT(x, n)'s, "assertion failed (n)" (section 14,
+       items 10 and 11) *)
     messageWord = 65536;
     collectorModule = "GarbageCollectedHeap"; (* rtl/vax's, which NEW allocates from *)
     (* a variable's or constant's DST record type, its VAX data type
@@ -317,7 +318,7 @@ MODULE VaxCodeGenerator;
 
   VAR
     unsupportedCount*: INTEGER;
-    rangeChecks*: BOOLEAN; (* -range-checks: CHR or SHORT of a value that does not fit traps (code 14) *)
+    rangeChecks*: BOOLEAN; (* -range-checks: CHR, SHORT or VAL of a value that does not fit traps (code 14) *)
     (* -trap-heap-exhausted: a NEW or SYSTEM.NEW whose block Allocate
        cannot give (R0 is 0) traps (code 11, at its position), as on LLVM *)
     trapHeapExhausted*: BOOLEAN;
@@ -2219,7 +2220,7 @@ MODULE VaxCodeGenerator;
      from (section 7) - a string's padded to the formal's size, that being
      how much is copied. The result, a function's, in R0 (R0 and R1). *)
   PROCEDURE ^ SystemNew(args: SyntaxTree.ExprNode; line, column: INTEGER);
-  PROCEDURE ^ Predeclared(name: ARRAY OF CHAR; args: SyntaxTree.ExprNode; dest: Operand;
+  PROCEDURE ^ Predeclared(name: ARRAY OF CHAR; qualified: BOOLEAN; args: SyntaxTree.ExprNode; dest: Operand;
                           line, column: INTEGER): Operand;
 
   (* a, the argument of an open-array parameter of type t, into the
@@ -2617,7 +2618,7 @@ MODULE VaxCodeGenerator;
     ELSIF (obj.type = Types.PredeclaredProcedureType) & (d.qualifier # NIL) & Names.Equals(d.name, "NEW") THEN
       SystemNew(args, line, column); RETURN NIL
     ELSIF obj.type = Types.PredeclaredProcedureType THEN
-      RETURN Predeclared(d.name^, args, NIL, line, column)
+      RETURN Predeclared(d.name^, d.qualifier # NIL, args, NIL, line, column)
     ELSIF obj.class = SymbolTable.varClass THEN
       (* through a procedure value: a variable, a parameter, a field or an
          element of procedure type *)
@@ -5133,12 +5134,73 @@ MODULE VaxCodeGenerator;
     ReleaseSlots(list, 4)
   END Move;
 
+  (* The predeclared VAL(target, x) under -range-checks: code 14 with VAL's
+     message, at VAL's own position, when x's value is not one of target's,
+     as LLVM's EmitValRangeCheck. Nothing when every value of x fits. Between
+     signed types CVT sets V when the value does not fit (MACRO 9-16), and
+     a quadword must first have as its high longword its low one's sign.
+     Otherwise x, read unsigned, must be at most the largest value both
+     types have, 2^limitBits - 1, so a negative x fails too: a quadword's
+     high longword is 0, or positive when limitBits is 63, and its low one
+     is compared when limitBits is below 32. *)
+  PROCEDURE ValRangeCheck(x: Operand; target: Types.Type; line, column: INTEGER);
+    VAR xSigned, targetSigned: BOOLEAN; xBits, targetBits, limitBits, limit: LONGINT;
+        s: CHAR; scratch: Operand; op: ARRAY 8 OF CHAR; ok, trap: ARRAY 16 OF CHAR;
+  BEGIN
+    xSigned := ~IsCardinal(x.type); targetSigned := ~IsCardinal(target);
+    xBits := 8 * VaxTypes.Size(x.type); targetBits := 8 * VaxTypes.Size(target);
+    IF (xSigned = targetSigned) & (xBits <= targetBits) OR ~xSigned & targetSigned & (xBits < targetBits) THEN
+      RETURN
+    END;
+    s := Suffix(x.type);
+    NewLabel(ok); trap[0] := 0X;
+    COPY("CVT", op); AppendChar(op, s); AppendChar(op, Suffix(target));
+    IF xSigned & targetSigned & (s = "Q") THEN
+      scratch := NewRegisterBeside(longword, x, NIL, line, column);
+      Instruction3("ASHL", Literal(-31), Specifier(LowHalf(x)), Specifier(scratch));
+      Instruction2("CMPL", Specifier(scratch), HalfSpecifier(x, 1));
+      IF targetBits = 32 THEN Instruction1("BEQL", LabelRef(ok))
+      ELSE
+        NewLabel(trap); Instruction1("BNEQ", LabelRef(trap));
+        COPY("CVTL", op); AppendChar(op, Suffix(target));
+        Emit2(op, LowHalf(x), scratch); Instruction1("BVC", LabelRef(ok))
+      END;
+      Release(scratch)
+    ELSIF xSigned & targetSigned THEN
+      scratch := NewRegisterBeside(target, x, NIL, line, column);
+      Emit2(op, x, scratch); Instruction1("BVC", LabelRef(ok));
+      Release(scratch)
+    ELSE
+      IF targetSigned THEN limitBits := targetBits - 1
+      ELSIF xBits <= targetBits THEN limitBits := xBits - 1
+      ELSE limitBits := targetBits
+      END;
+      limit := 1; limit := ASH(limit, limitBits) - 1;
+      IF s # "Q" THEN
+        Op("CMP", s, "", op); Emit2(op, x, Immediate(x.type, limit)); Instruction1("BLEQU", LabelRef(ok))
+      ELSIF limitBits = 63 THEN
+        Instruction1("TSTL", HalfSpecifier(x, 1)); Instruction1("BGEQ", LabelRef(ok))
+      ELSIF limitBits = 32 THEN
+        Instruction1("TSTL", HalfSpecifier(x, 1)); Instruction1("BEQL", LabelRef(ok))
+      ELSE
+        NewLabel(trap);
+        Instruction1("TSTL", HalfSpecifier(x, 1)); Instruction1("BNEQ", LabelRef(trap));
+        Emit2("CMPL", LowHalf(x), Immediate(longword, limit)); Instruction1("BLEQU", LabelRef(ok))
+      END
+    END;
+    IF trap[0] # 0X THEN EmitLabel(trap) END;
+    Trap(14 + 2 * messageWord, line, column);
+    EmitLabel(ok)
+  END ValRangeCheck;
+
   (* SYSTEM.VAL(T, x): x's bytes read as a T, as on LLVM. x of T's size,
      or wider and neither a real, is x itself retyped (a quadword's low
      longword: the VAX is little-endian); x narrower is sign-extended if
      it is an integer, else zero-extended, to a T of at most a longword.
-     A real is converted to nothing, only retyped. *)
-  PROCEDURE Val(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+     A real is converted to nothing, only retyped. checked is the
+     predeclared VAL(T, x), the same bits, and with -range-checks an x
+     that does not fit traps first (ValRangeCheck). *)
+  PROCEDURE Val(args: SyntaxTree.ExprNode; checked: BOOLEAN; dest: Operand; line, column: INTEGER): Operand;
     VAR target: Types.Type; x, r: Operand; ts, xs: LONGINT; op: ARRAY 8 OF CHAR; text: ARRAY 160 OF CHAR;
   BEGIN
     target := NIL;
@@ -5158,6 +5220,7 @@ MODULE VaxCodeGenerator;
       (* index mode scales by the operand's size (Fit) *)
       x := InRegister(x, line, column)
     END;
+    IF checked & rangeChecks THEN ValRangeCheck(x, target, line, column) END;
     IF (ts = xs) OR (ts < xs) & ~IsReal(target) & ~IsReal(x.type) & (x.kind # register) THEN
       x.type := target; RETURN x
     ELSIF (ts < xs) & ~IsReal(target) & ~IsReal(x.type) THEN
@@ -5197,7 +5260,7 @@ MODULE VaxCodeGenerator;
     RETURN Dummy()
   END Val;
 
-  PROCEDURE Predeclared(name: ARRAY OF CHAR; args: SyntaxTree.ExprNode; dest: Operand;
+  PROCEDURE Predeclared(name: ARRAY OF CHAR; qualified: BOOLEAN; args: SyntaxTree.ExprNode; dest: Operand;
                         line, column: INTEGER): Operand;
     VAR v: Operand; text: ARRAY 96 OF CHAR;
   BEGIN
@@ -5205,7 +5268,7 @@ MODULE VaxCodeGenerator;
     ELSIF name = "GET" THEN Get(args, line, column); RETURN NIL
     ELSIF name = "PUT" THEN Put(args, line, column); RETURN NIL
     ELSIF name = "MOVE" THEN Move(args, line, column); RETURN NIL
-    ELSIF name = "VAL" THEN RETURN Val(args, dest, line, column)
+    ELSIF name = "VAL" THEN RETURN Val(args, ~qualified, dest, line, column)
     END;
     IF name = "INC" THEN IncDec(TRUE, args, line, column); RETURN NIL
     ELSIF name = "DEC" THEN IncDec(FALSE, args, line, column); RETURN NIL
@@ -5257,7 +5320,7 @@ MODULE VaxCodeGenerator;
     WITH
       e: SyntaxTree.DesignatorExprNode DO
         IF IsPredeclaredCall(e) THEN
-          RETURN Predeclared(e.designator.name^, e.args, dest, e.line, e.column)
+          RETURN Predeclared(e.designator.name^, FALSE, e.args, dest, e.line, e.column)
         END;
         RETURN Designator(e, dest)
     | e: SyntaxTree.BinaryExprNode DO RETURN Binary(e, dest)

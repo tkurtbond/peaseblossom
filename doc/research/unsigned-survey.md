@@ -225,3 +225,9 @@ The other open questions, with what each source does:
 between the families and unary minus allowed.
 `doc/developer/language-extensions.md`, "Unsigned integer types", has the
 extension.
+
+**Extended** with the user 2026-11-01: option 2's rules also under
+predeclared names, `SHORTCARD`, `CARDINAL`, `LONGCARD` and `HUGECARD`, whose
+widths follow the size model as the signed names' do, and a predeclared
+`VAL(T, x)`, ISO Modula-2's name, as a way across that needs no import.
+`doc/developer/predeclared-unsigned-types.md` has the plan.

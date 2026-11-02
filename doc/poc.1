@@ -290,6 +290,12 @@ have 8, 16 and 32 bits; under
 has 64 bits and
 .Vt SET
 32 under both.
+.Vt SHORTCARD ,
+.Vt CARDINAL ,
+.Vt LONGCARD
+and
+.Vt HUGECARD
+have the same widths as the four signed types.
 A program and the modules it imports share one model.
 .It Fl import-path Ar dir
 Add
@@ -490,8 +496,10 @@ pointer NIL.
 .It Fl range-checks
 Make
 .Fn SHORT
-of an integer, and
+of an integer,
 .Fn CHR ,
+and predeclared
+.Fn VAL ,
 of a value that does not fit a trap, exit status 14.
 .It Fl strict
 Accept in the module named only the language of the report: each of
@@ -770,9 +778,10 @@ a function procedure that reached its end without
 .It 13
 a record assigned to a variable whose dynamic type extends its static type
 .It 14
-.Fn SHORT
-or
+.Fn SHORT ,
 .Fn CHR
+or
+.Fn VAL
 out of range
 .Pq with Fl range-checks
 .It 99

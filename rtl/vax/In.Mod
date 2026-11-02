@@ -13,8 +13,8 @@ MODULE In;
      PLAN.md Phase 10 step 5: the Oakwood Guidelines' In module, formatted
      input from the standard input stream, with voc's interface (src/
      runtime/In.Mod): Open, Char, Int, LongInt, HugeInt, Real, LongReal,
-     Line, String, Name and the flag Done; and poc's Card, which reads a
-     value of the unsigned types. Each reads what it can from the
+     Line, String, Name and the flag Done; and poc's Card and HugeCard, which
+     read a value of the unsigned types. Each reads what it can from the
      stream, sets Done to say whether it found what it was asked for, and
      leaves its argument alone (or, for some, zero) when it did not.
 
@@ -143,6 +143,14 @@ MODULE In;
     Done := FormattedInput.Card(input, h);
     c := SYSTEM.VAL(SYSTEM.CARD64, h)
   END Card;
+
+  (* Card, for a program using the predeclared HUGECARD, which is not the
+     same type as SYSTEM.CARD64. *)
+  PROCEDURE HugeCard*(VAR c: HUGECARD);
+    VAR wide: SYSTEM.CARD64;
+  BEGIN
+    wide := c; Card(wide); c := wide
+  END HugeCard;
 
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is

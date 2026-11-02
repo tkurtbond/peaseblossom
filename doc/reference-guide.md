@@ -50,6 +50,10 @@ compiled under one does not link with a program compiled under the other.
 | `INTEGER` | 2 | 4 | -2^15..2^15-1, or -2^31..2^31-1 |
 | `LONGINT` | 4 | 8 | -2^31..2^31-1, or -2^63..2^63-1 |
 | `HUGEINT` | 8 | 8 | -2^63..2^63-1 |
+| `SHORTCARD` | 1 | 2 | 0..2^8-1, or 0..2^16-1 |
+| `CARDINAL` | 2 | 4 | 0..2^16-1, or 0..2^32-1 |
+| `LONGCARD` | 4 | 8 | 0..2^32-1, or 0..2^64-1 |
+| `HUGECARD` | 8 | 8 | 0..2^64-1 |
 | `REAL` | 4 | 4 | IEEE 754 single precision |
 | `LONGREAL` | 8 | 8 | IEEE 754 double precision |
 | `SET` | 4 | 4 | subsets of 0..31 |
@@ -376,24 +380,43 @@ MAX(SET) is not in the Oberon-2 report (-strict)`.
 
 ### Unsigned integer types
 
-`SYSTEM.CARD8`, `CARD16`, `CARD32` and `CARD64` are the integers 0 to
-2^n - 1 in exactly n bits under both size models. `SYSTEM.CARD` is one as
-wide as `SYSTEM.ADDRESS`, 32 or 64 bits by the target: a type of its own,
+`SHORTCARD`, `CARDINAL`, `LONGCARD` and `HUGECARD` are predeclared, with
+as many bits in each size model as `SHORTINT`, `INTEGER`, `LONGINT` and
+`HUGEINT` (section 1). `SYSTEM.CARD8`, `CARD16`, `CARD32` and `CARD64` are
+the integers 0 to 2^n - 1 in exactly n bits under both size models, for
+foreign interfaces, where a width must not follow a flag. `SYSTEM.CARD` is
+one as wide as `SYSTEM.ADDRESS`, 32 or 64 bits by the target: a type of its own,
 which the `CARDn` of its width includes and is included in. They are a
 family apart from the signed integers: `CARD8` ⊆ `CARD16` ⊆ `CARD32` ⊆
-`CARD64`, and every one of them ⊆ `REAL` ⊆ `LONGREAL`. No CARD type
+`CARD64`, and every one of them ⊆ `REAL` ⊆ `LONGREAL`. The four predeclared
+types are in the same order, `SHORTCARD` ⊆ `CARDINAL` ⊆ `LONGCARD` ⊆
+`HUGECARD`, and each lies among the `CARDn` by its width, the types of one
+width including each other; so under `-OC` `LONGCARD` is included in
+`HUGECARD`, and `LONGCARD := h` for a `HUGECARD` `h` is an error, as with
+`LONGINT` and `HUGEINT`. `SYSTEM.CARD` and each of these of its width
+include each other too. The rules below are the same for all of them, and
+"CARD type" means any. No CARD type
 includes a signed one, nor a signed one a CARD type, so an operation, a
 comparison or an assignment that mixes the two is an error, `an unsigned
-and a signed integer cannot be mixed (use SYSTEM.VAL)`. `SYSTEM.VAL` is the
-only way across; it extends a CARD with zeros and a signed value with its
-sign.
+and a signed integer cannot be mixed (use VAL)`. Predeclared
+`VAL` and `SYSTEM.VAL` are the way across: both extend a CARD with zeros and
+a signed value with its sign.
+
+`VAL(T, x)` needs no import. `T` is an integer type of either family and `x`
+an integer of either family, constant or not, and its bits are `SYSTEM.VAL`'s.
+It differs from `SYSTEM.VAL` in taking only integers; in saying the value
+should fit, so that `-range-checks` traps one that does not (status 14) and a
+constant that does not is a compile-time error, where
+`SYSTEM.VAL(SYSTEM.CARD8, 300)` is quietly 44; and in being a constant for any
+integer `T`, where `SYSTEM.VAL` is one only for a CARD `T`.
 
 - **Constants.** A non-negative integer constant can be used with a CARD
   type wherever its value fits. Next to a CARD operand it takes the
   narrowest CARD type that holds it and is at least as wide as that
   operand: with `c` a `CARD8`, `c + 1` is a `CARD8` and `c + 300` a
   `CARD16`. A negative constant mixes the families. A constant of a CARD
-  type is written `SYSTEM.VAL(SYSTEM.CARD32, 4294967295)`. `MIN` of each
+  type is written `VAL(CARDINAL, 65535)` or
+  `SYSTEM.VAL(SYSTEM.CARD32, 4294967295)`. `MIN` of each
   type is 0 and `MAX` is 2^n - 1.
 - **Values above `MAX(HUGEINT)`** are hexadecimal patterns: where a
   `CARD64` takes it, `0FFFFFFFFFFFFFFFFH` is 2^64 - 1. As a constant
@@ -406,23 +429,35 @@ sign.
   checked.
 - **`LONG` and `SHORT`** stay in the family: `LONG` of a `CARD8` is a
   `CARD16`. `SHORT` keeps the low bits, and traps under `-range-checks`
-  (status 14).
+  (status 14). The predeclared types stay among their own names: `LONG` of
+  one is the narrowest of the four strictly wider, else `HUGECARD`, and
+  `SHORT` the widest strictly narrower, else `SYSTEM.CARD8`. A constant
+  widens the same way: with `c` a `CARDINAL` under `-O2`, `c + 70000` is a
+  `LONGCARD`.
 - **Shifts.** `ASH` and `SYSTEM.LSH` shift zeros in from the left, and
   `ASH`'s result has `x`'s type. `SYSTEM.ROT` rotates within the width.
 - **`ORD`, `LEN` and `SIZE`** keep their signed types, so comparing a CARD
-  with `LEN(a)` of an open array needs `SYSTEM.VAL`.
+  with `LEN(a)` of an open array needs `VAL`.
 - **Indexes, `CASE` and `FOR`.** A CARD index is checked as any other. A
   `CASE` on a CARD selector takes labels from 0 up to its `MAX`, and a
   label of a CARD type is an error for a signed selector. A `FOR` control
   variable of a CARD type may count down: `FOR c := 10 TO 0 BY -1` runs 11
   times.
-- **`SYSTEM.BYTE`** takes a `CARD8`.
+- **`SYSTEM.BYTE`** takes a `CARD8` and a one-byte `SHORTCARD`.
 - **Text.** `Out`, `Err` and `OutStr` write any CARD in decimal with
   `Card(x, n)` and in hexadecimal with `CardHex(x, n)`; `In` and `InStr`
-  read one with `Card(c)`, `c` a `CARD64` (section 9).
+  read one with `Card(c)`, `c` a `SYSTEM.CARD64`, or `HugeCard(c)`, `c` a
+  `HUGECARD` (section 9).
+- **Symbol files** write a constant of a predeclared type as
+  `VAL(CARDINAL, 65535)`. A module exporting its own `VAL` and such a constant
+  is refused.
 
 Under `-strict`, naming one is an error, such as `SYSTEM.CARD32 is not in
-the Oberon-2 report (-strict)`.
+the Oberon-2 report (-strict)`, and so is naming `VAL` or one of the four
+predeclared types, `CARDINAL is not in the Oberon-2 report (-strict)`. A
+strict program may declare its own `CARDINAL`. Without `-strict` too, a
+section after a procedure may not declare one of these five names, as any
+name visible from an enclosing scope ("Declarations after procedures").
 
 ### Read-only parameters
 
@@ -576,8 +611,9 @@ result rounded to its type.
 **`ENTIER`** of a value that does not fit a `LONGINT`, an infinity or a NaN
 is a trap (status 8): it is the one arithmetic trap.
 
-**`SHORT` and `CHR`** of a value that does not fit keep its low bits
-(`CHR(300)` is `","`); with `-range-checks` they trap (status 14).
+**`SHORT`, `CHR` and predeclared `VAL`** of a value that does not fit keep
+its low bits (`CHR(300)` is `","`); with `-range-checks` they trap (status
+14). `SYSTEM.VAL` never traps.
 
 **`ASH(x, n)`** shifts left by `n`, or right (flooring) for a negative `n`;
 the result has the wider of `LONGINT` and `x`'s type, or `x`'s own for an
@@ -622,7 +658,7 @@ reported at the index, and a NIL pointer or procedure at the designator.
 | 11 | Only with `-trap-heap-exhausted`: a `NEW` or `SYSTEM.NEW` the heap cannot satisfy | `heap exhausted: NEW cannot allocate the block` |
 | 12 | A function procedure that reaches its `END` | `function procedure reached its END without RETURN` |
 | 13 | A record assigned to a `VAR` parameter or `p^` whose dynamic type extends its static type | `record assigned to a variable whose dynamic type extends its static type` |
-| 14 | Only with `-range-checks`: `SHORT` of an integer, or `CHR`, of a value that does not fit | `SHORT argument out of range`, `CHR argument out of range` |
+| 14 | Only with `-range-checks`: `SHORT` of an integer, `CHR` or predeclared `VAL` of a value that does not fit | `SHORT argument out of range`, `CHR argument out of range`, `VAL argument out of range` |
 
 Every trap ends the program after its finalizers have run
 (`GarbageCollectedHeap.RegisterFinalizer`).
@@ -728,7 +764,7 @@ together, and one compile writes each file they name.
 | `-g` | Debug information for gdb and lldb: procedures, lines, parameters, variables, records, arrays, pointers. Libraries are looked for first in their `-g` copies (section 8). Best with `-opt 0` or `-opt g`. For `vax-dec-vms`, the objects poc writes (`-vax-objects`, `-emit-vax-object`) get the VMS debugger's records too: the source file, where each routine's code begins, and each variable and constant with its type (the *Peaseblossom VAX/VMS Guide*, chapter 16); and the build procedure links `/DEBUG`, and from MACRO-32 assembles `/DEBUG` too. Every object has its routines and lines, for a traceback. |
 | `-trap-location` | A trap's message names its file, line, column and procedure (section 6). |
 | `-trap-heap-exhausted` | A `NEW` the heap cannot satisfy is trap 11, not a `NIL` pointer. |
-| `-range-checks` | `SHORT` of an integer and `CHR` of a value that does not fit are trap 14. |
+| `-range-checks` | `SHORT` of an integer, `CHR` and predeclared `VAL` of a value that does not fit are trap 14. |
 | `-strict` | The module named may use only `Oberon2.pdf`'s language (section 3). |
 | `-static` | Links a fully static executable. |
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
@@ -1837,8 +1873,8 @@ END GarbageCollectedHeap.
 the Oakwood Guidelines' In module, formatted
 input from the standard input stream, with voc's interface (src/
 runtime/In.Mod): Open, Char, Int, LongInt, HugeInt, Real, LongReal,
-Line, String, Name and the flag Done; and poc's Card, which reads a
-value of the unsigned types. Each reads what it can from the
+Line, String, Name and the flag Done; and poc's Card and HugeCard, which
+read a value of the unsigned types. Each reads what it can from the
 stream, sets Done to say whether it found what it was asked for, and
 leaves its argument alone (or, for some, zero) when it did not.
 
@@ -1891,6 +1927,10 @@ MODULE In;
      sign is not a number (Done FALSE, c 0). A program with a narrower CARD
      variable reads into a SYSTEM.CARD64 and SHORTs it. *)
   PROCEDURE Card*(VAR c: SYSTEM.CARD64);
+
+  (* Card, for a program using the predeclared HUGECARD, which is not the
+     same type as SYSTEM.CARD64. *)
+  PROCEDURE HugeCard*(VAR c: HUGECARD);
 
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is
@@ -1966,6 +2006,10 @@ MODULE InStr;
      followed by H, up to 2^64 - 1; a minus sign is not a number. c is left
      alone if there is nothing left to read. *)
   PROCEDURE Card*(VAR c: SYSTEM.CARD64; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* Card, for a program using the predeclared HUGECARD, which is not the
+     same type as SYSTEM.CARD64. *)
+  PROCEDURE HugeCard*(VAR c: HUGECARD; s-: ARRAY OF CHAR; VAR pos: LONGINT);
 
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is

@@ -4,9 +4,10 @@ A plan for `SHORTCARD`, `CARDINAL`, `LONGCARD` and `HUGECARD`
 (`000-todo.org`): unsigned types with as many bits in each size model as
 `SHORTINT`, `INTEGER`, `LONGINT` and `HUGEINT`, predeclared like them
 rather than in `SYSTEM`, and separate from the signed integers. Its entry
-in `PLAN.md` is "Ongoing language enhancements", 5. Nothing here is
-implemented yet. Decisions 5 and 6 add to the language beyond what was
-asked; the user accepted them on 2026-11-01.
+in `PLAN.md` is "Ongoing language enhancements", 5. Implemented on
+2026-11-01, with both backends and the VAX's `-range-checks`; this is the
+plan as it was made, kept for its reasons and probes. Decisions 5 and 6 add
+to the language beyond what was asked; the user accepted them on 2026-11-01.
 
 The probes below were run on 2026-11-01 with poc 0.10.1, and the code was
 read at `f4d36fc`.
@@ -208,6 +209,10 @@ are involved, and at the end.
    update` afterwards. Run `make check-seed`, and find out whether a
    `BOOTSTRAP_POC` older than this release can still build the runtime,
    which now names a type it lacks. If not, `DEVELOPER.md` says so.
+   (Done: 0.10.1 cannot compile `In.Mod` itself, but it never has to.
+   `BOOTSTRAP_POC` compiles only poc's own source, which uses no new type,
+   and the Stage 0 it makes compiles the runtime. So `DEVELOPER.md` needs
+   no note.)
 
 6. **Documents.** The Reference Guide's type table and unsigned section, the
    predeclared procedures, the options' `-strict` and `-range-checks` text;

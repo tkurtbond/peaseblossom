@@ -301,6 +301,8 @@ MODULE LLVMCodeGenerator;
     shortRangeTrapMsg = "SHORT argument out of range";
     chrRangeTrapGlobal = "@.trap.chrrange";
     chrRangeTrapMsg = "CHR argument out of range";
+    valRangeTrapGlobal = "@.trap.valrange";
+    valRangeTrapMsg = "VAL argument out of range";
     rangeTrapExitCode = 14;
 
     (* DynamicType.kind - see DynamicType. *)
@@ -634,7 +636,7 @@ MODULE LLVMCodeGenerator;
       (* Phase 9 step 7: the array-length trap, and the overflow-checking
          arithmetic intrinsics NEW's size computation calls *)
       needLengthTrap, needOverflowMath, needEntierTrap, needArrayAssignTrap, needReturnTrap,
-      needRecordAssignTrap, needShortRangeTrap, needChrRangeTrap: BOOLEAN;
+      needRecordAssignTrap, needShortRangeTrap, needChrRangeTrap, needValRangeTrap: BOOLEAN;
       (* which ASSERT failure messages the program uses: one per code 0..255,
          and noAssertCode for ASSERT(x) *)
       assertCodes: ARRAY noAssertCode + 1 OF BOOLEAN;
@@ -5498,15 +5500,64 @@ MODULE LLVMCodeGenerator;
     result.text := final; COPY(ty, result.llvmType); result.oberonType := target
   END GenerateAsh;
 
-  (* VAL(T, x): x's bits read as a T. x is first turned into a plain
-     integer (ptrtoint, or a same-width bitcast of a real), resized to
-     the width T occupies (trunc, or sext/zext by whether x is a signed
-     integer), then turned into T (inttoptr, or a bitcast to a real). *)
-  PROCEDURE GenerateVal(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+  (* 2^n - 1, n one of those EmitValRangeCheck asks for *)
+  PROCEDURE AllOnes(n: INTEGER; VAR text: ARRAY OF CHAR);
+  BEGIN
+    IF n = 7 THEN COPY("127", text) ELSIF n = 8 THEN COPY("255", text)
+    ELSIF n = 15 THEN COPY("32767", text) ELSIF n = 16 THEN COPY("65535", text)
+    ELSIF n = 31 THEN COPY("2147483647", text) ELSIF n = 32 THEN COPY("4294967295", text)
+    ELSE COPY("9223372036854775807", text)
+    END
+  END AllOnes;
+
+  (* The predeclared VAL under -range-checks: the integer x must be a value
+     of the integer type target, or status 14. Two signed types of which
+     the target is narrower compare x with its truncation sign-extended
+     back, as GenerateShort does; a pair the target holds all of needs no
+     test; every other pair is an unsigned compare with the largest value
+     of whichever of the two types has the smaller, which a negative x
+     fails too. *)
+  PROCEDURE EmitValRangeCheck(VAR w: Files.Rider; VAR cg: Codegen; x: Value; target: Types.Type;
+                              line, column: INTEGER);
+    VAR
+      targetLLVM, narrowed, back, fits, limit, trapLabel, okLabel: ValueText;
+      xBits, tBits: INTEGER; xSigned, tSigned: BOOLEAN;
+  BEGIN
+    LLVMTypes.TypeString(target, cg.sizeModel, targetLLVM);
+    xBits := ScalarBits(cg, x.llvmType); tBits := ScalarBits(cg, targetLLVM);
+    xSigned := ~Types.IsCardinal(x.oberonType); tSigned := ~Types.IsCardinal(target);
+    IF (xSigned = tSigned) & (xBits <= tBits) OR ~xSigned & tSigned & (xBits < tBits) THEN RETURN END;
+    cg.needValRangeTrap := TRUE;
+    IF xSigned & tSigned THEN
+      EmitConvert(w, cg, "trunc", x.llvmType, x.text, targetLLVM, narrowed);
+      EmitConvert(w, cg, "sext", targetLLVM, narrowed, x.llvmType, back);
+      EmitBinOp(w, cg, "icmp eq", x.llvmType, back, x.text, fits)
+    ELSE
+      IF tSigned THEN AllOnes(tBits - 1, limit)
+      ELSIF xBits <= tBits THEN AllOnes(xBits - 1, limit)
+      ELSE AllOnes(tBits, limit)
+      END;
+      EmitBinOp(w, cg, "icmp ule", x.llvmType, x.text, limit, fits)
+    END;
+    NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+    EmitCondBr(w, fits, okLabel, trapLabel);
+    EmitLabel(w, cg, trapLabel);
+    EmitTrapAt(w, cg, valRangeTrapGlobal, valRangeTrapMsg, rangeTrapExitCode, line, column);
+    EmitLabel(w, cg, okLabel)
+  END EmitValRangeCheck;
+
+  (* VAL(T, x), SYSTEM's and, qualified FALSE, the predeclared one: x's bits
+     read as a T. x is first turned into a plain integer (ptrtoint, or a
+     same-width bitcast of a real), resized to the width T occupies (trunc,
+     or sext/zext by whether x is a signed integer), then turned into T
+     (inttoptr, or a bitcast to a real). *)
+  PROCEDURE GenerateVal(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; qualified: BOOLEAN;
+                        VAR result: Value);
     VAR
       target: Types.Type; x: Value; targetLLVM, xInt, intType, resized: ValueText;
-      xBits, tBits: INTEGER; opText: ARRAY 8 OF CHAR; resizedText: ValueText;
+      xBits, tBits, line, column: INTEGER; opText: ARRAY 8 OF CHAR; resizedText: ValueText;
   BEGIN
+    line := cg.currentLine; column := cg.currentColumn; (* VAL's own, not its argument's *)
     target := BareTypeArgument(cg, args);
     IF target = NIL THEN
       Unsupported(w, cg, "SYSTEM.VAL with an unresolvable target type", Types.Undefined, result);
@@ -5517,6 +5568,7 @@ MODULE LLVMCodeGenerator;
     ELSE
       GenerateExpr(w, cg, args.next, x)
     END;
+    IF rangeChecks & ~qualified THEN EmitValRangeCheck(w, cg, x, target, line, column) END;
     LLVMTypes.TypeString(target, cg.sizeModel, targetLLVM);
     IF x.llvmType = targetLLVM THEN
       COPY(x.text, result.text)
@@ -6218,7 +6270,7 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "ADR" THEN GenerateAdr(w, cg, args, result)
     ELSIF name = "GET" THEN GenerateGet(w, cg, args, result)
     ELSIF name = "PUT" THEN GeneratePut(w, cg, args, result)
-    ELSIF name = "VAL" THEN GenerateVal(w, cg, args, result)
+    ELSIF name = "VAL" THEN GenerateVal(w, cg, args, qualified, result)
     ELSIF name = "MOVE" THEN GenerateMove(w, cg, args, result)
     ELSIF name = "BIT" THEN GenerateBit(w, cg, args, result)
     ELSIF name = "LSH" THEN GenerateShift(w, cg, args, FALSE, result)
@@ -8109,6 +8161,7 @@ MODULE LLVMCodeGenerator;
     IF cg.needRecordAssignTrap THEN EmitTrapMessageGlobal(w, recordAssignTrapGlobal, recordAssignTrapMsg) END;
     IF cg.needShortRangeTrap THEN EmitTrapMessageGlobal(w, shortRangeTrapGlobal, shortRangeTrapMsg) END;
     IF cg.needChrRangeTrap THEN EmitTrapMessageGlobal(w, chrRangeTrapGlobal, chrRangeTrapMsg) END;
+    IF cg.needValRangeTrap THEN EmitTrapMessageGlobal(w, valRangeTrapGlobal, valRangeTrapMsg) END;
     IF cg.needHeapTrap THEN EmitTrapMessageGlobal(w, heapTrapGlobal, heapTrapMsg) END;
     site := cg.trapSites;
     WHILE site # NIL DO EmitTrapMessageGlobal(w, site.global, site.text); site := site.next END;
@@ -8823,7 +8876,7 @@ MODULE LLVMCodeGenerator;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
     cg.needArrayAssignTrap := FALSE; cg.needHeapTrap := FALSE; cg.needReturnTrap := FALSE;
-    cg.needRecordAssignTrap := FALSE; cg.needShortRangeTrap := FALSE; cg.needChrRangeTrap := FALSE;
+    cg.needRecordAssignTrap := FALSE; cg.needShortRangeTrap := FALSE; cg.needChrRangeTrap := FALSE; cg.needValRangeTrap := FALSE;
     cg.currentFile[0] := 0X; cg.currentProc[0] := 0X; cg.statementLine := 0; cg.statementColumn := 0;
     cg.trapSites := NIL; cg.trapSitesTail := NIL; cg.trapSiteCount := 0;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;

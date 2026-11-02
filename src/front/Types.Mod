@@ -324,6 +324,10 @@ MODULE Types;
        includes and is included in, as ADDRESS and a signed type of its width
        are (Order) *)
     Card8*, Card16*, Card32*, Card64*, Card*: Type;
+    (* the unsigned types whose widths follow the size model as SHORTINT..
+       HUGEINT's do (doc/developer/language-extensions.md, "Predeclared
+       unsigned types") *)
+    ShortCard*, Cardinal*, LongCard*, HugeCard*: Type;
     (* Whether the -OC size model is in effect (set once per compilation by
        ConstantEvaluator.SetSizeModel, which MemoryLayout's own sizeModel
        argument feeds; -O2 by default): Order needs it to say where a
@@ -358,8 +362,9 @@ MODULE Types;
     RETURN t
   END NewFixedIntType;
 
-  (* an unsigned integer type: bytes wide, or as wide as SYSTEM.ADDRESS when
-     bytes is 0 (SYSTEM.CARD), which takes ADDRESS's rank for that *)
+  (* an unsigned integer type: bytes wide; or, when bytes is 0, as wide as
+     the signed type of its rank under the size model, or as SYSTEM.ADDRESS
+     (SYSTEM.CARD) with ADDRESS's rank *)
   PROCEDURE NewCardType(rank, bytes: INTEGER): Type;
     VAR t: BasicType;
   BEGIN
@@ -829,9 +834,10 @@ MODULE Types;
     END
   END ModelBytes;
 
-  (* Byte width of an integer type - SHORTINT/INTEGER/LONGINT under the
-     size model, HUGEINT, a fixed-width SYSTEM.INT8..INT64 or CARD8..CARD64,
-     or SYSTEM.CARD, the target's word - and 0 for anything else
+  (* Byte width of an integer type - SHORTINT/INTEGER/LONGINT or
+     SHORTCARD/CARDINAL/LONGCARD under the size model, HUGEINT, HUGECARD, a
+     fixed-width SYSTEM.INT8..INT64 or CARD8..CARD64, or SYSTEM.CARD, the
+     target's word - and 0 for anything else
      (SYSTEM.ADDRESS included: its width is the target's, not the size
      model's, so LONG/SHORT do not chain through it). *)
   PROCEDURE IntegerBytes*(t: Type): INTEGER;
@@ -840,7 +846,7 @@ MODULE Types;
     IF (t = NIL) OR ~(t IS BasicType) THEN RETURN 0 END;
     bt := t(BasicType);
     IF bt.fixedBytes > 0 THEN RETURN bt.fixedBytes
-    ELSIF bt.unsigned THEN RETURN addressBytes
+    ELSIF bt.unsigned & (bt.rank = addressRank) THEN RETURN addressBytes
     ELSIF (bt.rank >= shortIntRank) & (bt.rank <= hugeIntRank) & (bt.rank # addressRank) THEN
       RETURN ModelBytes(bt.rank)
     ELSE
@@ -861,6 +867,13 @@ MODULE Types;
     RETURN (bt.fixedBytes > 0) OR (bt.rank = hugeIntRank) OR bt.unsigned
   END LongShortByWidth;
 
+  (* Whether t is one of the four unsigned types of the size model, which
+     LONG and SHORT keep among themselves *)
+  PROCEDURE IsModelCardinal*(t: Type): BOOLEAN;
+  BEGIN
+    RETURN (t = ShortCard) OR (t = Cardinal) OR (t = LongCard) OR (t = HugeCard)
+  END IsModelCardinal;
+
   (* The CARDn of the given width in bytes, CARD64 for anything wider *)
   PROCEDURE CardOfBytes*(bytes: INTEGER): Type;
   BEGIN
@@ -880,8 +893,14 @@ MODULE Types;
     VAR w: INTEGER;
   BEGIN
     w := IntegerBytes(t);
-    (* an unsigned type: the CARDn twice as wide, CARD64 of itself *)
-    IF IsCardinal(t) THEN RETURN CardOfBytes(2 * w)
+    (* a model's unsigned type: the narrowest strictly wider, else HUGECARD *)
+    IF IsModelCardinal(t) THEN
+      IF w < ModelBytes(integerRank) THEN RETURN Cardinal
+      ELSIF w < ModelBytes(longIntRank) THEN RETURN LongCard
+      ELSE RETURN HugeCard
+      END
+    (* any other unsigned type: the CARDn twice as wide, CARD64 of itself *)
+    ELSIF IsCardinal(t) THEN RETURN CardOfBytes(2 * w)
     ELSIF w < ModelBytes(shortIntRank) THEN RETURN ShortInt
     ELSIF w < ModelBytes(integerRank) THEN RETURN Integer
     ELSIF w < ModelBytes(longIntRank) THEN RETURN LongInt
@@ -896,8 +915,15 @@ MODULE Types;
     VAR w: INTEGER;
   BEGIN
     w := IntegerBytes(t);
-    (* an unsigned type: the CARDn half as wide, CARD8 of itself *)
-    IF IsCardinal(t) THEN RETURN CardOfBytes(w DIV 2)
+    (* a model's unsigned type: the widest strictly narrower, else CARD8 *)
+    IF IsModelCardinal(t) THEN
+      IF w > ModelBytes(longIntRank) THEN RETURN LongCard
+      ELSIF w > ModelBytes(integerRank) THEN RETURN Cardinal
+      ELSIF w > ModelBytes(shortIntRank) THEN RETURN ShortCard
+      ELSE RETURN Card8
+      END
+    (* any other unsigned type: the CARDn half as wide, CARD8 of itself *)
+    ELSIF IsCardinal(t) THEN RETURN CardOfBytes(w DIV 2)
     ELSIF w > ModelBytes(longIntRank) THEN RETURN LongInt
     ELSIF w > ModelBytes(integerRank) THEN RETURN Integer
     ELSIF w > ModelBytes(shortIntRank) THEN RETURN ShortInt
@@ -998,6 +1024,31 @@ MODULE Types;
     END
   END CardFits;
 
+  (* Whether the integer constant v is a value of the integer type t, of
+     either family, by value and whatever v's own type, as the predeclared
+     VAL requires (ConstantEvaluator.EvaluatePredeclaredVal). An unsigned v
+     with a negative intVal is above MAX(HUGEINT); a signed one may be a
+     pattern (CardFits). *)
+  PROCEDURE ValueFitsInteger*(t: Type; v: Value): BOOLEAN;
+    VAR bytes: INTEGER; above: BOOLEAN;
+  BEGIN
+    bytes := IntegerBytes(t);
+    above := IsCardinal(v.type) & (v.intVal < 0);
+    IF IsCardinal(t) THEN
+      IF above OR (v.intVal < 0) THEN RETURN (above OR v.pattern) & (bytes = 8)
+      ELSIF bytes = 1 THEN RETURN v.intVal <= 255
+      ELSIF bytes = 2 THEN RETURN v.intVal <= 65535
+      ELSIF bytes = 4 THEN RETURN v.intVal <= 4294967295
+      ELSE RETURN TRUE
+      END
+    ELSIF above THEN RETURN FALSE
+    ELSIF bytes = 1 THEN RETURN (v.intVal >= -128) & (v.intVal <= 127)
+    ELSIF bytes = 2 THEN RETURN (v.intVal >= -32768) & (v.intVal <= 32767)
+    ELSIF bytes = 4 THEN RETURN (v.intVal >= -2147483647 - 1) & (v.intVal <= 2147483647)
+    ELSE RETURN TRUE
+    END
+  END ValueFitsInteger;
+
   (* The type an integer constant v takes as an operand of an arithmetic
      operation or a comparison whose other operand has type otherType - the
      rule the checker (SemanticActions.AdoptConstantOperandType), the
@@ -1016,8 +1067,8 @@ MODULE Types;
     IF (v = NIL) OR (v.kind # intValue) OR ~IsInteger(v.type) OR ~IsInteger(otherType) THEN RETURN v.type END;
     IF IsCardinal(otherType) & ~IsCardinal(v.type) THEN
       IF CardFits(otherType, v) THEN RETURN otherType END;
-      t := CardOfBytes(2 * IntegerBytes(otherType));
-      WHILE (t # Card64) & ~CardFits(t, v) DO t := CardOfBytes(2 * IntegerBytes(t)) END;
+      t := LongerInteger(otherType);
+      WHILE (IntegerBytes(t) < 8) & ~CardFits(t, v) DO t := LongerInteger(t) END;
       IF CardFits(t, v) THEN RETURN t END
     ELSIF ~IsCardinal(otherType) & ~IsCardinal(v.type) & ConstantAdoptsType(v.type, otherType, v.intVal) THEN
       RETURN otherType
@@ -1032,8 +1083,12 @@ MODULE Types;
      above LONGINT. *)
   PROCEDURE AddressOfSameWidth(a, b: Type): BOOLEAN;
   BEGIN
-    IF IsCardinal(a) OR IsCardinal(b) THEN
-      RETURN FALSE (* SYSTEM.CARD has ADDRESS's rank, but Order places it *)
+    IF IsCardinal(a) & IsCardinal(b) THEN
+      (* SYSTEM.CARD likewise: a 64-bit one and a LONGCARD under -OC *)
+      RETURN (a = Card) & (IntegerBytes(b) = addressBytes)
+          OR (b = Card) & (IntegerBytes(a) = addressBytes)
+    ELSIF IsCardinal(a) OR IsCardinal(b) THEN
+      RETURN FALSE (* SYSTEM.CARD has ADDRESS's rank, but mixes no family *)
     ELSIF Rank(a) = addressRank THEN
       RETURN IntegerBytes(b) = addressBytes
     ELSIF Rank(b) = addressRank THEN
@@ -1125,10 +1180,12 @@ MODULE Types;
     IF SameType(dst, src) THEN RETURN ~IsOpenArray(dst) (* rule 1 (subsumes rule 7) *)
     ELSIF Includes(dst, src) THEN RETURN TRUE (* rule 2 *)
     ELSIF (dst = Set64) & (src = Set) THEN RETURN TRUE (* a SET is included in a SET64 *)
-    ELSIF (dst = Byte) & ((src = Char) OR (src = Card8) OR (src = ShortInt) & (IntegerBytes(ShortInt) = 1)) THEN
+    ELSIF (dst = Byte) & ((src = Char) OR (src = Card8)
+                          OR ((src = ShortInt) OR (src = ShortCard)) & (IntegerBytes(src) = 1)) THEN
       (* Appendix C: SYSTEM.BYTE takes a CHAR or a SHORTINT - a one-byte
          one, as on Ceres and in the Oakwood Guidelines (1.2.5): -O2, not
-         -OC, as voc (Phase 12 step 5d, 2026-10-02) - and a SYSTEM.CARD8 *)
+         -OC, as voc (Phase 12 step 5d, 2026-10-02) - and a SYSTEM.CARD8 or
+         a one-byte SHORTCARD *)
       RETURN TRUE
     ELSIF (dst = Ptr) & (src # NIL) & (src IS PointerType) THEN
       RETURN TRUE (* Appendix C: SYSTEM.PTR takes any pointer *)
@@ -1184,6 +1241,10 @@ MODULE Types;
     ELSIF t = Card32 THEN COPY("SYSTEM.CARD32", name)
     ELSIF t = Card64 THEN COPY("SYSTEM.CARD64", name)
     ELSIF t = Card THEN COPY("SYSTEM.CARD", name)
+    ELSIF t = ShortCard THEN COPY("SHORTCARD", name)
+    ELSIF t = Cardinal THEN COPY("CARDINAL", name)
+    ELSIF t = LongCard THEN COPY("LONGCARD", name)
+    ELSIF t = HugeCard THEN COPY("HUGECARD", name)
     ELSIF t = Real THEN COPY("REAL", name)
     ELSIF t = LongReal THEN COPY("LONGREAL", name)
     ELSIF t = Set THEN COPY("SET", name)
@@ -1266,6 +1327,10 @@ BEGIN
   Card32 := NewCardType(longIntRank, 4);
   Card64 := NewCardType(hugeIntRank, 8);
   Card := NewCardType(addressRank, 0);
+  ShortCard := NewCardType(shortIntRank, 0);
+  Cardinal := NewCardType(integerRank, 0);
+  LongCard := NewCardType(longIntRank, 0);
+  HugeCard := NewCardType(hugeIntRank, 0);
   sizeModelIsOC := FALSE;
   addressBytes := 4;
   Real := NewBasicType(realRank);

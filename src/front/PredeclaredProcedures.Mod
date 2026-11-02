@@ -471,7 +471,7 @@ MODULE PredeclaredProcedures;
           IF v.type # Types.Undefined THEN nt := Types.ConstantOperandType(v, vt) END
         END;
         IF Types.MixesFamilies(vt, nt) THEN
-          ReportType(line, column, "an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL)", nt)
+          ReportType(line, column, "an unsigned and a signed integer cannot be mixed (use VAL)", nt)
         END
       END
     END
@@ -760,6 +760,36 @@ MODULE PredeclaredProcedures;
     RETURN target
   END CheckVal;
 
+  (* The predeclared VAL(T, x), for crossing between the integer families
+     with no import ("Predeclared unsigned types"): SYSTEM.VAL's bits, on
+     integers only, and it says that x is a value of T, which -range-checks
+     traps and ConstantEvaluator.EvaluatePredeclaredVal refuses for a
+     constant. *)
+  PROCEDURE CheckPredeclaredVal(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                                line, column: INTEGER; checkExpr: CheckExprProc): Types.Type;
+    VAR target, xt: Types.Type;
+  BEGIN
+    IF ArgCount(args) # 2 THEN
+      Diagnostics.Error(line, column, "VAL expects two arguments");
+      RETURN Types.Undefined
+    END;
+    target := LookupBareTypeName(scope, args);
+    IF target = NIL THEN
+      Diagnostics.Error(line, column, "VAL's first argument must be a type");
+      RETURN Types.Undefined
+    ELSIF ~Types.IsInteger(target) THEN
+      ReportType(line, column, "VAL's first argument must be an integer type", target);
+      RETURN Types.Undefined
+    END;
+    xt := checkExpr(scope, Arg(args, 1));
+    IF xt = Types.Undefined THEN RETURN Types.Undefined END;
+    IF ~Types.IsInteger(xt) THEN
+      ReportType(line, column, "VAL's second argument must be an integer", xt);
+      RETURN Types.Undefined
+    END;
+    RETURN target
+  END CheckPredeclaredVal;
+
   PROCEDURE CheckMove(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                       line, column: INTEGER; checkExpr: CheckExprProc);
     VAR i: INTEGER; t: Types.Type;
@@ -903,7 +933,10 @@ MODULE PredeclaredProcedures;
       CheckNew(scope, args, line, column, checkExpr, checkDesignator);
       RETURN NIL
     ELSIF name = "ADR" THEN RETURN CheckAdr(scope, args, line, column, checkDesignator)
-    ELSIF name = "VAL" THEN RETURN CheckVal(scope, args, line, column, checkExpr)
+    ELSIF name = "VAL" THEN
+      IF qualified THEN RETURN CheckVal(scope, args, line, column, checkExpr)
+      ELSE RETURN CheckPredeclaredVal(scope, args, line, column, checkExpr)
+      END
     ELSIF name = "GET" THEN
       isProperProcedure := TRUE;
       CheckGet(scope, args, line, column, checkExpr, checkDesignator);

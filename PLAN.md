@@ -1040,6 +1040,36 @@ Those fixed while Phase 18 was current, 8-10, are in
     Where the second file would overwrite the first it says `SKIPPED:`
     and goes on, its `result` the same on every host.
 
+15. **A function procedure can be called as a statement.** Found
+    2026-11-01 writing `semantic-reject-predeclared-val`: `VAL(CARDINAL,
+    n)` alone as a statement was accepted, and so, in a probe, are
+    `F()`, `F`, a procedure value's `pv()`, a type-bound `r.M()`,
+    `ABS(n)`, `MAX(INTEGER)`, `ODD(n)` and `SYSTEM.VAL(LONGINT, n)`, in
+    0.10.1 too. `poc -build` gives a program that throws the result away.
+    The report keeps the two apart (section 10: a function procedure is
+    activated by a function designator as a constituent of an expression,
+    a proper one by a procedure call), and voc refuses it, err 55,
+    "procedure call of a function". The check belongs in the checking
+    of a call statement, for user and predeclared procedures both; it
+    should say which procedure, and it needs a `semantic-reject-` fixture.
+    voc's refusal keeps it out of `src/`, which Stage 0 compiles, but not
+    out of what only poc compiles, so `rtl/llvm`, `rtl/vax` and the
+    fixtures may have calls to correct. To be fixed before the next
+    release.
+
+16. **An error found while writing a `.sym` leaves the file behind, and
+    the compile carries on.** Found 2026-11-01 with the refusals of the
+    predeclared unsigned types (`exportedval.mod` in
+    `semantic-reject-predeclared-val`): `ModuleInterface.Write` reports
+    the error but still registers the file and returns TRUE, so `poc
+    -compile` exits 1 with the `.sym`, `.ll` and `.o` written, and the
+    `.sym` holds a line the error said could not be written. A later
+    `IMPORT` would read it, as in 13. The older errors raised there
+    (`ModuleInterface.PrintConstValue`) take the same path. `Write` should
+    leave nothing behind and its callers stop, as they do for an error
+    before it; the fixture should then list the files after each refusal.
+    To be fixed before the next release.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other
@@ -1089,14 +1119,19 @@ Those done while Phase 17 was current, 3, are in
    `llvm-external-variable`, `semantic-reject-external-variable`,
    `vax-external-variable`).
 
-5. **Predeclared unsigned types** (decided 2026-11-01, `000-todo.org`):
+5. **Predeclared unsigned types** [done] (decided 2026-11-01, `000-todo.org`):
    `SHORTCARD`, `CARDINAL`, `LONGCARD` and `HUGECARD`, as wide in each size
    model as `SHORTINT`, `INTEGER`, `LONGINT` and `HUGEINT`, a family apart
    with the rules of `SYSTEM.CARDn`, which stay. A program with no `SYSTEM`
    import also needs a way across the families and a way to read one, so
    the plan adds a predeclared `VAL(T, x)` and `In.HugeCard`, accepted by the
    user 2026-11-01. The plan, its six steps and what they change are in
-   `doc/developer/predeclared-unsigned-types.md`.
+   `doc/developer/predeclared-unsigned-types.md`. Done 2026-11-01, on both
+   backends (fixtures `semantic-predeclared-cardinal`,
+   `semantic-strict-predeclared-cardinal`, `semantic-reject-predeclared-val`,
+   `llvm-predeclared-cardinal`, `llvm-predeclared-cardinal-import`,
+   `llvm-predeclared-val`, `vax-predeclared-cardinal`,
+   `vax-predeclared-val`).
 
 ## Ongoing implementation enhancements
 

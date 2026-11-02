@@ -1,0 +1,76 @@
+-O2  ca := VAL(CARDINAL, n)               ok
+-OC  ca := VAL(CARDINAL, n)               ok
+-O2  n := VAL(INTEGER, ca)                ok
+-OC  n := VAL(INTEGER, ca)                ok
+-O2  hc := VAL(HUGECARD, n)               ok
+-OC  hc := VAL(HUGECARD, n)               ok
+-O2  ca := VAL(ca, n)                     VAL's first argument must be a type
+-OC  ca := VAL(ca, n)                     VAL's first argument must be a type
+-O2  ca := VAL(CARDINAL)                  VAL expects two arguments
+-OC  ca := VAL(CARDINAL)                  VAL expects two arguments
+-O2  ca := VAL(CARDINAL, n, n)            VAL expects two arguments
+-OC  ca := VAL(CARDINAL, n, n)            VAL expects two arguments
+-O2  ca := VAL(CARDINAL, x)               VAL's second argument must be an integer: REAL
+-OC  ca := VAL(CARDINAL, x)               VAL's second argument must be an integer: REAL
+-O2  ca := VAL(CARDINAL, ch)              VAL's second argument must be an integer: CHAR
+-OC  ca := VAL(CARDINAL, ch)              VAL's second argument must be an integer: CHAR
+-O2  ca := VAL(CARDINAL, TRUE)            VAL's second argument must be an integer: BOOLEAN
+-OC  ca := VAL(CARDINAL, TRUE)            VAL's second argument must be an integer: BOOLEAN
+-O2  ca := VAL(CARDINAL, s)               VAL's second argument must be an integer: SET
+-OC  ca := VAL(CARDINAL, s)               VAL's second argument must be an integer: SET
+-O2  ca := VAL(CARDINAL, "A")             VAL's second argument must be an integer: a string constant
+-OC  ca := VAL(CARDINAL, "A")             VAL's second argument must be an integer: a string constant
+-O2  ca := VAL(CARDINAL, NIL)             VAL's second argument must be an integer: NIL
+-OC  ca := VAL(CARDINAL, NIL)             VAL's second argument must be an integer: NIL
+-O2  x := VAL(REAL, n)                    VAL's first argument must be an integer type: REAL
+-OC  x := VAL(REAL, n)                    VAL's first argument must be an integer type: REAL
+-O2  ch := VAL(CHAR, n)                   VAL's first argument must be an integer type: CHAR
+-OC  ch := VAL(CHAR, n)                   VAL's first argument must be an integer type: CHAR
+-O2  s := VAL(SET, n)                     VAL's first argument must be an integer type: SET
+-OC  s := VAL(SET, n)                     VAL's first argument must be an integer type: SET
+-O2  p := VAL(P, n)                       VAL's first argument must be an integer type: POINTER TO RECORD
+-OC  p := VAL(P, n)                       VAL's first argument must be an integer type: POINTER TO RECORD
+-O2  ca := VAL(CARDINAL, -1)              VAL's constant does not fit its type: CARDINAL
+-OC  ca := VAL(CARDINAL, -1)              VAL's constant does not fit its type: CARDINAL
+-O2  ca := VAL(CARDINAL, 65535)           ok
+-OC  ca := VAL(CARDINAL, 65535)           ok
+-O2  ca := VAL(CARDINAL, 65536)           VAL's constant does not fit its type: CARDINAL
+-OC  ca := VAL(CARDINAL, 65536)           ok
+-O2  sc := VAL(SHORTCARD, 255)            ok
+-OC  sc := VAL(SHORTCARD, 255)            ok
+-O2  sc := VAL(SHORTCARD, 256)            VAL's constant does not fit its type: SHORTCARD
+-OC  sc := VAL(SHORTCARD, 256)            ok
+-O2  sc := VAL(SHORTCARD, 65536)          VAL's constant does not fit its type: SHORTCARD
+-OC  sc := VAL(SHORTCARD, 65536)          VAL's constant does not fit its type: SHORTCARD
+-O2  n := VAL(SHORTINT, 127)              ok
+-OC  n := VAL(SHORTINT, 127)              ok
+-O2  n := VAL(SHORTINT, 128)              VAL's constant does not fit its type: SHORTINT
+-OC  n := VAL(SHORTINT, 128)              ok
+-O2  n := VAL(INTEGER, 32768)             VAL's constant does not fit its type: INTEGER
+-OC  n := VAL(INTEGER, 32768)             ok
+-O2  n := VAL(INTEGER, MAX(CARDINAL))     VAL's constant does not fit its type: INTEGER
+-OC  n := VAL(INTEGER, MAX(CARDINAL))     VAL's constant does not fit its type: INTEGER
+-O2  hc := VAL(HUGECARD, big)             ok
+-OC  hc := VAL(HUGECARD, big)             ok
+-O2  ca := VAL(CARDINAL, big)             VAL's constant does not fit its type: CARDINAL
+-OC  ca := VAL(CARDINAL, big)             VAL's constant does not fit its type: CARDINAL
+-O2  n := VAL(LONGINT, big)               assignment is not type-compatible: LONGINT to INTEGER
+-OC  n := VAL(LONGINT, big)               assignment is not type-compatible: LONGINT to INTEGER
+-O2  n := VAL(SHORTINT, MAX(HUGECARD))    VAL's constant does not fit its type: SHORTINT
+-OC  n := VAL(SHORTINT, MAX(HUGECARD))    VAL's constant does not fit its type: SHORTINT
+-O2  sc := VAL(SHORTCARD, 300 + n)        ok
+-OC  sc := VAL(SHORTCARD, 300 + n)        ok
+== ownval
+MODULE ownval;
+END ownval.
+== hiddenval
+MODULE hiddenval;
+  CONST
+    top* = VAL(CARDINAL, 65535);
+END hiddenval.
+== exportedval
+exportedval.mod:3:9: error: a module with its own VAL in its interface cannot export a constant of a predeclared unsigned type
+== exportedtype
+exportedtype.mod:3:9: error: a module with this type name in its interface cannot export a constant of the predeclared type: CARDINAL
+== importedval
+importedval.mod:3:9: error: a module with its own VAL in its interface cannot export a constant of a predeclared unsigned type

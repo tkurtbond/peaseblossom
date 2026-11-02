@@ -10,7 +10,7 @@ MODULE instr;
   VAR
     mode: ARRAY 8 OF CHAR; useIn: BOOLEAN;
     text: ARRAY 4096 OF CHAR; pos: LONGINT; n: LONGINT; ch: CHAR;
-    i: INTEGER; l: LONGINT; h: HUGEINT; x: REAL; y: LONGREAL; word: ARRAY 64 OF CHAR;
+    i: INTEGER; l: LONGINT; h: HUGEINT; wide: HUGECARD; x: REAL; y: LONGREAL; word: ARRAY 64 OF CHAR;
     short: ARRAY 4 OF CHAR; full: ARRAY 5 OF CHAR;
 
   PROCEDURE Done(done: BOOLEAN);
@@ -41,6 +41,8 @@ BEGIN
   Out.String("LongInt "); Out.Int(l, 0); Done(useIn & In.Done OR ~useIn & InStr.Done);
   IF useIn THEN In.HugeInt(h) ELSE InStr.HugeInt(h, text, pos) END;
   Out.String("HugeInt "); Out.Int(h, 0); Done(useIn & In.Done OR ~useIn & InStr.Done);
+  IF useIn THEN In.HugeCard(wide) ELSE InStr.HugeCard(wide, text, pos) END;
+  Out.String("HugeCard "); Out.Card(wide, 0); Done(useIn & In.Done OR ~useIn & InStr.Done);
   IF useIn THEN In.Name(word) ELSE InStr.Name(word, text, pos) END;
   Out.String("Name "); Out.String(word); Done(useIn & In.Done OR ~useIn & InStr.Done);
   IF useIn THEN In.String(word) ELSE InStr.String(word, text, pos) END;

@@ -316,6 +316,12 @@ BEGIN
   InsertPredeclared("INTEGER", Types.Integer);
   InsertPredeclared("LONGINT", Types.LongInt);
   InsertPredeclared("HUGEINT", Types.HugeInt); (* Peaseblossom extension; see Types.Mod *)
+  (* extensions too: doc/developer/language-extensions.md, "Predeclared
+     unsigned types" *)
+  InsertPredeclared("SHORTCARD", Types.ShortCard);
+  InsertPredeclared("CARDINAL", Types.Cardinal);
+  InsertPredeclared("LONGCARD", Types.LongCard);
+  InsertPredeclared("HUGECARD", Types.HugeCard);
   InsertPredeclared("REAL", Types.Real);
   InsertPredeclared("LONGREAL", Types.LongReal);
   InsertPredeclared("SET", Types.Set);
@@ -332,6 +338,7 @@ BEGIN
   InsertPredeclaredProc("HALT"); InsertPredeclaredProc("INC"); InsertPredeclaredProc("INCL");
   InsertPredeclaredProc("NEW");
   InsertPredeclaredProc("ASSERT"); (* poc's extension, PredeclaredProcedures.CheckAssert *)
+  InsertPredeclaredProc("VAL"); (* poc's extension, PredeclaredProcedures.CheckPredeclaredVal *)
   SystemScope := OpenScope(NIL);
   InsertSystemType("ADDRESS", Types.Address);
   InsertSystemType("BYTE", Types.Byte);
@@ -360,6 +367,9 @@ BEGIN
   InsertSystemProc("BIT"); InsertSystemProc("LSH"); InsertSystemProc("ROT");
   InsertSystemProc("NEW");
   MarkExtension(Universe, "HUGEINT"); MarkExtension(Universe, "ASSERT");
+  MarkExtension(Universe, "VAL");
+  MarkExtension(Universe, "SHORTCARD"); MarkExtension(Universe, "CARDINAL");
+  MarkExtension(Universe, "LONGCARD"); MarkExtension(Universe, "HUGECARD");
   MarkExtension(SystemScope, "ADDRESS");
   MarkExtension(SystemScope, "INT8"); MarkExtension(SystemScope, "INT16");
   MarkExtension(SystemScope, "INT32"); MarkExtension(SystemScope, "INT64");

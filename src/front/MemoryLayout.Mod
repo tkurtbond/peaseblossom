@@ -103,14 +103,14 @@ MODULE MemoryLayout;
     IF t = Types.Boolean THEN RETURN 1
     ELSIF t = Types.Char THEN RETURN 1
     ELSIF t = Types.Byte THEN RETURN 1 (* SYSTEM.BYTE *)
-    ELSIF t = Types.ShortInt THEN
+    ELSIF (t = Types.ShortInt) OR (t = Types.ShortCard) THEN
       IF sizeModel = sizeModelOC THEN RETURN 2 ELSE RETURN 1 END
-    ELSIF t = Types.Integer THEN
+    ELSIF (t = Types.Integer) OR (t = Types.Cardinal) THEN
       IF sizeModel = sizeModelOC THEN RETURN 4 ELSE RETURN 2 END
-    ELSIF t = Types.LongInt THEN
+    ELSIF (t = Types.LongInt) OR (t = Types.LongCard) THEN
       IF sizeModel = sizeModelOC THEN RETURN 8 ELSE RETURN 4 END
     ELSIF t = Types.Address THEN RETURN wordSize (* SYSTEM.ADDRESS: as wide as a pointer *)
-    ELSIF t = Types.HugeInt THEN RETURN 8
+    ELSIF (t = Types.HugeInt) OR (t = Types.HugeCard) THEN RETURN 8
     ELSIF t = Types.Int8 THEN RETURN 1 (* SYSTEM.INT8..INT64: the same under either model *)
     ELSIF t = Types.Int16 THEN RETURN 2
     ELSIF t = Types.Int32 THEN RETURN 4

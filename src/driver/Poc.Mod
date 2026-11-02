@@ -3709,7 +3709,7 @@ MODULE Poc;
     LLVMHelpLine("  -rebuild                   compile every module, reusing no object");
     HelpLine("  -trap-location             a trap's message names its file, line, procedure");
     HelpLine("  -trap-heap-exhausted       a NEW that finds no memory stops the program");
-    HelpLine("  -range-checks              SHORT and CHR of a value that does not fit trap");
+    HelpLine("  -range-checks              SHORT, CHR and VAL of a value that does not fit trap");
     LLVMHelpLine("  -static                    link a fully static executable");
     HelpLine("  -shared-libraries          link libraries dynamically");
     LLVMHelpLine("  -no-shared-library         for -library: an archive and no shared object");

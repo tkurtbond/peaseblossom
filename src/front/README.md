@@ -88,7 +88,8 @@ etc.).
   pointer forms (§6.2-6.5), following the same record-extension pattern
   SyntaxTree.Mod uses for its node families. Also defines `HUGEINT`, a
   Peaseblossom language extension (not in §6.1) adopted from voc's own
-  identically-named extension - see AGENTS.md's "Language extensions
+  identically-named extension, and `SHORTCARD`, `CARDINAL`, `LONGCARD`
+  and `HUGECARD` - see AGENTS.md's "Language extensions
   beyond Oberon2.pdf". Stores no size/alignment/offset information
   itself (that depends on the target word size - see MemoryLayout.Mod).
   Phase 5 adds `AssignmentCompatible*`/`IsInteger*` (broadly-reusable

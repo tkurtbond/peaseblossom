@@ -1,0 +1,246 @@
+-O2  sc := sc                                     ok
+-OC  sc := sc                                     ok
+-O2  ca := sc                                     ok
+-OC  ca := sc                                     ok
+-O2  sc := ca                                     assignment is not type-compatible: CARDINAL to SHORTCARD
+-OC  sc := ca                                     assignment is not type-compatible: CARDINAL to SHORTCARD
+-O2  lc := ca                                     ok
+-OC  lc := ca                                     ok
+-O2  ca := lc                                     assignment is not type-compatible: LONGCARD to CARDINAL
+-OC  ca := lc                                     assignment is not type-compatible: LONGCARD to CARDINAL
+-O2  hc := lc                                     ok
+-OC  hc := lc                                     ok
+-O2  lc := hc                                     assignment is not type-compatible: HUGECARD to LONGCARD
+-OC  lc := hc                                     assignment is not type-compatible: HUGECARD to LONGCARD
+-O2  hc := sc                                     ok
+-OC  hc := sc                                     ok
+-O2  sc := hc                                     assignment is not type-compatible: HUGECARD to SHORTCARD
+-OC  sc := hc                                     assignment is not type-compatible: HUGECARD to SHORTCARD
+-O2  a := sc                                      ok
+-OC  a := sc                                      assignment is not type-compatible: SHORTCARD to SYSTEM.CARD8
+-O2  sc := a                                      ok
+-OC  sc := a                                      ok
+-O2  w := sc                                      ok
+-OC  w := sc                                      ok
+-O2  sc := w                                      assignment is not type-compatible: SYSTEM.CARD16 to SHORTCARD
+-OC  sc := w                                      ok
+-O2  w := ca                                      ok
+-OC  w := ca                                      assignment is not type-compatible: CARDINAL to SYSTEM.CARD16
+-O2  ca := w                                      ok
+-OC  ca := w                                      ok
+-O2  d := ca                                      ok
+-OC  d := ca                                      ok
+-O2  ca := d                                      assignment is not type-compatible: SYSTEM.CARD32 to CARDINAL
+-OC  ca := d                                      ok
+-O2  d := lc                                      ok
+-OC  d := lc                                      assignment is not type-compatible: LONGCARD to SYSTEM.CARD32
+-O2  lc := d                                      ok
+-OC  lc := d                                      ok
+-O2  q := lc                                      ok
+-OC  q := lc                                      ok
+-O2  lc := q                                      assignment is not type-compatible: SYSTEM.CARD64 to LONGCARD
+-OC  lc := q                                      assignment is not type-compatible: SYSTEM.CARD64 to LONGCARD
+-O2  q := hc                                      ok
+-OC  q := hc                                      ok
+-O2  hc := q                                      ok
+-OC  hc := q                                      ok
+-O2  n := ca                                      assignment is not type-compatible: CARDINAL to INTEGER
+-OC  n := ca                                      assignment is not type-compatible: CARDINAL to INTEGER
+-O2  ca := n                                      assignment is not type-compatible: INTEGER to CARDINAL
+-OC  ca := n                                      assignment is not type-compatible: INTEGER to CARDINAL
+-O2  ca := 1                                      ok
+-OC  ca := 1                                      ok
+-O2  ca := -1                                     assignment is not type-compatible: SHORTINT to CARDINAL
+-OC  ca := -1                                     assignment is not type-compatible: SHORTINT to CARDINAL
+-O2  ca := 255                                    ok
+-OC  ca := 255                                    ok
+-O2  sc := 256                                    assignment is not type-compatible: INTEGER to SHORTCARD
+-OC  sc := 256                                    ok
+-O2  sc := 65536                                  assignment is not type-compatible: LONGINT to SHORTCARD
+-OC  sc := 65536                                  assignment is not type-compatible: INTEGER to SHORTCARD
+-O2  ca := 65536                                  assignment is not type-compatible: LONGINT to CARDINAL
+-OC  ca := 65536                                  ok
+-O2  lc := 4294967296                             assignment is not type-compatible: HUGEINT to LONGCARD
+-OC  lc := 4294967296                             ok
+-O2  hc := big                                    ok
+-OC  hc := big                                    ok
+-O2  lc := big                                    assignment is not type-compatible: SHORTINT to LONGCARD
+-OC  lc := big                                    ok
+-O2  ca := big                                    assignment is not type-compatible: SHORTINT to CARDINAL
+-OC  ca := big                                    assignment is not type-compatible: SHORTINT to CARDINAL
+-O2  ca := ca + sc                                ok
+-OC  ca := ca + sc                                ok
+-O2  n := n + ca                                  an unsigned and a signed integer cannot be mixed (use VAL): INTEGER and CARDINAL
+-OC  n := n + ca                                  an unsigned and a signed integer cannot be mixed (use VAL): INTEGER and CARDINAL
+-O2  ca := ca + n                                 an unsigned and a signed integer cannot be mixed (use VAL): CARDINAL and INTEGER
+-OC  ca := ca + n                                 an unsigned and a signed integer cannot be mixed (use VAL): CARDINAL and INTEGER
+-O2  IF ca < n THEN END                           an unsigned and a signed integer cannot be mixed (use VAL): CARDINAL and INTEGER
+-OC  IF ca < n THEN END                           an unsigned and a signed integer cannot be mixed (use VAL): CARDINAL and INTEGER
+-O2  IF ca < 0 THEN END                           ok
+-OC  IF ca < 0 THEN END                           ok
+-O2  IF ca < -1 THEN END                          an unsigned and a signed integer cannot be mixed (use VAL): CARDINAL and SHORTINT
+-OC  IF ca < -1 THEN END                          an unsigned and a signed integer cannot be mixed (use VAL): CARDINAL and SHORTINT
+-O2  x := ca                                      ok
+-OC  x := ca                                      ok
+-O2  x := hc * 1.5                                ok
+-OC  x := hc * 1.5                                ok
+-O2  ca := x                                      assignment is not type-compatible: REAL to CARDINAL
+-OC  ca := x                                      assignment is not type-compatible: REAL to CARDINAL
+-O2  sc := LONG(sc)                               assignment is not type-compatible: CARDINAL to SHORTCARD
+-OC  sc := LONG(sc)                               assignment is not type-compatible: CARDINAL to SHORTCARD
+-O2  ca := LONG(sc)                               ok
+-OC  ca := LONG(sc)                               ok
+-O2  lc := LONG(ca)                               ok
+-OC  lc := LONG(ca)                               ok
+-O2  ca := LONG(ca)                               assignment is not type-compatible: LONGCARD to CARDINAL
+-OC  ca := LONG(ca)                               assignment is not type-compatible: LONGCARD to CARDINAL
+-O2  hc := LONG(lc)                               ok
+-OC  hc := LONG(lc)                               ok
+-O2  lc := LONG(lc)                               assignment is not type-compatible: HUGECARD to LONGCARD
+-OC  lc := LONG(lc)                               assignment is not type-compatible: HUGECARD to LONGCARD
+-O2  hc := LONG(hc)                               ok
+-OC  hc := LONG(hc)                               ok
+-O2  lc := LONG(hc)                               assignment is not type-compatible: HUGECARD to LONGCARD
+-OC  lc := LONG(hc)                               assignment is not type-compatible: HUGECARD to LONGCARD
+-O2  sc := SHORT(sc)                              ok
+-OC  sc := SHORT(sc)                              ok
+-O2  a := SHORT(sc)                               ok
+-OC  a := SHORT(sc)                               ok
+-O2  sc := SHORT(ca)                              ok
+-OC  sc := SHORT(ca)                              ok
+-O2  ca := SHORT(lc)                              ok
+-OC  ca := SHORT(lc)                              ok
+-O2  sc := SHORT(lc)                              assignment is not type-compatible: CARDINAL to SHORTCARD
+-OC  sc := SHORT(lc)                              assignment is not type-compatible: CARDINAL to SHORTCARD
+-O2  ca := SHORT(hc)                              assignment is not type-compatible: LONGCARD to CARDINAL
+-OC  ca := SHORT(hc)                              ok
+-O2  lc := SHORT(hc)                              ok
+-OC  lc := SHORT(hc)                              ok
+-O2  sc := SHORT(hc)                              assignment is not type-compatible: LONGCARD to SHORTCARD
+-OC  sc := SHORT(hc)                              assignment is not type-compatible: CARDINAL to SHORTCARD
+-O2  w := LONG(a)                                 ok
+-OC  w := LONG(a)                                 ok
+-O2  d := LONG(w)                                 ok
+-OC  d := LONG(w)                                 ok
+-O2  q := LONG(d)                                 ok
+-OC  q := LONG(d)                                 ok
+-O2  a := SHORT(w)                                ok
+-OC  a := SHORT(w)                                ok
+-O2  w := SHORT(d)                                ok
+-OC  w := SHORT(d)                                ok
+-O2  d := SHORT(q)                                ok
+-OC  d := SHORT(q)                                ok
+-O2  ca := ca + 70000                             assignment is not type-compatible: LONGCARD to CARDINAL
+-OC  ca := ca + 70000                             ok
+-O2  sc := sc + 300                               assignment is not type-compatible: CARDINAL to SHORTCARD
+-OC  sc := sc + 300                               ok
+-O2  w := sc + 300                                ok
+-OC  w := sc + 300                                ok
+-O2  ca := MAX(CARDINAL) + 1                      ok
+-OC  ca := MAX(CARDINAL) + 1                      ok
+-O2  hc := MAX(HUGECARD)                          ok
+-OC  hc := MAX(HUGECARD)                          ok
+-O2  lc := MAX(LONGCARD)                          ok
+-OC  lc := MAX(LONGCARD)                          ok
+-O2  hc := MIN(HUGECARD)                          ok
+-OC  hc := MIN(HUGECARD)                          ok
+-O2  ca := ABS(ca)                                ok
+-OC  ca := ABS(ca)                                ok
+-O2  ca := -ca                                    ok
+-OC  ca := -ca                                    ok
+-O2  b := sc                                      ok
+-OC  b := sc                                      assignment is not type-compatible: SHORTCARD to SYSTEM.BYTE
+-O2  b := ca                                      assignment is not type-compatible: CARDINAL to SYSTEM.BYTE
+-OC  b := ca                                      assignment is not type-compatible: CARDINAL to SYSTEM.BYTE
+-O2  b := a                                       ok
+-OC  b := a                                       ok
+-O2  Byte1(sc)                                    ok
+-OC  Byte1(sc)                                    argument is not assignment compatible with the parameter: SHORTCARD to SYSTEM.BYTE
+-O2  Byte1(ca)                                    argument is not assignment compatible with the parameter: CARDINAL to SYSTEM.BYTE
+-OC  Byte1(ca)                                    argument is not assignment compatible with the parameter: CARDINAL to SYSTEM.BYTE
+-O2  VarByte(sc)                                  ok
+-OC  VarByte(sc)                                  argument type does not match the VAR parameter: SHORTCARD to SYSTEM.BYTE
+-O2  VarByte(ca)                                  argument type does not match the VAR parameter: CARDINAL to SYSTEM.BYTE
+-OC  VarByte(ca)                                  argument type does not match the VAR parameter: CARDINAL to SYSTEM.BYTE
+-O2  VarCardinal(ca)                              ok
+-OC  VarCardinal(ca)                              ok
+-O2  VarCardinal(w)                               argument type does not match the VAR parameter: SYSTEM.CARD16 to CARDINAL
+-OC  VarCardinal(w)                               argument type does not match the VAR parameter: SYSTEM.CARD16 to CARDINAL
+-O2  VarCardinal(d)                               argument type does not match the VAR parameter: SYSTEM.CARD32 to CARDINAL
+-OC  VarCardinal(d)                               argument type does not match the VAR parameter: SYSTEM.CARD32 to CARDINAL
+-O2  VarCardinal(lc)                              argument type does not match the VAR parameter: LONGCARD to CARDINAL
+-OC  VarCardinal(lc)                              argument type does not match the VAR parameter: LONGCARD to CARDINAL
+-O2  VarLongCard(lc)                              ok
+-OC  VarLongCard(lc)                              ok
+-O2  VarLongCard(hc)                              argument type does not match the VAR parameter: HUGECARD to LONGCARD
+-OC  VarLongCard(hc)                              argument type does not match the VAR parameter: HUGECARD to LONGCARD
+-O2  Bytes(ca)                                    ok
+-OC  Bytes(ca)                                    ok
+-O2  sc := ORD(ch)                                assignment is not type-compatible: INTEGER to SHORTCARD
+-OC  sc := ORD(ch)                                assignment is not type-compatible: INTEGER to SHORTCARD
+-O2  n := ORD(ch)                                 ok
+-OC  n := ORD(ch)                                 ok
+-O2  ch := CHR(ca)                                ok
+-OC  ch := CHR(ca)                                ok
+-O2  ca := SIZE(CARDINAL)                         ok
+-OC  ca := SIZE(CARDINAL)                         ok
+-O2  ca := LEN(arr)                               ok
+-OC  ca := LEN(arr)                               ok
+-O2  n := arr[ca]                                 ok
+-OC  n := arr[ca]                                 ok
+-O2  FOR ca := 0 TO 10 DO END                     ok
+-OC  FOR ca := 0 TO 10 DO END                     ok
+-O2  FOR ca := 10 TO 0 BY -1 DO END               ok
+-OC  FOR ca := 10 TO 0 BY -1 DO END               ok
+-O2  FOR ca := 0 TO n DO END                      FOR final value is not assignment compatible with the control variable: INTEGER to CARDINAL
+-OC  FOR ca := 0 TO n DO END                      FOR final value is not assignment compatible with the control variable: INTEGER to CARDINAL
+-O2  FOR n := 0 TO ca DO END                      FOR final value is not assignment compatible with the control variable: CARDINAL to INTEGER
+-OC  FOR n := 0 TO ca DO END                      FOR final value is not assignment compatible with the control variable: CARDINAL to INTEGER
+-O2  CASE ca OF 0: | 65535: ELSE END              ok
+-OC  CASE ca OF 0: | 65535: ELSE END              ok
+-O2  CASE ca OF -1: ELSE END                      case label is outside the range of the CASE selector's type
+-OC  CASE ca OF -1: ELSE END                      case label is outside the range of the CASE selector's type
+-O2  ca := ASH(ca, 1)                             ok
+-OC  ca := ASH(ca, 1)                             ok
+-O2  ca := SYSTEM.LSH(ca, 1)                      ok
+-OC  ca := SYSTEM.LSH(ca, 1)                      ok
+-O2  ca := SYSTEM.VAL(CARDINAL, n)                ok
+-OC  ca := SYSTEM.VAL(CARDINAL, n)                ok
+-O2  n := SYSTEM.VAL(INTEGER, ca)                 ok
+-OC  n := SYSTEM.VAL(INTEGER, ca)                 ok
+-O2  n := SYSTEM.VAL(INTEGER, MAX(CARDINAL))      ok
+-OC  n := SYSTEM.VAL(INTEGER, MAX(CARDINAL))      ok
+-O2  ca := SYSTEM.VAL(CARDINAL, 300)              ok
+-OC  ca := SYSTEM.VAL(CARDINAL, 300)              ok
+x86_64-unknown-linux-gnu -O2  c := ca  ok
+x86_64-unknown-linux-gnu -OC  c := ca  ok
+x86_64-unknown-linux-gnu -O2  ca := c  assignment is not type-compatible: SYSTEM.CARD to CARDINAL
+x86_64-unknown-linux-gnu -OC  ca := c  assignment is not type-compatible: SYSTEM.CARD to CARDINAL
+x86_64-unknown-linux-gnu -O2  c := lc  ok
+x86_64-unknown-linux-gnu -OC  c := lc  ok
+x86_64-unknown-linux-gnu -O2  lc := c  assignment is not type-compatible: SYSTEM.CARD to LONGCARD
+x86_64-unknown-linux-gnu -OC  lc := c  ok
+x86_64-unknown-linux-gnu -O2  c := hc  ok
+x86_64-unknown-linux-gnu -OC  c := hc  ok
+x86_64-unknown-linux-gnu -O2  hc := c  ok
+x86_64-unknown-linux-gnu -OC  hc := c  ok
+i386-unknown-openbsd     -O2  c := ca  ok
+i386-unknown-openbsd     -OC  c := ca  ok
+i386-unknown-openbsd     -O2  ca := c  assignment is not type-compatible: SYSTEM.CARD to CARDINAL
+i386-unknown-openbsd     -OC  ca := c  ok
+i386-unknown-openbsd     -O2  c := lc  ok
+i386-unknown-openbsd     -OC  c := lc  assignment is not type-compatible: LONGCARD to SYSTEM.CARD
+i386-unknown-openbsd     -O2  lc := c  ok
+i386-unknown-openbsd     -OC  lc := c  ok
+i386-unknown-openbsd     -O2  c := hc  assignment is not type-compatible: HUGECARD to SYSTEM.CARD
+i386-unknown-openbsd     -OC  c := hc  assignment is not type-compatible: HUGECARD to SYSTEM.CARD
+i386-unknown-openbsd     -O2  hc := c  ok
+i386-unknown-openbsd     -OC  hc := c  ok
+own-types:
+semantic OK
+semantic OK
+late-declaration:
+late-declaration.mod:4:8: error: a declaration after a procedure cannot reuse a name visible from an enclosing scope
+1 error(s)
+late-declaration.mod:4:3: error: a CONST, TYPE or VAR section after a procedure is not in the Oberon-2 report (-strict)
+1 error(s)

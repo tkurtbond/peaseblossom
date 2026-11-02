@@ -23,6 +23,9 @@ LongReal 3FD0000000000000 done
 Real 44BB8000 done
 Real 4B800000 done
 Real 7E967699 done
+HugeCard 18446744073709551615 done
+HugeCard FEDCBA9876543210 done
+HugeCard 0 not done
 LongReal at the end not done
 Name at the end not done
 Char at the end not done

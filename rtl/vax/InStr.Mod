@@ -106,6 +106,14 @@ MODULE InStr;
     END
   END Card;
 
+  (* Card, for a program using the predeclared HUGECARD, which is not the
+     same type as SYSTEM.CARD64. *)
+  PROCEDURE HugeCard*(VAR c: HUGECARD; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+    VAR wide: SYSTEM.CARD64;
+  BEGIN
+    wide := c; Card(wide, s, pos); c := wide
+  END HugeCard;
+
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is
      then left for the next read). Done is FALSE at the end of s. *)

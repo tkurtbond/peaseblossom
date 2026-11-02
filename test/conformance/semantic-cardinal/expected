@@ -58,18 +58,18 @@
 -OC  w := a + 300                                 ok
 -O2  a := a + 300                                 assignment is not type-compatible: SYSTEM.CARD16 to SYSTEM.CARD8
 -OC  a := a + 300                                 assignment is not type-compatible: SYSTEM.CARD16 to SYSTEM.CARD8
--O2  a := a + n                                   an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
--OC  a := a + n                                   an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
+-O2  a := a + n                                   an unsigned and a signed integer cannot be mixed (use VAL): SYSTEM.CARD8 and INTEGER
+-OC  a := a + n                                   an unsigned and a signed integer cannot be mixed (use VAL): SYSTEM.CARD8 and INTEGER
 -O2  a := n + 1                                   assignment is not type-compatible: INTEGER to SYSTEM.CARD8
 -OC  a := n + 1                                   assignment is not type-compatible: INTEGER to SYSTEM.CARD8
 -O2  IF a = 0 THEN END                            ok
 -OC  IF a = 0 THEN END                            ok
--O2  IF a < -1 THEN END                           an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and SHORTINT
--OC  IF a < -1 THEN END                           an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and SHORTINT
+-O2  IF a < -1 THEN END                           an unsigned and a signed integer cannot be mixed (use VAL): SYSTEM.CARD8 and SHORTINT
+-OC  IF a < -1 THEN END                           an unsigned and a signed integer cannot be mixed (use VAL): SYSTEM.CARD8 and SHORTINT
 -O2  IF a = w THEN END                            ok
 -OC  IF a = w THEN END                            ok
--O2  IF a = n THEN END                            an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
--OC  IF a = n THEN END                            an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
+-O2  IF a = n THEN END                            an unsigned and a signed integer cannot be mixed (use VAL): SYSTEM.CARD8 and INTEGER
+-OC  IF a = n THEN END                            an unsigned and a signed integer cannot be mixed (use VAL): SYSTEM.CARD8 and INTEGER
 -O2  IF a < d THEN END                            ok
 -OC  IF a < d THEN END                            ok
 -O2  a := -a                                      ok
@@ -110,8 +110,8 @@
 -OC  INC(a, 200)                                  ok
 -O2  INC(a, 300)                                  ok
 -OC  INC(a, 300)                                  ok
--O2  INC(a, n)                                    an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): INTEGER
--OC  INC(a, n)                                    an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): INTEGER
+-O2  INC(a, n)                                    an unsigned and a signed integer cannot be mixed (use VAL): INTEGER
+-OC  INC(a, n)                                    an unsigned and a signed integer cannot be mixed (use VAL): INTEGER
 -O2  DEC(q, 2)                                    ok
 -OC  DEC(q, 2)                                    ok
 -O2  CASE a OF 0..127: | 128..255: END            ok

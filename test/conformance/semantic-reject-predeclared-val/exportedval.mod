@@ -1,0 +1,4 @@
+MODULE exportedval;
+  PROCEDURE VAL*(x: INTEGER): INTEGER; BEGIN RETURN x END VAL;
+  CONST top* = MAX(CARDINAL);
+END exportedval.

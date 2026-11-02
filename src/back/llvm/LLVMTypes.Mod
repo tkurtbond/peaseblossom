@@ -159,16 +159,16 @@ MODULE LLVMTypes;
     IF t = Types.Boolean THEN COPY("i8", result)
     ELSIF t = Types.Char THEN COPY("i8", result)
     ELSIF t = Types.Byte THEN COPY("i8", result) (* SYSTEM.BYTE *)
-    ELSIF t = Types.ShortInt THEN
+    ELSIF (t = Types.ShortInt) OR (t = Types.ShortCard) THEN
       IF sizeModel = MemoryLayout.sizeModelOC THEN COPY("i16", result) ELSE COPY("i8", result) END
-    ELSIF t = Types.Integer THEN
+    ELSIF (t = Types.Integer) OR (t = Types.Cardinal) THEN
       IF sizeModel = MemoryLayout.sizeModelOC THEN COPY("i32", result) ELSE COPY("i16", result) END
-    ELSIF t = Types.LongInt THEN
+    ELSIF (t = Types.LongInt) OR (t = Types.LongCard) THEN
       IF sizeModel = MemoryLayout.sizeModelOC THEN COPY("i64", result) ELSE COPY("i32", result) END
     ELSIF t = Types.Address THEN
       (* the one basic type whose width follows the target's word size *)
       IF ConstantEvaluator.wordSize = MemoryLayout.wordSize64 THEN COPY("i64", result) ELSE COPY("i32", result) END
-    ELSIF t = Types.HugeInt THEN COPY("i64", result)
+    ELSIF (t = Types.HugeInt) OR (t = Types.HugeCard) THEN COPY("i64", result)
     ELSIF t = Types.Int8 THEN COPY("i8", result) (* SYSTEM.INT8..INT64: the same under either model *)
     ELSIF t = Types.Int16 THEN COPY("i16", result)
     ELSIF t = Types.Int32 THEN COPY("i32", result)

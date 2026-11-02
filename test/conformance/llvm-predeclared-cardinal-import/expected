@@ -1,0 +1,62 @@
+== -O2
+255
+65535
+4294967295
+18446744073709551615
+5
+7
+5
+4
+65535
+18446744073709551615
+65536
+1
+== ModelLib.sym
+MODULE ModelLib;
+  IMPORT WidthTypes;
+  CONST
+    byteTop* = VAL(SHORTCARD, 255);
+    wordTop* = VAL(CARDINAL, 65535);
+    longTop* = VAL(LONGCARD, 4294967295);
+    hugeTop* = VAL(HUGECARD, 0FFFFFFFFFFFFFFFFH);
+    five* = VAL(CARDINAL, 5);
+    typed* = VAL(WidthTypes.Word, 5);
+    again* = VAL(WidthTypes.Word, 7);
+  TYPE
+    Pair* = RECORD first*: CARDINAL; second*: HUGECARD END;
+    Convert* = PROCEDURE(c: CARDINAL): LONGCARD;
+  VAR
+    count*: CARDINAL;
+  PROCEDURE^ Widen*(c: CARDINAL): LONGCARD;
+END ModelLib.
+== -OC
+65535
+4294967295
+18446744073709551615
+18446744073709551615
+5
+7
+5
+4
+4294967295
+18446744073709551615
+4294967296
+1
+== ModelLib.sym
+MODULE ModelLib;
+  IMPORT WidthTypes;
+  CONST
+    byteTop* = VAL(SHORTCARD, 65535);
+    wordTop* = VAL(CARDINAL, 4294967295);
+    longTop* = VAL(LONGCARD, 0FFFFFFFFFFFFFFFFH);
+    hugeTop* = VAL(HUGECARD, 0FFFFFFFFFFFFFFFFH);
+    five* = VAL(CARDINAL, 5);
+    typed* = VAL(WidthTypes.Word, 5);
+    again* = VAL(WidthTypes.Word, 7);
+  TYPE
+    Pair* = RECORD first*: CARDINAL; second*: HUGECARD END;
+    Convert* = PROCEDURE(c: CARDINAL): LONGCARD;
+  VAR
+    count*: CARDINAL;
+  PROCEDURE^ Widen*(c: CARDINAL): LONGCARD;
+END ModelLib.

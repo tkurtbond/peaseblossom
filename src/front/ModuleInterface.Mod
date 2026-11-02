@@ -1297,9 +1297,39 @@ MODULE ModuleInterface;
   (* The exported constants, structured ones (Phase 14) or the others: a
      record or array constant names its type, so it is written in a CONST
      section of its own after the TYPE section *)
+  (* Whether the .sym file of a module with this scope has its own meaning
+     for a Universe name: something it exports or writes under that name,
+     or an import it names so, hides the Universe's from the reader. *)
+  PROCEDURE HidesUniverseName(scope: SymbolTable.Scope; name: ARRAY OF CHAR): BOOLEAN;
+    VAR obj: SymbolTable.Object;
+  BEGIN
+    obj := SymbolTable.FindLocal(scope, Names.Intern(name));
+    RETURN (obj # NIL) & (obj.exported OR IsNeeded(obj) OR (obj.class = SymbolTable.moduleClass))
+  END HidesUniverseName;
+
+  (* A constant of a predeclared unsigned type, as a VAL of it: such a
+     constant needs no import, and keeps its type:
+     VAL(CARDINAL, 65535) *)
+  PROCEDURE PrintModelCardinalConst(VAR w: Files.Rider; scope: SymbolTable.Scope; d: SyntaxTree.ConstDeclNode;
+                                    v: Types.Value);
+    VAR name: ARRAY 64 OF CHAR;
+  BEGIN
+    Types.TypeName(v.type, name);
+    IF HidesUniverseName(scope, "VAL") THEN
+      Diagnostics.Error(d.line, d.column,
+        "a module with its own VAL in its interface cannot export a constant of a predeclared unsigned type")
+    ELSIF HidesUniverseName(scope, name) THEN
+      Diagnostics.ErrorAbout(d.line, d.column,
+        "a module with this type name in its interface cannot export a constant of the predeclared type", name)
+    END;
+    WriteStr(w, "VAL("); WriteStr(w, name); WriteStr(w, ", ");
+    PrintConstValue(w, v, d.value, d.line, d.column);
+    WriteStr(w, ")")
+  END PrintModelCardinalConst;
+
   PROCEDURE PrintConsts(VAR w: Files.Rider; scope: SymbolTable.Scope; decls: SyntaxTree.ConstDeclNode;
                         structured: BOOLEAN);
-    VAR d: SyntaxTree.ConstDeclNode; obj: SymbolTable.Object; any: BOOLEAN;
+    VAR d: SyntaxTree.ConstDeclNode; obj, imported: SymbolTable.Object; any: BOOLEAN;
         name: ARRAY 512 OF CHAR; qualifier: SyntaxTree.Ident; i: INTEGER;
   BEGIN
     any := FALSE; d := decls;
@@ -1311,15 +1341,29 @@ MODULE ModuleInterface;
         WriteStr(w, "    "); WriteStr(w, obj.name^); WriteStr(w, "* = ");
         IF structured THEN
           PrintStructuredValue(w, scope, obj.value, TRUE, d.line, d.column)
+        ELSIF (obj.value.kind = Types.intValue) & Types.IsModelCardinal(obj.value.type) THEN
+          PrintModelCardinalConst(w, scope, d, obj.value)
         ELSIF (obj.value.kind = Types.intValue) & Types.IsCardinal(obj.value.type)
               & FindBoundName(scope, obj.value.type, NIL, name) THEN
           (* an unsigned constant keeps its type, as a SYSTEM.VAL of it
              (ConstantEvaluator.IsConstantSystemVal), through the name the
-             module imports SYSTEM by: S.VAL(S.CARD32, 4294967295) *)
+             module imports SYSTEM by: S.VAL(S.CARD32, 4294967295). A type
+             reached through another module is named by that module, which
+             has no VAL: the predeclared one, VAL(a.T, 5) *)
           i := 0;
           WHILE name[i] # "." DO qualifier[i] := name[i]; INC(i) END;
           qualifier[i] := 0X;
-          WriteStr(w, qualifier); WriteStr(w, ".VAL("); WriteStr(w, name); WriteStr(w, ", ");
+          imported := SymbolTable.FindLocal(scope, Names.Intern(qualifier));
+          IF imported.moduleScope = SymbolTable.SystemScope THEN
+            WriteStr(w, qualifier); WriteStr(w, ".VAL(")
+          ELSE
+            IF HidesUniverseName(scope, "VAL") THEN
+              Diagnostics.Error(d.line, d.column,
+                "a module with its own VAL in its interface cannot export this constant")
+            END;
+            WriteStr(w, "VAL(")
+          END;
+          WriteStr(w, name); WriteStr(w, ", ");
           PrintConstValue(w, obj.value, d.value, d.line, d.column);
           WriteStr(w, ")")
         ELSE

@@ -1065,6 +1065,39 @@ MODULE ConstantEvaluator;
     RETURN (x.kind = Types.intValue) & Types.IsInteger(x.type)
   END IsConstantSystemVal;
 
+  (* The predeclared VAL(T, x), T an integer type and x an integer constant,
+     is a constant ("Predeclared unsigned types"), of type T *)
+  PROCEDURE IsConstantPredeclaredVal(expr: SyntaxTree.DesignatorExprNode; scope: SymbolTable.Scope): BOOLEAN;
+    VAR d: SyntaxTree.Designator; obj: SymbolTable.Object; t: Types.Type; x: Types.Value;
+  BEGIN
+    d := expr.designator;
+    IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier # NIL) OR ~Names.Equals(d.name, "VAL")
+       OR (expr.args = NIL) OR (expr.args.next = NIL) OR (expr.args.next.next # NIL) THEN
+      RETURN FALSE
+    END;
+    obj := SymbolTable.Find(scope, d.name);
+    IF (obj = NIL) OR (obj.type # Types.PredeclaredProcedureType) THEN RETURN FALSE END;
+    t := LookupBareTypeName(scope, expr.args);
+    IF (t = NIL) OR ~Types.IsInteger(t) OR ~IsConstant(expr.args.next, scope) THEN RETURN FALSE END;
+    x := EvaluateExpr(expr.args.next, scope);
+    RETURN (x.kind = Types.intValue) & Types.IsInteger(x.type)
+  END IsConstantPredeclaredVal;
+
+  (* Unlike SYSTEM.VAL's constant, this one says that x is a value of T,
+     so one that is not is an error *)
+  PROCEDURE EvaluatePredeclaredVal(expr: SyntaxTree.DesignatorExprNode; scope: SymbolTable.Scope): Types.Value;
+    VAR t: Types.Type; x: Types.Value; what: ARRAY 400 OF CHAR;
+  BEGIN
+    t := LookupBareTypeName(scope, expr.args); x := EvaluateExpr(expr.args.next, scope);
+    IF ~Types.ValueFitsInteger(t, x) THEN
+      what := ""; Types.Describe(t, what);
+      Diagnostics.ErrorAbout(expr.line, expr.column, "VAL's constant does not fit its type", what);
+      RETURN UndefinedValue()
+    ELSIF Types.IsCardinal(t) THEN RETURN TypedInteger(WrapToCard(x.intVal, t), t)
+    ELSE RETURN TypedInteger(x.intVal, t)
+    END
+  END EvaluatePredeclaredVal;
+
   PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
                                scope: SymbolTable.Scope): Types.Value;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; length: LONGINT; t: Types.Type; x: Types.Value;
@@ -1074,6 +1107,7 @@ MODULE ConstantEvaluator;
       t := LookupBareTypeName(scope, expr.args); x := EvaluateExpr(expr.args.next, scope);
       RETURN TypedInteger(WrapToCard(x.intVal, t), t)
     END;
+    IF IsConstantPredeclaredVal(expr, scope) THEN RETURN EvaluatePredeclaredVal(expr, scope) END;
     IF IsLenCall(expr, scope) THEN
       IF FixedLength(expr.args, scope, length) THEN RETURN TypedInteger(length, Types.LongInt) END;
       Diagnostics.Error(expr.line, expr.column, "not a constant expression: LEN of an open array");
@@ -1606,7 +1640,7 @@ MODULE ConstantEvaluator;
   BEGIN
     lType := Types.ConstantOperandType(l, r.type); rType := Types.ConstantOperandType(r, l.type);
     IF Types.MixesFamilies(lType, rType) THEN
-      ReportTypes(line, column, "an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL)", lType, rType);
+      ReportTypes(line, column, "an unsigned and a signed integer cannot be mixed (use VAL)", lType, rType);
       RETURN UndefinedValue()
     END;
     t := Types.WiderOf(lType, rType); x := l.intVal; y := r.intVal;
@@ -2386,6 +2420,8 @@ MODULE ConstantEvaluator;
         RETURN (expr.args # NIL) & (expr.args.next = NIL) & (LookupBareTypeName(scope, expr.args) # NIL)
       ELSIF Names.Equals(d.name, "LEN") THEN
         RETURN FixedLength(expr.args, scope, length)
+      ELSIF Names.Equals(d.name, "VAL") THEN
+        RETURN IsConstantPredeclaredVal(expr, scope)
       ELSIF Names.Equals(d.name, "ASH") THEN
         RETURN (expr.args # NIL) & (expr.args.next # NIL) & (expr.args.next.next = NIL)
                & IsConstant(expr.args, scope) & IsConstant(expr.args.next, scope)

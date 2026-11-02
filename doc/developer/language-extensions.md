@@ -1757,9 +1757,9 @@ one added).
   would pass `temp` (decided with the user; "FOR final value" above), so
   it runs for 10 down to 0 and stops, and so does a loop up to
   `MAX(SYSTEM.CARDn)`.
-- **Between the families, `SYSTEM.VAL` only** (decided with the user): no
-  checked conversion and no new procedure, so every crossing is marked as
-  a reinterpretation. `SYSTEM.VAL(SYSTEM.CARD32, -1)` is
+- **Between the families, `SYSTEM.VAL`** (decided with the user, and the
+  only way until the predeclared `VAL` was added: "Predeclared unsigned
+  types"). `SYSTEM.VAL(SYSTEM.CARD32, -1)` is
   `MAX(SYSTEM.CARD32)`. Between sizes, poc's `SYSTEM.VAL` extends or
   truncates, and the extension follows the source's family: a CARD is
   zero-extended, a signed value sign-extended. So `SYSTEM.VAL(LONGINT, c)`
@@ -1782,7 +1782,7 @@ one added).
   `SYSTEM.ROT` rotates within its width.
 - **Other predeclared procedures**: `ODD` as for any integer; `CHR` of a
   CARD as of any integer. `ORD`, `LEN` and `SIZE` keep their signed result
-  types, so `c < LEN(a)` of an open array needs `SYSTEM.VAL`.
+  types, so `c < LEN(a)` of an open array needs `VAL` or `SYSTEM.VAL`.
 - **`SYSTEM.BYTE`** takes a `CARD8`, as it takes a `CHAR` or a one-byte
   `SHORTINT`.
 - **`-strict`** rejects them: "SYSTEM.CARD32 is not in the Oberon-2 report
@@ -1865,3 +1865,63 @@ rejected, under both size models), `semantic-strict-cardinal`,
 `llvm-cardinal` (every operation, at each width, and the text
 procedures), `llvm-cardinal-import` (the `.sym` file),
 `llvm-cardinal-traps` and `llvm-for-loop-end`.
+
+## Predeclared unsigned types (decided and implemented 2026-11-01)
+
+**Asked for by the user (`000-todo.org`) and accepted 2026-11-01.** The plan,
+with its probes and steps, is `predeclared-unsigned-types.md`.
+
+**The extension**: four unsigned types predeclared like `SHORTINT`,
+`INTEGER`, `LONGINT` and `HUGEINT`, as many bits as they in each size model:
+
+| Type | `-O2` bytes | `-OC` bytes |
+|---|---|---|
+| `SHORTCARD` | 1 | 2 |
+| `CARDINAL` | 2 | 4 |
+| `LONGCARD` | 4 | 8 |
+| `HUGECARD` | 8 | 8 |
+
+- **New types, not aliases.** They stand to `SYSTEM.CARDn` as `SHORTINT`
+  stands to `SYSTEM.INT8`. `SYSTEM.CARDn` stay, for foreign interfaces, where
+  the width must not follow a flag. `LONGCARD` and `HUGECARD` stay distinct
+  under `-OC`, as `LONGINT` and `HUGEINT` do: `HUGECARD` includes `LONGCARD`,
+  and `LONGCARD := h` is an error.
+- **Every rule of the `SYSTEM.CARDn` applies** ("Unsigned integer types"). A
+  one-byte `SHORTCARD` goes to `SYSTEM.BYTE`. Inclusion places them among the
+  `CARDn` as it places the `INTn` among the signed types, with `=` for two
+  types that include each other:
+  - `-O2`: `SHORTCARD` = `CARD8` < `CARDINAL` = `CARD16` < `LONGCARD` =
+    `CARD32` < `HUGECARD` = `CARD64`
+  - `-OC`: `CARD8` < `SHORTCARD` = `CARD16` < `CARDINAL` = `CARD32` <
+    `LONGCARD` < `HUGECARD` = `CARD64`
+
+  `SYSTEM.CARD`, as wide as `SYSTEM.ADDRESS`, and the one of these of its
+  width include each other, as it and the `CARDn` of its width do. So under
+  `-OC` on a 64-bit target it is `=` `LONGCARD` and `HUGECARD`, and on a
+  32-bit one `=` `CARDINAL`.
+- **`LONG`, `SHORT` and a constant's widening stay among the names the
+  operand used.** `LONG` of a model type is the narrowest model type strictly
+  wider, else `HUGECARD`; `SHORT` the widest strictly narrower, else
+  `SYSTEM.CARD8`. So under `-OC`, `SHORT(HUGECARD)` is a `CARDINAL`, as
+  `SHORT(HUGEINT)` is an `INTEGER`. With `c` a `CARDINAL` under `-O2`, `c +
+  70000` is a `LONGCARD`. `LONG` and `SHORT` of a `CARDn` do not change.
+- **`VAL(T, x)`**, predeclared, crosses between the families with no import.
+  `T` is an integer type of either family and `x` an integer of either
+  family, constant or not. Its bits are `SYSTEM.VAL`'s: `x` extended by its
+  own signedness, truncated to `T`. It differs from `SYSTEM.VAL` in taking
+  integers only; in saying the value should fit, so `-range-checks` traps one
+  that does not (14) and a constant that does not is a compile-time error;
+  and in being a constant for any integer `T`.
+- **`.sym`** writes a constant of one of these types `VAL(CARDINAL, 65535)`,
+  which needs no import; `S.VAL(S.CARD16, ..)` stays for the `CARDn`, so no
+  existing interface changes. A module that exports its own `VAL` and such a
+  constant is refused with a message saying why.
+- **`In.HugeCard` and `InStr.HugeCard`** take `VAR c: HUGECARD`. `Out`, `Err`
+  and `OutStr` need nothing: their `SYSTEM.CARD64` value parameters include
+  all four.
+- **`-strict`** rejects all five names, in the command-line module's own
+  source. A strict program that declares its own `CARDINAL` is unaffected.
+- **Compatibility.** A declaration of one of the names still hides it, except
+  that a declaration after a procedure cannot reuse a name visible from an
+  enclosing scope ("Declarations after procedures"), so one of these names
+  declared there becomes an error.
