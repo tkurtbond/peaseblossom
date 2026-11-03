@@ -6,9 +6,9 @@ systems whose FLTK is only static libraries built without `-fPIC`, the
 shared object cannot be linked, so `make install` fails. This document
 is what that implies, read from the source and tried on 2026-10-31, the
 plan for a `-no-shared-library` option, and how pofltk decides when to
-use it. Steps 1-7 of the plan are done (2026-11-01); steps 8 and 9, the
-release and pofltk's part, remain. Its entry in `PLAN.md` is "Ongoing
-implementation enhancements", 10.
+use it. All nine steps of the plan are done: steps 1-7 on 2026-11-01, and
+the release and pofltk's part, steps 8 and 9, on 2026-11-02. Its entry in
+`PLAN.md` is "Ongoing implementation enhancements", 10.
 
 ## What happened before
 
@@ -129,13 +129,13 @@ The test agrees with `AGENTS.md`'s list of which hosts install.
   problem of item 4 again.
 
 **Finding `fltk-config`.** On the four hosts with their own FLTK it is in
-`/usr/local/sw/versions/fltk/1.4.5/bin`, which is not on `PATH`, and today
-each `make` there is given `FLTK_CONFIG=` by hand. The detection depends on
-it: with no `fltk-config`, `FLTK_LIBDIR` is empty, the wildcard matches
-nothing, and the test says "no shared library" for the wrong reason. In
-practice `tests` would fail first, on the missing headers, but with a poor
-message. So the makefile should look in that directory itself, and stop if
-it finds nothing:
+`/usr/local/sw/versions/fltk/1.4.5/bin`, which is not on `PATH`, and before
+step 9 each `make` there was given `FLTK_CONFIG=` by hand. The detection
+depends on it: with no `fltk-config`, `FLTK_LIBDIR` is empty, the wildcard
+matches nothing, and the test says "no shared library" for the wrong
+reason. In practice `tests` would fail first, on the missing headers, but
+with a poor message. So the makefile should look in that directory itself,
+and stop if it finds nothing:
 
 ```make
 FLTK_CONFIG ?= $(firstword $(shell command -v fltk-config 2>/dev/null) \
@@ -217,7 +217,7 @@ committed.
    section of `AGENTS.md`. The entry in `PLAN.md` marked `[done]`.
 
 8. **Release**, as `DEVELOPER.md` section 7 says. pofltk needs a released
-   poc for its hosts.
+   poc for its hosts. Done: 0.11.0.
 
 9. **pofltk**, in its own repository:
    - the `FLTK_CONFIG` default and the `POC_LIBRARY_FLAGS` line above, and
@@ -233,11 +233,18 @@ committed.
    Noticed in passing: `uninstall` removes `lib*.so` but not OpenBSD's
    `lib*.so.0.0`, which matters if an OpenBSD host ever has a shared FLTK.
 
-## Not yet known
+   Done, in pofltk's `c1e03a8`, which also moved its install to
+   `~/.local/lib/poc` and fixed `uninstall`. `make install` passed on
+   atla, cymoril, jherek, alerik, rackhir, artos and yishana. On cymoril,
+   jherek and alerik, programs built from the installed `pofltk`,
+   `pofltk-forms`, `pofltk-gl` and `pofltk-cairo` ran. On those three and
+   rackhir, `TestPlugins`, built from the installed `pofltk` with `-link
+   -rdynamic`, passed, with no `.so` installed and no run-time dependency
+   on pofltk.
 
-Nothing has yet linked a program against a pofltk library made only of
-archives on a static host, because such a library cannot be built today.
-`make test` shows the flags link there, but from objects rather than
-through a manifest. Link order should suit: libraries go in `linkOrder`,
+## What step 9 settled
+
+Before step 9, nothing had linked a program against a pofltk library made
+only of archives on a static host. It links: libraries go in `linkOrder`,
 each before what it needs, then the recorded `-link` arguments, so
-`-lfltk_forms` comes before `-lfltk`. Step 9 is what proves it.
+`-lfltk_forms` comes before `-lfltk`.

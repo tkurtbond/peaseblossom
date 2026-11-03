@@ -1279,8 +1279,8 @@ Those done while Phase 18 was current, 5-7, are in
     implies, the `-no-shared-library` option, built in nine steps, and
     how pofltk detects when to pass it are in
     `doc/developer/static-only-libraries.md`. poc's part, steps 1-7, is
-    done with fixture `llvm-library-no-shared`; the release and pofltk's
-    part, steps 8 and 9, remain.
+    done with fixture `llvm-library-no-shared`, the release, step 8, was
+    0.11.0, and pofltk's part, step 9, is pofltk's `c1e03a8`.
 
 ## Open design questions
 
