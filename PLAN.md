@@ -1137,6 +1137,32 @@ Those fixed while Phase 18 was current, 8-10, are in
     two say only the total for such a file, whoever imports it.
     `module-import-error-path` and `vax-module-name-length` show them.
 
+18. **A string literal in an array index is never emitted.** Found
+    2026-11-06 by besm2_cg_po's tests (`~/Repos/RPG/Tools/besm2_cg_po`,
+    `test/TestModel.Mod` and `test/TestWindow.Mod`), with 0.11.0
+    (0c335b8). A string passed to a procedure called inside an index,
+    `a[F("ab")] := 1` or `x := a[F("ab")]`, is referenced in the `.ll`
+    but its constant is never defined, so clang refuses the module:
+    "use of undefined value '@.str.IdxStr.L7.C7'", and `poc: build
+    failed`. Under `-O2` and `-OC` both. The smallest program:
+
+    ```
+    MODULE IdxStr;
+    VAR a: ARRAY 4 OF INTEGER;
+    PROCEDURE F(s: ARRAY OF CHAR): INTEGER;
+    BEGIN RETURN SHORT(LEN(s)) MOD 4
+    END F;
+    BEGIN
+      a[F("ab")] := 1
+    END IdxStr.
+    ```
+
+    (`poc -OC -o idx IdxStr.Mod`). The string literals are probably
+    collected by a walk that does not go into an index's expression.
+    Until it is fixed, besm2_cg_po computes the index into a variable
+    first (`i := F("ab"); a[i] := 1`). It needs an `llvm-` fixture, and
+    a look at the VAX back end for the same gap.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other
