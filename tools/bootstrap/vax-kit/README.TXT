@@ -24,8 +24,8 @@ Installing
        $ @[-]POC-@VERSIONNAME@
 
    It makes [.BIN], [.KIT], [.LIB.POC.VAX-DEC-VMS.O2] and [.OC], [.SRC],
-   BUILD.COM, SETUP.COM, this README.TXT, VAX-VMS-GUIDE.TXT, LICENSE.TXT
-   and VERSION.TXT.
+   BUILD.COM, SETUP.COM, BUILDVIAOBJ.COM, this README.TXT,
+   VAX-VMS-GUIDE.TXT, LICENSE.TXT and VERSION.TXT.
 
 3. Build poc and its libraries:
 
@@ -47,6 +47,22 @@ Installing
    names of the -O2
    libraries. "@SETUP OC" chooses the -OC libraries instead: a process
    builds against one size model's at a time.
+
+5. If you like, have poc build itself again, from its source in [.SRC],
+   through its object back end, on VMS alone:
+
+       $ @BUILDVIAOBJ INSTALL
+
+   The POC.EXE @BUILD built compiles [.SRC] to objects in [.OBJBUILD]
+   and links a new POC.EXE there; that one compiles the same source
+   again, in [.OBJCHECK], and each object it writes must be the same
+   as [.OBJBUILD]'s. Then the new POC.EXE is copied into [.BIN], and
+   @BUILD's is kept as [.BIN]POC-KIT.EXE. "@BUILDVIAOBJ CHECK" stops
+   before the copy, and "@BUILDVIAOBJ" before the check. It needs
+   60,000 pages of paging file quota left (SHOW PROCESS/QUOTAS) and
+   takes two compilations of poc: from half an hour to an hour and a
+   half on an emulated MicroVAX 3900. Each step's time is added to
+   BUILD.LOG.
 
 VMS's own interfaces: the STARLET kit
 -------------------------------------
@@ -129,10 +145,12 @@ argument @<file> stands for them):
     [-.SRC.DRIVER]POC.MOD
 
 Saved as FULL.ARGS in a new directory beside [.SRC], "POC @FULL.ARGS"
-there writes poc's MACRO-32 and POC.COM, which assembles it and links
-POC.EXE, with POCRTL.OBJ assembled from [.SRC.RTL]POCRTL.MAR, as [.KIT]'s
-did; on the emulated MicroVAX 3900 (SIMH) poc was developed on, that
-took about 45 minutes.
+there writes poc's objects and POC.COM, which links POC.EXE from them,
+with POCRTL.OBJ assembled from [.SRC.RTL]POCRTL.MAR; with -vax-macro32
+as well it writes MACRO-32, the same as [.KIT]'s, and a POC.COM that
+assembles it first. On the emulated MicroVAX 3900 (SIMH) poc was
+developed on, that takes from a quarter of an hour to three quarters
+of one. BUILDVIAOBJ.COM (step 5) writes FULL.ARGS and does all this.
 
 VAX-VMS-GUIDE.TXT is the Peaseblossom VAX/VMS Guide, which says all of
 this at more length, and how a program reaches VMS's own facilities:

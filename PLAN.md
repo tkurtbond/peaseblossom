@@ -1415,6 +1415,46 @@ Those done while Phase 18 was current, 5-7, are in
     `BUILD.COM` builds poc where there is none, and this one needs the
     poc it built.
 
+    **Made, 2026-11-06/07** (the user's go-ahead, 2026-11-06), as
+    proposed, with these findings and choices:
+    - **`@BUILDVIAOBJ [CHECK|INSTALL]`:** one parameter, `INSTALL`
+      doing the check too, so nothing is installed unchecked. It also
+      refuses unless `[.SRC.DRIVER]POC.MOD` is there, and checks the
+      new image's `-VERSION` before going on. `INSTALL` keeps `@BUILD`'s
+      image as `[.BIN]POC-KIT.EXE` (once: a second `INSTALL` keeps the
+      first), copies the new one as the next version of `POC.EXE`,
+      which takes the old one's protection, and purges it.
+    - **Comparing objects on VMS:** `DIFFERENCES` cannot do it, since its
+      `$STATUS` is `%X006C8009` whether the files differ or not (found
+      on the guest, 2026-11-06). The procedure compares each object, and
+      `POC.COM`, by `CHECKSUM`'s `CHECKSUM$CHECKSUM` and by `EOF` and
+      `FFB`, and counts that `[.OBJCHECK]` has as many objects.
+    - **`SOURCE_DATE_EPOCH`:** the logical name when it is defined, else
+      the time the procedure starts, worked out in DCL (days from the
+      civil date by 400-year eras), the clock's time taken as UTC; on
+      the guest it gave 1794008478 at 6-NOV-2026 23:41:18, which `date
+      -u -d @1794008478` agrees with. The kit cannot carry the commit's
+      time, since a kit made from a tarball has no git.
+    - **The quota:** 60,000 pages of `PAGFILCNT` left (the heap is three
+      quarters of it, and poc's peaks at about 16 MB). The guide's
+      chapter 17 still said 90 MB, from before the memory work of
+      2026-10-24; corrected. README.TXT also said `POC @FULL.ARGS`
+      writes MACRO-32, which it does only with `-vax-macro32`; corrected.
+    - **Documented** in README.TXT (a step 5), not README-VMS.TXT, the
+      STARLET kit's, which has nothing to say of it; and in
+      `tools/bootstrap/README.md`.
+    - **`check-vax-kit -full`** runs `@BUILDVIAOBJ INSTALL` after its
+      MACRO-32 fixed point, then `@SETUP`, `POC -VERSION` and the `-O2`
+      KITHELLO with the installed poc; its default timeout is now 25,200
+      seconds.
+    - **Checked on the guest** (2026-11-06/07, POC's account, a scratch
+      `[.BVOTEST]`, the kit from the working tree): it refused before
+      `@BUILD` and refused `BOGUS` (`%X10000014`); `@BUILDVIAOBJ INSTALL`
+      built `[.OBJBUILD]POC.EXE` in 14.5 minutes (859 s of CPU), found
+      all 44 objects and `POC.COM` the same in `[.OBJCHECK]` (14 minutes,
+      840 s), and installed it; poc so installed said its version and
+      built and ran a program.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on

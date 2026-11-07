@@ -19,9 +19,10 @@
 #   [.SRC...]                  the source poc for VMS is built from, and the
 #                              runtime's
 #   BUILD.COM, SETUP.COM,      from tools/bootstrap/vax-kit, README.TXT with
-#   README.TXT, LICENSE.TXT,   the version filled in; VERSION.TXT, one line
-#   VERSION.TXT,               that names the version and commit; the VAX/VMS
-#   VAX-VMS-GUIDE.TXT          guide as text (tools/doc/plain-text: pandoc)
+#   BUILDVIAOBJ.COM,           the version filled in; VERSION.TXT, one line
+#   README.TXT, LICENSE.TXT,   that names the version and commit; the VAX/VMS
+#   VERSION.TXT,               guide as text (tools/doc/plain-text: pandoc)
+#   VAX-VMS-GUIDE.TXT
 #
 # POC-VMS-<version>.COM, the STARLET kit, run later in the same top: the
 # libraries VMSDEF (rtl/vax/vms, generated from STARLETSD.TLB) and VMSLIB
@@ -139,7 +140,7 @@ copy base SRC/GEN "$GEN/BuildInfo.Mod"
 copy vms SRC/RTL/VMS "$ROOT"/rtl/vax/vms/*.Mod
 copy vms SRC/RTL/VMSLIB "$ROOT"/rtl/vax/vmslib/*.Mod
 
-copy base . "$TEMPLATES/BUILD.COM" "$TEMPLATES/SETUP.COM"
+copy base . "$TEMPLATES/BUILD.COM" "$TEMPLATES/SETUP.COM" "$TEMPLATES/BUILDVIAOBJ.COM"
 cp "$ROOT/LICENSE" "$KIT/base/LICENSE.TXT"
 echo "$versionLine" >"$KIT/base/VERSION.TXT"
 fill() { # fill <template> <target>

@@ -22,12 +22,16 @@
 # from source alone (-clear-library-path), as vax-stages' V2 does, as
 # MACRO-32 (-vax-macro32: poc's default on VMS is objects; PLAN.md Phase 18
 # step 7, doc/developer/vax-object-language.md, section 18), and compares
-# each .mar it writes with the kit's own [.KIT]: the fixed point,
-# about 45 minutes more. What the guest prints is compared, but for the
+# each .mar it writes with the kit's own [.KIT]: the fixed point; then
+# @BUILDVIAOBJ INSTALL builds poc from it again, as objects, checks that
+# poc so built writes the same objects, and installs it, and that poc,
+# after @SETUP, says its version and builds and runs the -O2 program:
+# three compilations of poc, from about 45 minutes to over two hours
+# more. What the guest prints is compared, but for the
 # times and the unpacking's, with what this host expects; BUILD.COM's log
 # comes back as build/vax-kit/KITBUILD.LOG. [.KITCHECK] is deleted at the
 # start and the end. The guest's lock is held throughout (tools/vax-do),
-# and VAX_DO_TIMEOUT (default here 14400 seconds, 18000 with -full)
+# and VAX_DO_TIMEOUT (default here 14400 seconds, 25200 with -full)
 # bounds the whole run. Exits 0 if all is as expected, 1 if not, 2 if the
 # guest could not be used.
 set -u
@@ -43,7 +47,7 @@ case ${1:-} in
   -full) full=1 ;;
   *) echo "usage: tools/bootstrap/check-vax-kit [-full]" >&2; exit 2 ;;
 esac
-if [ "$full" -eq 1 ]; then VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-18000}; else VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-14400}; fi
+if [ "$full" -eq 1 ]; then VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-25200}; else VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-14400}; fi
 export VAX_DO_TIMEOUT
 
 kitPaths=$("$ROOT/tools/bootstrap/make-vax-kit" | tail -2) || exit 1
@@ -156,7 +160,6 @@ proc=$work/CHECKKIT.COM
 \$ S = S .AND. POCRTL_TIME .EQS. F\$FILE_ATTRIBUTES("[.LIB.POC.VAX-DEC-VMS.O2]POCRTL.OLB", "CDT")
 \$ STEP = "POC.EXE and POCRTL built already"
 \$ GOSUB REPORT
-\$ COPY/NOLOG BUILD.LOG 'HOME'KITBUILD.LOG
 \$ @SETUP
 \$ S = F\$INTEGER(\$STATUS)
 \$ STEP = "setup"
@@ -221,8 +224,36 @@ DCL
       echo "\$ COPY/NOLOG $m.MAR 'HOME'F$m.MAR"
     done
     echo '$ SET DEFAULT [-]'
+    cat <<'DCL'
+$ ! poc built again from [.SRC] by the kit's poc, as objects, checked
+$ ! as a fixed point, installed in [.BIN], and used
+$ @BUILDVIAOBJ INSTALL
+$ S = F$INTEGER($STATUS)
+$ STEP = "-full: @BUILDVIAOBJ INSTALL"
+$ GOSUB REPORT
+$ S = F$SEARCH("[.BIN]POC-KIT.EXE") .NES. "" .AND. F$SEARCH("[.OBJCHECK]*.*") .EQS. ""
+$ STEP = "-full: the kit's POC.EXE kept, [.OBJCHECK] deleted"
+$ GOSUB REPORT
+$ @SETUP
+$ S = F$INTEGER($STATUS)
+$ STEP = "-full: setup"
+$ GOSUB REPORT
+$ POC -VERSION
+$ S = F$INTEGER($STATUS)
+$ STEP = "-full: poc -version"
+$ GOSUB REPORT
+$ SET DEFAULT [.WORK]
+$ DELETE/NOLOG *.*;*
+$ COPY/NOLOG 'HOME'KITHELLO.MOD []
+$ MODEL = "-O2"
+$ OPTIONS = ""
+$ PROGRAM = "KITHELLO"
+$ GOSUB PROGRAM
+$ SET DEFAULT [-]
+DCL
   fi
   cat <<'DCL'
+$ COPY/NOLOG BUILD.LOG 'HOME'KITBUILD.LOG
 $ SET DEFAULT 'HOME'
 $ GOSUB REMOVE_TREE
 $ WRITE SYS$OUTPUT "check: removed [.KITCHECK]"
@@ -332,7 +363,19 @@ program: ExitHandlers: the handler called at exit
 LINES
     echo "check: -$model KITVMSLIB: run: ok"
   done
-  if [ "$full" -eq 1 ]; then echo "check: -full: poc compiled by itself: ok"; fi
+  if [ "$full" -eq 1 ]; then
+    echo "check: -full: poc compiled by itself: ok"
+    echo "check: -full: @BUILDVIAOBJ INSTALL: ok"
+    echo "check: -full: the kit's POC.EXE kept, [.OBJCHECK] deleted: ok"
+    echo "check: -full: setup: ok"
+    echo "$versionLine"
+    echo "target vax-dec-vms, size model -O2"
+    echo "check: -full: poc -version: ok"
+    echo "check: -O2 KITHELLO: compiled: ok"
+    echo "check: -O2 KITHELLO: linked: ok"
+    echo "program: hello from the kit, INTEGER has 16 bits"
+    echo "check: -O2 KITHELLO: run: ok"
+  fi
   echo "check: removed [.KITCHECK]"
 } >"$work/expected"
 

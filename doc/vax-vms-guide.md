@@ -93,7 +93,7 @@ run in, and everything in it is text.
    `[.KIT.OBJCONVERT]` that of `OBJCONVERT`, below),
    `[.LIB.POC.VAX-DEC-VMS.O2]` and `[.OC]` (the libraries), `[.SRC]` (the
    source poc for VMS is built from), `BUILD.COM`, `SETUP.COM`,
-   `README.TXT`, `VAX-VMS-GUIDE.TXT` (this guide, as text, for `TYPE/PAGE
+   `BUILDVIAOBJ.COM`, `README.TXT`, `VAX-VMS-GUIDE.TXT` (this guide, as text, for `TYPE/PAGE
    VAX-VMS-GUIDE.TXT`), `LICENSE.TXT` and `VERSION.TXT`. The STARLET kit
    adds its two libraries with their sources, and `README-VMS.TXT`. It
    refuses to unpack anywhere but in a poc of its own version.
@@ -127,6 +127,18 @@ Check the installation with `POC -VERSION`:
     $ POC -VERSION
     poc 0.11.1
     target vax-dec-vms, size model -O2
+
+`[.KIT]`'s MACRO-32 was written by poc on Unix. Once `@BUILD` has
+built poc from it, poc can build itself again from its own source, on
+VMS alone, through its object back end, and check that it is a fixed
+point, the same compiler compiled either way:
+
+    $ @BUILDVIAOBJ INSTALL
+
+It takes two compilations of poc, from half an hour to an hour and a
+half on an emulated MicroVAX, and keeps `@BUILD`'s `POC.EXE` as
+`[.BIN]POC-KIT.EXE`. It is not needed to use poc; chapter 17,
+"Building poc from its source on VMS", says more.
 
 ### On Unix
 
@@ -3377,7 +3389,11 @@ build need only the base system's MACRO, LIBRARY and LINK.
 **Memory:** poc keeps a whole program's modules in memory while it
 compiles them, and its heap grows as it needs. A program of a few
 modules needs little. The most it has needed is to compile itself,
-about 32,000 lines: a peak of about 90 MB of virtual memory. On the development system that does so, the process has
+about 32,000 lines: a peak of about 16 MB of virtual memory. Its heap
+can grow to three quarters of the paging file quota the process has
+left (chapter 6), so that takes about 50,000 pages of `PGFLQUOTA`, and
+`BUILDVIAOBJ.COM` asks for 60,000. On the development system the
+process has
 `PGFLQUOTA` 300,000 pages (150 MB), `WSQUOTA` 32,768 and `WSEXTENT`
 200,000, and the system `VIRTUALPAGECNT` 600,000 pages and a paging file
 of 350,000 pages, on a VAX with 256 MB of memory. A process with less
@@ -3408,9 +3424,36 @@ directories.
 `[.SRC]` holds poc's own source, as much of it as poc for VMS is built
 from, with the runtime's. poc can compile itself from it, under `-OC`,
 since poc needs a 64-bit `LONGINT`, and from source alone, without the
-installed libraries. The command is longer than DCL takes, so its
-arguments go in a file, one a line, here `FULL.ARGS` in a new directory
-beside `[.SRC]`:
+installed libraries.
+
+`BUILDVIAOBJ.COM`, in the top of the installation, does so once
+`@BUILD` has built `POC.EXE` from `[.KIT]`:
+
+    $ @BUILDVIAOBJ [CHECK|INSTALL]
+
+It refuses unless `[.BIN]POC.EXE` says the version `VERSION.TXT` does,
+and unless the process has 60,000 pages (30 MB) of its paging file
+quota left (`SHOW PROCESS/QUOTAS`). It has `[.BIN]POC.EXE` compile
+`[.SRC]` to objects in `[.OBJBUILD]`, and links them into
+`[.OBJBUILD]POC.EXE`, leaving the installed poc as it is. `@BUILDVIAOBJ
+CHECK` then has the new `POC.EXE` compile the same source again, in
+`[.OBJCHECK]`, and compares each object it writes, and its `POC.COM`,
+with `[.OBJBUILD]`'s, by `CHECKSUM` and size; they are the same, and
+`[.OBJCHECK]` is deleted. `@BUILDVIAOBJ INSTALL` checks so too, and
+then copies the new `POC.EXE` into `[.BIN]`, with the old one's
+protection, keeping `@BUILD`'s as `[.BIN]POC-KIT.EXE`; `SETUP.COM`
+then uses the new one. Each step's time goes to `BUILD.LOG`. Each run
+empties `[.OBJBUILD]` and `[.OBJCHECK]` first; delete them once they
+are no longer wanted.
+
+An object records when it was made, so for the two compilations'
+objects to be the same `BUILDVIAOBJ.COM` gives them one time:
+`SOURCE_DATE_EPOCH`'s, in seconds since 1970, when that logical name is
+defined, else the time it starts.
+
+By hand, the command is longer than DCL takes, so its arguments go in
+a file, one a line, here `FULL.ARGS` in a new directory beside `[.SRC]`,
+as `BUILDVIAOBJ.COM` writes it:
 
     -OC
     -clear-library-path
@@ -3446,9 +3489,10 @@ procedure does.
 poc is a **fixed point**: compiled by itself, it writes the same
 MACRO-32 as the poc that compiled it. Given `-vax-macro32`, `POC
 @FULL.ARGS` writes `.MAR` files, the same as `[.KIT]`'s, line for line,
-which `DIFFERENCES` can show for each one. poc's developers check that on the development system, and a
-third generation too: the `POC.EXE` linked here, compiling the same
-source again, writes the same files once more.
+which `DIFFERENCES` can show for each one. poc's developers check that
+on the development system, and `@BUILDVIAOBJ CHECK` checks the objects
+in the same way: the `POC.EXE` linked from them, compiling the same
+source again, writes the same objects once more.
 
 ### A new version
 
@@ -3480,6 +3524,7 @@ needs empty. These are the directories and files they make, and what
 |---|---|
 | `README.TXT` | How to install and use poc, as chapter 1 says |
 | `BUILD.COM` | Builds `POC.EXE`, `OBJCONVERT.EXE` and every library that is unpacked and not yet built; each step's time goes to `BUILD.LOG` |
+| `BUILDVIAOBJ.COM` | Once `@BUILD` has built `POC.EXE`, has it compile `[.SRC]` to objects in `[.OBJBUILD]` and link a new `POC.EXE` there; `CHECK` checks that one is a fixed point, in `[.OBJCHECK]`, and `INSTALL` then puts it in `[.BIN]`, keeping the old one as `POC-KIT.EXE` (chapter 17) |
 | `SETUP.COM` | Defines the commands `POC` and `OBJCONVERT` and the logical names of one size model's libraries, `-O2`'s or, with `@SETUP OC`, `-OC`'s |
 | `VERSION.TXT` | One line, the version and the commit it was made from; the STARLET kit checks it |
 | `LICENSE.TXT` | poc's license |

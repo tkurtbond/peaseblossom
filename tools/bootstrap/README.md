@@ -63,7 +63,7 @@ The kits of poc for VAX/VMS (`PLAN.md` Phase 17 step 7;
   themselves, in `build/vax-kit`. `POC-<version>.COM` holds V1, the
   library `POCRTL` as `poc -library` writes it under `-O2` and `-OC`, the
   source poc for VMS is built from, and `vax-kit/`'s `BUILD.COM`,
-  `SETUP.COM` and `README.TXT`; `POC-VMS-<version>.COM` holds `VMSDEF`
+  `SETUP.COM`, `BUILDVIAOBJ.COM` and `README.TXT`; `POC-VMS-<version>.COM` holds `VMSDEF`
   and `VMSLIB`, their sources and `README-VMS.TXT`, and is unpacked into
   the same top. It does not use the guest; `make dist` puts both in the
   tarball as `vax/` and beside it.
@@ -72,5 +72,8 @@ The kits of poc for VAX/VMS (`PLAN.md` Phase 17 step 7;
   `[.KITCHECK]`, as a site would, the base kit alone first and then the
   STARLET kit over it, and builds and runs `vax-kit/check`'s two programs
   with them, under both size models; `-full` also has the
-  kit's poc compile its own source there and compares the `.mar` with V1's.
+  kit's poc compile its own source there and compares the `.mar` with V1's,
+  then runs `@BUILDVIAOBJ INSTALL`, which builds poc again from that source
+  through the object back end, checks it is a fixed point, and installs
+  it, and builds and runs a program with it.
   Not part of `make check`.
