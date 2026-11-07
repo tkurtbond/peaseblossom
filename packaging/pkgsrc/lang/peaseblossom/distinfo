@@ -1,5 +1,5 @@
 $NetBSD$
 
-BLAKE2s (peaseblossom-0.11.1.tar.gz) = 7a7a38a900c10feea1bf0678baf7bc29d199261910224ec310fcceb838a518e3
-SHA512 (peaseblossom-0.11.1.tar.gz) = cad2f409c4b2d56f1ba5750b9bd663b84db19bd940bf786946ffb45f388ea5e5bdc1ec34fe8b8a9121813b1e4338f6a81ccd82e4f58076ddb96a2eb317127d2d
-Size (peaseblossom-0.11.1.tar.gz) = 13727442 bytes
+BLAKE2s (peaseblossom-0.11.2.tar.gz) = a37e1d297b9fda8673c889645e59802c708cdc3e37301831ece8d47996e1388b
+SHA512 (peaseblossom-0.11.2.tar.gz) = ae7828b4d9b8d96e809204bfe58c15bfcb86b31b40d301ebe6062d46a046a8e9056dc3cd44cbf7683c0baaadbca0ee7509cbc260876f7622f269c9a9cd5ac51b
+Size (peaseblossom-0.11.2.tar.gz) = 13744035 bytes

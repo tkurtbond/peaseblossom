@@ -1038,6 +1038,40 @@ besm2_cg_po's workaround for it was removed with it. It was made as
   checked as `POC2` (`HELLO.MOD` built and run). The tree held only
   0.11.0 this time.
 
+## Peaseblossom 0.11.2
+
+`BUILDVIAOBJ.COM` was released as **Peaseblossom 0.11.2** on
+2026-11-07, the user deciding that it was enough for a release:
+the base kit's procedure that rebuilds poc on VMS through the object
+back end, checks the fixed point by comparing objects, and installs it
+("Ongoing implementation enhancements", 11; `0388813`). The compiler is
+the same as 0.11.1's. It was made as `doc/developer/DEVELOPER.md`
+section 7 says:
+
+- **The version** was set in `2fe9919` by `make set-version`; the gate
+  passed on atla, cymoril, artos and alerik (506 fixtures, the fixed
+  point, `check-strict`, `check-install` and `check-seed` on each).
+  rackhir passed `2fe9919`. On the guest `check-vax-kit -full` passed
+  on `0388813` (about an hour), and `make check-vax-kit` on `2fe9919`.
+- **The tarball** came from `make distcheck` (SHA-256 `8f3a4d6d...`,
+  13744035 bytes), after `make stage2` reached the fixed point. It is
+  signed, with the signed tag `v0.11.2`, and published as a GitHub
+  release with the kits `POC-0-11-2.COM` and `POC-VMS-0-11-2.COM`.
+  Signing ran in a terminal with `--pinentry-mode loopback`, as for
+  0.11.1; gpg-agent still held the key when the RPMs were signed.
+- **Each package** was made from the published tarball (only the
+  `distinfo` files changed, packing lists unchanged), on alerik,
+  rackhir, cymoril, jherek, artos and yishana, replacing 0.11.1 and
+  checked against the installed poc. `mock` built and checked the RPMs,
+  and on atla 0.11.2 replaces 0.11.1, with `peaseblossom-vax`, checked
+  the same way.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` and attached to the release; every file was
+  downloaded again and checked against `SHA256SUMS` and the signatures,
+  the RPMs' with the key in a scratch rpm database.
+- **The guest's `DUA1:[POC]`** holds 0.11.2, from the published kits,
+  checked as `POC2` (`HELLO.MOD` built and run).
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
