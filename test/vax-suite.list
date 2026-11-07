@@ -195,3 +195,5 @@ vax-deferred-wide WideOut.mod -O2
 vax-deferred-wide WideOut.mod -OC
 vax-short-circuit-call ShortOut.mod -O2
 vax-short-circuit-call ShortOut.mod -OC
+llvm-string-in-index strindex.mod -O2
+llvm-string-in-index strindex.mod -OC

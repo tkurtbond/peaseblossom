@@ -7537,6 +7537,34 @@ MODULE LLVMCodeGenerator;
     WHILE e # NIL DO CollectStringConstants(w, cg, e); e := e.next END
   END CollectStringConstantsList;
 
+  (* The index expressions of a designator's selectors, a[F("ab")], which
+     are code like any other expression: ongoing bug 18 (PLAN.md), where
+     only a call's arguments were walked, so such a literal was referenced
+     but never emitted. *)
+  PROCEDURE CollectDesignatorStrings(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator);
+    VAR sel: SyntaxTree.Selector;
+  BEGIN
+    IF d # NIL THEN
+      sel := d.selectors;
+      WHILE sel # NIL DO
+        IF sel IS SyntaxTree.IndexSelector THEN
+          CollectStringConstantsList(w, cg, sel(SyntaxTree.IndexSelector).indices)
+        END;
+        sel := sel.next
+      END
+    END
+  END CollectDesignatorStrings;
+
+  (* A set constructor's elements, {F("ab")} *)
+  PROCEDURE CollectSetElements(VAR w: Files.Rider; VAR cg: Codegen; el: SyntaxTree.SetElementNode);
+  BEGIN
+    WHILE el # NIL DO
+      CollectStringConstants(w, cg, el.low);
+      CollectStringConstants(w, cg, el.high);
+      el := el.next
+    END
+  END CollectSetElements;
+
   (* Phase 14: the same walk, with cg.collectingTemps, allocates the stack
      slots of the literals instead (CollectLiteralTemps) *)
   PROCEDURE CollectLiteralElements(VAR w: Files.Rider; VAR cg: Codegen; el: SyntaxTree.LiteralElementNode);
@@ -7570,10 +7598,13 @@ MODULE LLVMCodeGenerator;
         (* one without a type name is made in its element (BuildLiteralAt) *)
         IF cg.collectingTemps & (expr.name # NIL) THEN temp := AllocateLiteralTemp(w, cg, expr) END;
         CollectLiteralElements(w, cg, expr.elements)
-    | expr: SyntaxTree.DesignatorExprNode DO CollectStringConstantsList(w, cg, expr.args)
+    | expr: SyntaxTree.DesignatorExprNode DO
+        CollectDesignatorStrings(w, cg, expr.designator);
+        CollectStringConstantsList(w, cg, expr.args)
+    | expr: SyntaxTree.SetExprNode DO CollectSetElements(w, cg, expr.elements)
     | expr: SyntaxTree.UnaryExprNode DO child1 := expr.operand
     | expr: SyntaxTree.BinaryExprNode DO child1 := expr.left; child2 := expr.right
-    ELSE (* SetExprNode, NilExprNode: no leaves to collect *)
+    ELSE (* NilExprNode: no leaves to collect *)
     END;
     CollectStringConstants(w, cg, child1);
     CollectStringConstants(w, cg, child2)
@@ -7595,8 +7626,12 @@ MODULE LLVMCodeGenerator;
     VAR branch: SyntaxTree.IfBranchNode; c: SyntaxTree.CaseNode; guard: SyntaxTree.WithGuardNode;
   BEGIN
     WITH
-      s: SyntaxTree.AssignStatementNode DO CollectStringConstants(w, cg, s.value)
-    | s: SyntaxTree.CallStatementNode DO CollectStringConstantsList(w, cg, s.args)
+      s: SyntaxTree.AssignStatementNode DO
+        CollectDesignatorStrings(w, cg, s.target);
+        CollectStringConstants(w, cg, s.value)
+    | s: SyntaxTree.CallStatementNode DO
+        CollectDesignatorStrings(w, cg, s.designator);
+        CollectStringConstantsList(w, cg, s.args)
     | s: SyntaxTree.IfStatementNode DO
         branch := s.branches;
         WHILE branch # NIL DO

@@ -1137,7 +1137,7 @@ Those fixed while Phase 18 was current, 8-10, are in
     two say only the total for such a file, whoever imports it.
     `module-import-error-path` and `vax-module-name-length` show them.
 
-18. **A string literal in an array index is never emitted.** Found
+18. **A string literal in an array index is never emitted** [fixed]. Found
     2026-11-06 by besm2_cg_po's tests (`~/Repos/RPG/Tools/besm2_cg_po`,
     `test/TestModel.Mod` and `test/TestWindow.Mod`), with 0.11.0
     (0c335b8). A string passed to a procedure called inside an index,
@@ -1162,6 +1162,19 @@ Those fixed while Phase 18 was current, 8-10, are in
     Until it is fixed, besm2_cg_po computes the index into a variable
     first (`i := F("ab"); a[i] := 1`). It needs an `llvm-` fixture, and
     a look at the VAX back end for the same gap.
+    Fixed (2026-11-06): the walk was
+    `LLVMCodeGenerator.CollectStringConstants`, which went into a call's
+    arguments but not a designator's selectors, an assignment's target,
+    a call statement's procedure designator or a set constructor's
+    elements; it now goes into all four (`CollectDesignatorStrings`,
+    `CollectSetElements`), and so does the walk that allocates the stack
+    slots of structured literals, which is the same one. The VAX back end
+    never had the gap: the same program, run by `tools/vax-suite` from
+    MACRO-32 and from objects under `-O2` and `-OC`, printed what it
+    should while the host build still failed. Fixture
+    `llvm-string-in-index` (`-O2` and `-OC`; the index on either side of
+    `:=`, two-dimensional, of a field, of a local, in a set and in a call
+    through a procedure variable), also in `test/vax-suite.list`.
 
 ## Ongoing library enhancements
 
