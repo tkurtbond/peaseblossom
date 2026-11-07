@@ -25,7 +25,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.11.1
+Version:        0.11.2
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -110,6 +110,12 @@ test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-
 %{_docdir}/%{name}-vax/
 
 %changelog
+* Sat Nov 07 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.11.2-1
+- Update to 0.11.2: the VAX/VMS base kit has BUILDVIAOBJ.COM, which
+  rebuilds poc on VMS through its object back end, checks that poc so
+  built compiles itself to the same objects, and installs it. The
+  compiler is unchanged; a library from an older poc must be rebuilt.
+
 * Fri Nov 06 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.11.1-1
 - Update to 0.11.1: a string literal passed to a procedure called in
   an array index, a set constructor's element or a called procedure

@@ -3,7 +3,7 @@
 # own LLVM IR, so base clang alone builds poc: voc is not needed.
 
 PORTNAME=	peaseblossom
-DISTVERSION=	0.11.1
+DISTVERSION=	0.11.2
 CATEGORIES=	lang
 MASTER_SITES=	https://github.com/tkurtbond/peaseblossom/releases/download/v${DISTVERSION}/
 

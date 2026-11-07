@@ -1358,7 +1358,7 @@ Those done while Phase 18 was current, 5-7, are in
     done with fixture `llvm-library-no-shared`, the release, step 8, was
     0.11.0, and pofltk's part, step 9, is pofltk's `c1e03a8`.
 
-11. A VMS site rebuilds poc through the object back end (the user,
+11. A VMS site rebuilds poc through the object back end [done] (the user,
     2026-11-06, while installing 0.11.1 in `DUA1:[POC]`): after `@BUILD`
     has made `POC.EXE` from the kit's MACRO-32, a new procedure in the
     base kit, `BUILDVIAOBJ.COM`, has that poc compile its own source in
@@ -1453,7 +1453,11 @@ Those done while Phase 18 was current, 5-7, are in
       built `[.OBJBUILD]POC.EXE` in 14.5 minutes (859 s of CPU), found
       all 44 objects and `POC.COM` the same in `[.OBJCHECK]` (14 minutes,
       840 s), and installed it; poc so installed said its version and
-      built and ran a program.
+      built and ran a program. `check-vax-kit -full` then passed on
+      `0388813` (2026-11-07): the MACRO-32 fixed point, `@BUILDVIAOBJ
+      INSTALL` (13.5 minutes, 809 s, and 13.5 minutes, 811 s), and
+      KITHELLO from the installed poc, in about an hour in all. Released
+      in 0.11.2.
 
 ## Open design questions
 

@@ -10,6 +10,6 @@ MODULE Version;
      link together. *)
 
   CONST
-    number* = "0.11.1";
+    number* = "0.11.2";
 
 END Version.
