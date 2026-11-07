@@ -1001,6 +1001,43 @@ says:
   with it, by the user's decision, to be installed again built with
   0.11.0.
 
+## Peaseblossom 0.11.1
+
+One fix was released as **Peaseblossom 0.11.1** on 2026-11-06: ongoing
+bug 18, a string literal in an array index (or a set constructor's
+element, or the index of a procedure variable called as a statement)
+never emitted on LLVM targets (`834fb98`; "Ongoing bug fixing", 18).
+besm2_cg_po's workaround for it was removed with it. It was made as
+`doc/developer/DEVELOPER.md` section 7 says:
+
+- **The version** was set in `185b849` by `make set-version`; the gate
+  passed on atla, cymoril, artos and alerik (506 fixtures at each stage,
+  the fixed point, `check-strict`, `check-install` and `check-seed` on
+  each, and `check-o2` on atla). rackhir passed `185b849`, and `make
+  check-vax-kit` passed on the guest (without `-full`: `834fb98` changed
+  only the LLVM back end).
+- **The tarball** came from `make distcheck` (SHA-256 `07cc9338...`,
+  13727442 bytes), after `make stage2` reached the fixed point. It is
+  signed, with the signed tag `v0.11.1`, and published as a GitHub
+  release with the kits `POC-0-11-1.COM` and `POC-VMS-0-11-1.COM`. The
+  user signed over ssh, so `gpg` ran with `--pinentry-mode loopback` in a
+  terminal, not with a graphical pinentry.
+- **Each package** was made from the published tarball, as for 0.11.0
+  (only the `distinfo` files changed, packing lists unchanged), on
+  alerik, rackhir, cymoril, jherek, artos and yishana, replacing 0.11.0
+  and checked against the installed poc. artos had too little free disk
+  for two work trees, so its old ones were cleaned first. rackhir's
+  `peaseblossom-vax`, which the release's files do not include, was
+  still building when this was written. `mock` built and checked the
+  RPMs, and on atla 0.11.1 replaces 0.11.0, with `peaseblossom-vax`.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (20 files) and attached to the release; every
+  file was downloaded again and checked against `SHA256SUMS` and the
+  signatures, the RPMs' with the key in a scratch rpm database.
+- **The guest's `DUA1:[POC]`** holds 0.11.1, from the published kits,
+  checked as `POC2` (`HELLO.MOD` built and run). The tree held only
+  0.11.0 this time.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
