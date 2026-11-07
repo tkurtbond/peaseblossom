@@ -1358,6 +1358,63 @@ Those done while Phase 18 was current, 5-7, are in
     done with fixture `llvm-library-no-shared`, the release, step 8, was
     0.11.0, and pofltk's part, step 9, is pofltk's `c1e03a8`.
 
+11. A VMS site rebuilds poc through the object back end (the user,
+    2026-11-06, while installing 0.11.1 in `DUA1:[POC]`): after `@BUILD`
+    has made `POC.EXE` from the kit's MACRO-32, a new procedure in the
+    base kit, `BUILDVIAOBJ.COM`, has that poc compile its own source in
+    `[.SRC]` and link a new `POC.EXE` from the objects it writes, with
+    only the runtime's `[.SRC.RTL]POCRTL.MAR` assembled by `MACRO`. The
+    kit already carries every source file this needs, so the procedure
+    is the only new file. Today a site can do it only by hand, as the
+    VAX/VMS Guide's "Building poc from its source on VMS" says; `make
+    vax-stages` reaches the objects' fixed point on the guest, but from
+    a V1 cross-compiled on Unix, not from a kit's poc; and `make
+    check-vax-kit CHECK_VAX_KIT_FLAGS=-full` compiles `[.SRC]` with the
+    kit's poc, but under `-vax-macro32`. Nothing yet builds poc from a
+    kit's poc through objects. What was proposed to the user, 2026-11-06,
+    each point still to be settled with them:
+    - **It runs only after `@BUILD`:** it refuses unless `[.BIN]POC.EXE`
+      exists and `POC -VERSION` names the kit's version (`VERSION.TXT`).
+    - **It writes the arguments itself:** `FULL.ARGS` as the guide has
+      it (`-OC`, since poc needs a 64-bit `LONGINT`;
+      `-clear-library-path`, from source alone; the seven `-import-path`
+      directories; `-build [-.SRC.DRIVER]POC.MOD`), in a directory of its
+      own, such as `[.OBJBUILD]`, then `POC @FULL.ARGS` and `@POC`.
+    - **It leaves the installed poc alone** unless asked: the new
+      `POC.EXE` stays in its own directory, and only a parameter such as
+      `INSTALL` copies it to `[.BIN]`, keeping the old one, and only
+      after the check below has passed, so that a failure part way
+      leaves a working poc.
+    - **A fixed-point check, `CHECK`:** the new `POC.EXE` compiles the
+      same source again, and the two sets of objects must be the same.
+      As in `vax-stages`, both run under one `SOURCE_DATE_EPOCH` (a
+      logical name), so that the objects' creation times in their MHD
+      records agree (`doc/developer/vax-object-language.md`); how to
+      compare objects on VMS alone, without `tools/vax-objects.sh`'s
+      DUMP/RECORDS on Unix (perhaps `DIFFERENCES` or `CHECKSUM` of each
+      object), is to be found on the guest. Each compilation takes about
+      45 minutes on the SIMH VAX, so `CHECK` doubles the time.
+    - **It checks the process's quotas first:** poc compiling itself
+      peaks at about 15.5 MB, and a low `PGFLQUOTA` makes it trap with
+      `%X10000022` (POC2, 2026-10-16), so the procedure reads the quota
+      and says what is needed before it starts, not an hour in.
+    - **It prints its times,** as `BUILD.COM` does.
+    - **Made and checked by the kit's tools:** `tools/bootstrap/
+      make-vax-kit` puts it in the base kit beside `BUILD.COM` and
+      `SETUP.COM` (from `tools/bootstrap/vax-kit/`), and `check-vax-kit
+      -full` runs `@BUILDVIAOBJ CHECK` in its scratch tree, so every
+      release checks it.
+    - **Documented:** the VAX/VMS Guide's chapter 1 names it as a step
+      after `@BUILD`, for a site that wants it; "Building poc from its
+      source on VMS" leads with it, keeping the commands by hand as what
+      it does; Appendix A lists it among the base kit's files; the kit's
+      `README-VMS.TXT` names it.
+    - **Released in 0.12.0,** not 0.11.1, whose kits are published
+      without it; the 0.12.0 release notes say how to use it.
+    Separate from `BUILD.COM` (rather than `@BUILD OBJECTS`), since
+    `BUILD.COM` builds poc where there is none, and this one needs the
+    poc it built.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on
