@@ -252,6 +252,11 @@ committed only when the user asks.
 Before the decisions' values are final. Nothing is committed but the
 survey's record of the results.
 
+Done 2026-11-13; the results are in the survey's section 8.7. The values in
+decision 4 stand, and the probes added to Phases 3 and 4: the trampoline's
+unwind information, a fixture for it, a benchmark, and a traceback the VAX
+fixture compares.
+
 #### Phase 1.1: pofltk
 
 8.4, item 5:
@@ -281,8 +286,10 @@ headings.
 ### Phase 3: The LLVM module
 
 `Coroutines.Mod`, `Coroutines.c`, the heap's hook and `Platform.c`'s
-wrapper, on x86-64, i386 and arm64. The fixtures each compare their output
-(`. ../../testresult.sh`), and each has its `.gitignore` line:
+wrapper, on x86-64, i386 and arm64. The trampoline's call-frame information
+marks its return address undefined (`.cfi_undefined` `rip`, `eip` or `x30`),
+so that gdb's backtrace ends there (survey 8.7.2). The fixtures each compare
+their output (`. ../../testresult.sh`), and each has its `.gitignore` line:
 - `llvm-coroutines`: the generator from `Ping`. A record copied before
   `Transfer`. `Transfer` to itself. `main` resumed by a coroutine that is
   not the one it last resumed;
@@ -301,15 +308,30 @@ wrapper, on x86-64, i386 and arm64. The fixtures each compare their output
   the callback switches out and is resumed before it returns (decision 8's
   rule). A pointer held only in a C frame of a suspended stack survives a
   collection. The floating-point control word set in one coroutine is not
-  seen in another (decision 6).
+  seen in another (decision 6);
+- `llvm-coroutines-unwind`: `readelf --debug-dump=frames` on
+  `Coroutines.o` shows the trampoline's return register marked undefined,
+  the fix for gdb's backtrace (survey 8.7.2), with no gdb needed.
+
+`tools/bench/CoroutineBench.Mod`, beside `GcBench.mod`, is the prototype's
+benchmark (survey 8.2) rewritten against the real module: a procedure-variable
+call, `Transfer` there and back, `swapcontext` there and back, a collection
+with 2 and with 10,002 stacks, shallow and deep, and `Init`'s cost. It is
+run on atla and rackhir, and its figures are compared with 8.2's.
 
 ### Phase 4: The VAX module
 
 `Coroutines.Mod`, the `.mar` part, the heap's hook, `PocRtl.mar`'s texts,
-`VAX_RTL_SRCS` and the kits. The fixtures `vax-coroutines`,
-`vax-coroutines-collector`, `vax-coroutines-free` and
-`vax-coroutines-traps` are run on the guest, along with:
-- the traceback of an access violation on a coroutine;
+`VAX_RTL_SRCS` and the kits. The trampoline is a routine of its own, so
+that `SHOW CALLS` and the traceback name it on their last line (survey
+8.7.2). The fixtures `vax-coroutines`, `vax-coroutines-collector`,
+`vax-coroutines-free` and `vax-coroutines-traps` are run on the guest, along
+with:
+- the traceback of an access violation on a coroutine. The fixture
+  compares the `%TRACE` listing: it must list the coroutine's routines down
+  to its body and end at the trampoline's name. Leaving out the body, or
+  printing no traceback at all, is what an unchained first frame does
+  (survey 8.7.2);
 - in a program that imports `AsynchronousTraps`, a timer AST that calls
   `NEW` while coroutines switch in a loop, for decision 7's window.
 

@@ -736,7 +736,9 @@ change, and no code in `Transfer`'s absence.
      it today. If poc ever adds the notes, the switch would need the
      shadow-stack instructions.
    - **Debuggers.** gdb's backtrace and VMS DEBUG's `SHOW CALLS` on a
-     coroutine were not tried.
+     coroutine were tried later (8.7.2). Both work, given an unwind
+     terminator at the first frame on LLVM and the chained first frame
+     on the VAX.
 
 10. **No compiler change.**
     - A body is passed as `SYSTEM.VAL(SYSTEM.ADDRESS, body)` to an
@@ -874,6 +876,8 @@ program could do between two calls before, it still can.
      size a coroutine stack that calls FLTK;
    - a nested `Fl.Wait` from a coroutine, to see whether (b) is
      workable at all.
+
+   Items 4 and 5 were probed in 8.7.
 
 ### 8.5 An example program: WordSets
 
@@ -1389,6 +1393,181 @@ generator and a consumer that talks to the user.
 - **The count.** `count` is a `LONGINT`, 32 bits under `-O2`. Only a
   search that finds more than 2^31 solutions would overflow it, and no
   one waits for that.
+
+### 8.7 Phase 1 of B's plan: the probes
+
+Added 2026-11-13: the results of the probes in Phase 1 of
+`doc/developer/coroutines.md`, run before that plan's values are final.
+Each one used the prototype of 8.1-8.3, with the collector scanning
+every stack (its mode 2).
+
+#### 8.7.1 pofltk (Phase 1.1)
+
+The probes ran on atla, under `Xvfb`. pofltk and its examples were built
+at `-OC` against a copy of the runtime that has the heap's hook.
+
+**Pattern (a), with a nested `Fl.Wait` (`FlScript`).**
+- **The setup:**
+  - A script coroutine with a 256 KiB stack steps through 40 steps.
+  - A button's callback resumes it, and the script transfers back to
+    `main` after each step.
+  - A repeating 3 ms timer clicks the button with `DoCallback`.
+  - On odd steps, the script runs `Fl.Wait(0.002)` five times on its own
+    stack: a nested event loop. Meanwhile `main` is suspended inside
+    FLTK's dispatch of the timer that clicked, which is pattern (b).
+  - A second timer allocates 100,000 nodes each time it fires.
+  - A list of 20,000 nodes held only by `main`'s stack, and another held
+    only by the script's, were checked at the end.
+- **The results:**
+  - Both lists were intact (0 bad nodes) after 292 collections.
+  - 41 clicks resumed the script.
+  - The churn timer fired 115 times, 81 of them inside the script's
+    nested `Wait`, so on the script's stack. The collector scanned
+    `main`'s stack, suspended inside FLTK's callback, while that
+    happened.
+  - The script's stack touched 32 KiB of its 256.
+- **What it shows, and what it does not:**
+  - The nested `Wait` breaks 8.4's rule for (b): the script uses FLTK
+    while `main` is suspended in the middle of FLTK's dispatch. It
+    worked here for timers, which FLTK takes off its list before calling
+    them.
+  - No click came during a nested `Wait`. FLTK re-arms the click timer
+    only after its callback returns, and that callback is the one that
+    resumed the script, so `FlScript`'s guard against resuming a running
+    script was never exercised.
+  - Window events, a click by hand or a redraw, were not tried. So (b)
+    is not shown to be safe, and 8.4's rule stands.
+
+**A coroutine stack under FLTK.**
+- `CoHost` ran each example's module body on a 1 MiB coroutine. After
+  3 seconds (7 for `Ask`, whose dialog opens at 5), a timer on that stack
+  counted its resident pages with `mincore`.
+- 25 examples ran. `Demo` was left out because it needs its menu file.
+  `Ask` was measured with its modal dialog open.
+
+  | Touched | Examples |
+  |---|---|
+  | 20 KiB | Checkers, Clock |
+  | 36 KiB | Hello, Editor, Blocks, Mandelbrot, Table, TreeOfTables, ColorChooser, Symbols, RotatedText, Valuators, TableSpreadsheet, SimpleTerminal |
+  | 40 KiB | Tree, Browser, FileChooser, Terminal, Ask |
+  | 44 KiB | Fonts |
+  | 48 KiB | AnimGifImage |
+  | 52 KiB | HelpDialog |
+  | 68 KiB | Utf8Test, Unittests |
+  | 80 KiB | Sudoku |
+
+**`main`'s stack in the unmodified examples.**
+- Each of pofltk's 165 example programs ran for 3 seconds. Then the
+  `[stack]` mapping's `Rss` was read from `/proc/<pid>/smaps`.
+- 152 ran. 13 exited:
+  - 11 OpenGL examples, which `Xvfb` cannot serve;
+  - two `AnimGifImage` variants that need arguments.
+- **The results:**
+  - The median was 48 KiB, which 105 examples showed; the mean was 49.
+  - 144 of the 152 were at 56 KiB or below.
+  - The largest:
+
+    | `Rss` | Example |
+    |---|---|
+    | 108 KiB | CairoTest |
+    | 96 KiB | HelpPages |
+    | 92 KiB | Sudoku |
+    | 88 KiB | ShapedWindow |
+    | 80 KiB | Utf8Test, Unittests |
+    | 60 KiB | AnimGifImage, HelpDialog |
+
+- These figures include the environment and the process's start-up. The
+  examples measured both ways are 8-12 KiB above their coroutine
+  figures: Hello 48 against 36, Sudoku 92 against 80.
+
+**Conclusion.** The largest stack seen was about 108 KiB, and about 80
+KiB on a coroutine. The proposed `DefaultStackSize` of 256 KiB is more
+than twice that, and on LLVM only the pages touched cost memory, so the
+value stands.
+
+#### 8.7.2 Debuggers (Phase 1.2)
+
+**gdb.**
+- **The program.** `Bt` runs `Body`, `Middle` and `Inner` on a
+  coroutine, with a breakpoint at `Inner`.
+- **On atla (gdb 17) and artos (NetBSD's gdb).** The backtrace shows
+  `Inner`, `Middle`, `Body` and the prototype's trampoline
+  `poc_coro_start`. It then goes on below the trampoline:
+  - atla's ends at `#4 0x0000000000000000 in ?? ()`;
+  - artos's walks into garbage: `poc_coro_switch`, then addresses like
+    `0x7a7a...`.
+- **On cymoril (OpenBSD i386, egdb).** It stopped cleanly at the
+  trampoline already.
+- **The fix.** Marking the trampoline's return address as undefined in
+  its call-frame information ends the walk there on atla and artos:
+
+  ```
+  poc_coro_start:
+    .cfi_startproc
+    .cfi_undefined rip
+    ...
+    .cfi_endproc
+  ```
+
+  i386 would use `eip`, and arm64 `x30`. With it, atla's backtrace is
+  `#0 Bt.Inner`, `#1 Bt.Middle`, `#2 Bt.Body`,
+  `#3 poc_coro_start`, and nothing more.
+- **What gdb cannot show.**
+  - gdb sees only the coroutine that is running. A suspended coroutine
+    is not a thread, so `info threads` lists one thread and there is
+    nothing to switch to.
+  - A suspended coroutine's frames can be seen only by stopping in it
+    after it is resumed.
+
+**VMS DEBUG (V5.5-023) and the traceback.**
+- **The program.** The same program, on the guest, compiled with
+  `-vax-objects -g`. `SHOW CALLS` was used at the breakpoint, and the
+  traceback came from a divide by zero in `Inner`.
+- **The first frame not chained.**
+  - `SHOW CALLS` lists `INNER` and `MIDDLE` only: `BODY` is missing.
+  - The divide by zero gives "Improperly handled condition, image exit
+    forced" and a register dump, with **no traceback at all**.
+- **The first frame chained to the main stack's base frame**, which is
+  decision 6:
+  - `SHOW CALLS` and `%TRACE-F-TRACEBACK` both list `INNER` (line 7),
+    `MIDDLE` (10) and `BODY` (13), and then `CORO CORO_NEW`, and the
+    walk ends cleanly.
+  - The last line names `CORO_NEW` because the first frame's return
+    address, the trampoline, is a label inside `CORO_NEW`. If the
+    trampoline is a routine of its own, that line names it.
+  - The main program's own frames do not appear below it, since the
+    chain goes to the base of `main`'s stack, not to the frame that
+    called `Transfer`.
+
+**For the plan.**
+- Phase 3 gives the trampoline an unwind terminator on every
+  architecture.
+- Phase 4 makes the VAX's trampoline a routine of its own.
+- The guides say that a debugger shows the running coroutine's frames
+  only.
+
+#### 8.7.3 The VAX's quota (Phase 1.3)
+
+**The quotas.** `POC` and `POC2` have the same quotas:
+- `PGFLQUOTA` 300,000 pagelets (`PAGFILCNT` 299,326 at login);
+- `WSQUOTA` 32,768;
+- `WSEXTENT` 200,000.
+
+**The probe.** A program made stacks in a loop, each with its guard page,
+until `LIB$GET_VM_PAGE` failed:
+
+| Stack | Pagelets each, guard included | Stacks made | Pagelets in all |
+|---|---|---|---|
+| 8 KiB (the floor) | 17 | 17,550 | about 298,000 |
+| 32 KiB (`DefaultStackSize`) | 65 | 4,575 | about 297,000 |
+
+The quota is the only limit, and it is charged for the whole stack, as
+8.4 says.
+
+**Conclusion.** About 4,500 default stacks fit in either account, far
+more than WordSets or Queens needs, so the floor and the default stand.
+The failure gave the prototype's `ASSERT` (`%X10000052`); B's module
+reports trap 18 there instead.
 
 ## 9. Option C: one possible interface
 
