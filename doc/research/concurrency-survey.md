@@ -879,8 +879,9 @@ program could do between two calls before, it still can.
 
 Added 2026-11-13, at the user's request: a program written with
 Oakwood's interface that is useful and runs unchanged on Unix and VMS.
-It has not been compiled or run, since B's `Coroutines` is not in the
-tree; it would make a fixture and a guide example once B is built.
+It has not run, since B's `Coroutines` is not in the tree, but it
+type-checks with poc against a stub with Oakwood's interface (8.6). It
+would make a fixture and a guide example once B is built.
 
 It is the classic coroutine problem, "same fringe" (walk two trees in
 order, in step), made into a word-set comparer: it reads the words of
@@ -1037,6 +1038,357 @@ END WordSets.
   `Init`. On Unix that costs only the pages actually touched. On VMS
   the whole stack is charged against the page-file quota, which
   matters for very large inputs; a balanced tree would avoid both.
+
+### 8.6 A second example: k queens on an n×n board
+
+Added 2026-11-13, at the user's request, and generalized the same day
+from the eight queens: place `k` queens on an `n`×`n` board so that none
+attacks another, with `n` from 1 to 26 and `k` from 1 to `n`. With the
+defaults (`n` = `k` = 8) it is the classic eight queens problem. It is
+written with Oakwood's interface and, like 8.5, runs unchanged on Unix
+and VMS.
+
+**What was checked.** The program has not run with coroutines, since B's
+module is not in the tree. It type-checks with poc against a stub
+`Coroutines` that has only Oakwood's interface, under `-strict` and `-O2`
+as well (and so does 8.5's WordSets). The search, the boards and the
+argument checks ran on atla, in a variant that calls `Show` from `Place`
+instead of transferring. It found the counts in the table below, which
+agree with an independent count in Python and, for 8×8 with 8 queens
+and 10×10 with 10, with the known 92 and 724. It refused `-n 27`,
+`-n 5 -k 6`, a count of 0, and an argument after the count, each with
+the usage message and status 2. The sample output below is that run's.
+
+**Running it.** `queens [-n size] [-k queens] [all | count]`:
+
+- `queens` asks after each solution whether to go on. Return or `y`
+  goes on; `n`, or the end of the input, stops.
+- `queens 5` prints the first five solutions (any count from 1).
+- `queens all` prints them all.
+- `-n` gives the board's size (8 if not given), `-k` the number of
+  queens (the size if not given).
+
+For each solution it prints the queens' squares in chess notation, then
+the board drawn with `+`, `-` and `|`, with a `Q` on each queen's square
+and the last rank at the top. When the solutions run out it says how
+many there were.
+
+**The search** is the recursive backtracking of Wirth's *Algorithms and
+Data Structures*, with two changes:
+
+- **A row may be left empty**, as long as enough rows remain for the
+  queens still to place (`n - row >= k - placed`). That test is what
+  keeps the search from wasting most of its time when `k` is small.
+  When `k = n`, it is true only where every row so far has a queen, so
+  the search then does exactly what the eight-queens search does.
+- **Each solution is handed to the main program** with `Transfer`, and
+  the search carries on from there when the main program asks for the
+  next. That puts the main program in control: it can stop after any
+  solution, or wait for an answer between two of them, without the
+  search knowing why.
+
+```oberon
+MODULE Queens;  (* k queens on an n x n board, one solution at a time *)
+
+  IMPORT Coroutines, Args, In, Out;
+
+  CONST
+    maxSize = 26;   (* files a to z *)
+    (* modes *)
+    askEachTime = 0; firstCount = 1; everySolution = 2;
+
+  VAR
+    main, solver: Coroutines.Coroutine;
+    n, k: INTEGER;   (* the board's size and the number of queens *)
+    column: ARRAY maxSize OF INTEGER;   (* row r's queen's column, -1 if none *)
+    columnTaken: ARRAY maxSize OF BOOLEAN;
+    upTaken, downTaken: ARRAY 2 * maxSize - 1 OF BOOLEAN;   (* the diagonals *)
+    found: BOOLEAN;   (* TRUE: column holds a solution; FALSE: no more *)
+    mode: INTEGER;
+    count, limit: LONGINT;
+    going: BOOLEAN;
+    answer: ARRAY 80 OF CHAR;
+
+  (* Wirth's backtracking search, with two changes: a row may be left
+     empty while enough rows remain for the queens still to place, and
+     each solution is handed to main instead of printed. A row not yet
+     given a queen has column -1, and every path puts that back. *)
+  PROCEDURE Place(row, placed: INTEGER);
+    VAR c: INTEGER;
+  BEGIN
+    IF placed = k THEN
+      found := TRUE; Coroutines.Transfer(solver, main)
+    ELSIF n - row >= k - placed THEN
+      FOR c := 0 TO n - 1 DO
+        IF ~columnTaken[c] & ~upTaken[row + c] & ~downTaken[row - c + n - 1] THEN
+          column[row] := c;
+          columnTaken[c] := TRUE; upTaken[row + c] := TRUE;
+          downTaken[row - c + n - 1] := TRUE;
+          Place(row + 1, placed + 1);
+          columnTaken[c] := FALSE; upTaken[row + c] := FALSE;
+          downTaken[row - c + n - 1] := FALSE;
+          column[row] := -1
+        END
+      END;
+      Place(row + 1, placed)   (* and with this row empty *)
+    END
+  END Place;
+
+  (* The solver's body. It must not return: after the last solution it
+     answers every Transfer with "no more". *)
+  PROCEDURE Solve;
+    VAR r: INTEGER;
+  BEGIN
+    FOR r := 0 TO n - 1 DO column[r] := -1 END;
+    Place(0, 0);
+    found := FALSE;
+    LOOP Coroutines.Transfer(solver, main) END
+  END Solve;
+
+  PROCEDURE NextSolution(): BOOLEAN;
+  BEGIN
+    Coroutines.Transfer(main, solver);
+    RETURN found
+  END NextSolution;
+
+  PROCEDURE Rule;
+    VAR c: INTEGER;
+  BEGIN
+    Out.Char("+");
+    FOR c := 0 TO n - 1 DO Out.String("---+") END;
+    Out.Ln
+  END Rule;
+
+  (* The solution's number, its queens' squares in chess notation, and
+     the board, the last rank at the top. *)
+  PROCEDURE Show(number: LONGINT);
+    VAR r, c: INTEGER;
+  BEGIN
+    Out.String("Solution "); Out.Int(number, 0); Out.Char(":");
+    FOR r := 0 TO n - 1 DO
+      IF column[r] >= 0 THEN
+        Out.Char(" "); Out.Char(CHR(ORD("a") + column[r])); Out.Int(r + 1, 0)
+      END
+    END;
+    Out.Ln;
+    FOR r := n - 1 TO 0 BY -1 DO
+      Rule; Out.Char("|");
+      FOR c := 0 TO n - 1 DO
+        IF column[r] = c THEN Out.String(" Q |") ELSE Out.String("   |") END
+      END;
+      Out.Ln
+    END;
+    Rule
+  END Show;
+
+  PROCEDURE Usage;
+  BEGIN
+    Out.String("usage: queens [-n size] [-k queens] [all | count]"); Out.Ln;
+    Out.String("size 1 to 26, 8 if not given; queens 1 to size, size if not given");
+    Out.Ln;
+    HALT(2)
+  END Usage;
+
+  PROCEDURE Upper(ch: CHAR): CHAR;
+  BEGIN
+    IF (ch >= "a") & (ch <= "z") THEN ch := CAP(ch) END;
+    RETURN ch
+  END Upper;
+
+  (* Whether s is word, in either case: DCL passes an argument not in
+     quotes in capitals. *)
+  PROCEDURE Is(s, word: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (word[i] # 0X) & (Upper(s[i]) = Upper(word[i])) DO INC(i) END;
+    RETURN (word[i] = 0X) & (s[i] = 0X)
+  END Is;
+
+  (* Argument i as a number from low to high, or the usage message *)
+  PROCEDURE Number(i: INTEGER; low, high: LONGINT): LONGINT;
+    VAR value: LONGINT;
+  BEGIN
+    value := low - 1; Args.GetInt(i, value);
+    IF (value < low) OR (value > high) THEN Usage END;
+    RETURN value
+  END Number;
+
+  PROCEDURE ReadArguments;
+    VAR i: INTEGER; arg: ARRAY 32 OF CHAR;
+  BEGIN
+    n := 8; k := 0; mode := askEachTime;
+    i := 1;
+    WHILE i < Args.argc DO
+      Args.Get(i, arg);
+      IF Is(arg, "-n") & (i + 1 < Args.argc) THEN
+        INC(i); n := SHORT(Number(i, 1, maxSize))
+      ELSIF Is(arg, "-k") & (i + 1 < Args.argc) THEN
+        INC(i); k := SHORT(Number(i, 1, maxSize))
+      ELSIF mode # askEachTime THEN Usage
+      ELSIF Is(arg, "all") THEN mode := everySolution
+      ELSE mode := firstCount; limit := Number(i, 1, MAX(LONGINT))
+      END;
+      INC(i)
+    END;
+    IF k = 0 THEN k := n ELSIF k > n THEN Usage END
+  END ReadArguments;
+
+BEGIN
+  ReadArguments;
+  IF mode = askEachTime THEN In.Open END;
+  Out.Int(k, 0); Out.String(" queen");
+  IF k > 1 THEN Out.Char("s") END;
+  Out.String(" on a "); Out.Int(n, 0); Out.Char("x");
+  Out.Int(n, 0); Out.String(" board"); Out.Ln;
+  (* The search is at most n + 1 calls of Place deep, below Solve: a
+     small stack is plenty. *)
+  Coroutines.Init(Solve, 16384, solver);
+  count := 0; going := TRUE;
+  WHILE going & NextSolution() DO
+    INC(count); Show(count);
+    CASE mode OF
+    | askEachTime:
+        Out.String("Another? [Y/n] "); Out.Flush;
+        In.Line(answer);
+        going := In.Done & (Upper(answer[0]) # "N")
+    | firstCount:
+        going := count < limit
+    | everySolution:
+    END
+  END;
+  IF going THEN
+    Out.String("No more: "); Out.Int(count, 0); Out.String(" solutions in all.");
+    Out.Ln
+  END
+END Queens.
+```
+
+`queens -n 5 -k 3 2` prints:
+
+```
+3 queens on a 5x5 board
+Solution 1: a1 c2 e3
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   |   |   |   | Q |
++---+---+---+---+---+
+|   |   | Q |   |   |
++---+---+---+---+---+
+| Q |   |   |   |   |
++---+---+---+---+---+
+Solution 2: a1 c2 b4
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   | Q |   |   |   |
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   |   | Q |   |   |
++---+---+---+---+---+
+| Q |   |   |   |   |
++---+---+---+---+---+
+```
+
+**How many solutions.** These are the counts the variant found:
+
+| board | k | solutions | calls of `Place` (Python's count) |
+|---|---|---|---|
+| 5×5 | 3 | 204 | |
+| 8×8 | 1 | 64 | 73 |
+| 8×8 | 2 | 1,288 | 1,576 |
+| 8×8 | 3 | 10,320 | 13,987 |
+| 8×8 | 4 | 34,568 | 55,012 |
+| 8×8 | 5 | 46,736 | 97,259 |
+| 8×8 | 6 | 22,708 | 76,386 |
+| 8×8 | 7 | 3,192 | 26,611 |
+| 8×8 | 8 | 92 | 4,022 |
+| 10×10 | 5 | 1,535,440 | 2.3 million |
+| 10×10 | 10 | 724 | 70,354 |
+| 12×12 | 6 | 84,871,680 (Python only) | 121 million |
+
+The count peaks near `k = n / 2` and falls to the n-queens count at
+`k = n`. Python took 26 seconds just to count the 12×12 case. Printing
+85 million boards is not a program anyone runs, so for `k` well below
+`n`, asking after each solution or asking for the first few is the
+normal way to use it.
+
+**Why a coroutine here.** There are two other ways to write it, each
+worse in one respect:
+
+- **A callback.** `Place` could call a procedure for each solution, as
+  Wirth's prints. Then the search is in control. Stopping early means a
+  flag that every level of the recursion tests, and the code that talks
+  to the user is turned inside out: what the main program does in a
+  loop has to be done one call at a time, with its state kept in
+  globals.
+- **An iterative search.** It would not be hard here, since `column`
+  already holds the search's state and a loop can back up through it.
+  For a search whose recursion carries more state it is real work. The
+  coroutine keeps the textbook's recursive procedure as it is.
+
+Generalizing from eight queens to `k` on `n`×`n` changed `Place`, the
+arrays and the argument parsing. `Solve`, `NextSolution` and the main
+loop did not change, which is the point: the search can grow without
+touching how the main program asks for results and pauses between
+them.
+
+Where 8.5's WordSets runs two coroutines in step, this program has one
+generator and a consumer that talks to the user.
+
+**Why it runs unchanged on Unix and VMS:**
+
+- **Only portable modules.** It uses only `Args`, `In` and `Out`, the
+  same interface in `rtl/llvm` and `rtl/vax`.
+- **The prompt.** On VMS, `Out` keeps a line until `Ln`. `In` writes
+  the unfinished line as the prompt for the next record it reads
+  (`rtl/vax/In.Mod`), so `Another? [Y/n] ` appears before the input,
+  where a user expects it. `Out.Flush` writes it to a terminal on VMS
+  and does nothing on Unix, where `Out` keeps nothing. The end of the
+  input (Ctrl-D on Unix, Ctrl-Z on VMS) makes `In.Done` FALSE, which
+  stops the program.
+- **Arguments in any case.** DCL passes an argument that is not in
+  quotes in capitals, so `Is` ignores case: `-N 10 -K 5 ALL` works.
+  `Upper` changes only letters, since what `CAP` does to other
+  characters is not defined.
+- **Running it on VMS.** It runs as a foreign command, as WordSets
+  does: `QUEENS :== $DEV:[DIR]QUEENS.EXE`, then `QUEENS`, `QUEENS 5`,
+  `QUEENS ALL` or `QUEENS -N 10 -K 5 3`.
+
+**How it follows 8.4's rules [inferred]:**
+
+- **I/O stays on the main stack.** The solver only searches. The
+  prompt, the reads and the boards all happen in the main program.
+  Waiting for the user's answer blocks the whole program (8.4, item 1),
+  which is what this program wants, since there is nothing else to do
+  while it waits.
+- **Shared state without locks.** The main program reads `column` and
+  `found` while the solver is suspended inside `Place`. That is safe
+  because only `Transfer` switches: the solver cannot change `column`
+  while `Show` is reading it.
+- **The body never returns.** After the last solution, `Solve` answers
+  every `Transfer` with `found` FALSE.
+- **A stack abandoned mid-search.** When the user answers `n`, or a
+  count is reached, the solver is left suspended inside `Place` for
+  good. With `k` well below `n` that is the usual ending, not the
+  exception. Oakwood has no `Free` (8.3, item 3), so the stack, and
+  whatever it points to, stays until the program ends. Here that is
+  harmless, because the program ends at once. In a program that keeps
+  running, every search given up on is a stack kept. That is the case
+  for 8.3's `Free`, or for a collected descriptor, and the strongest
+  argument this example makes.
+- **The stack size is small and known.** The recursion is always
+  `n + 1` calls of `Place` deep, since an empty row recurses too: at
+  most 27, below `Solve` and the trampoline, with one local each. 16384
+  bytes is far more than enough on every target, the VAX's `CALLS`
+  frames included.
+- **The count.** `count` is a `LONGINT`, 32 bits under `-O2`. Only a
+  search that finds more than 2^31 solutions would overflow it, and no
+  one waits for that.
 
 ## 9. Option C: one possible interface
 
