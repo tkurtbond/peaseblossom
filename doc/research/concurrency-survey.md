@@ -875,6 +875,169 @@ program could do between two calls before, it still can.
    - a nested `Fl.Wait` from a coroutine, to see whether (b) is
      workable at all.
 
+### 8.5 An example program: WordSets
+
+Added 2026-11-13, at the user's request: a program written with
+Oakwood's interface that is useful and runs unchanged on Unix and VMS.
+It has not been compiled or run, since B's `Coroutines` is not in the
+tree; it would make a fixture and a guide example once B is built.
+
+It is the classic coroutine problem, "same fringe" (walk two trees in
+order, in step), made into a word-set comparer: it reads the words of
+two text files and says which are only in the first (`<`), only in the
+second (`>`), or in both (`=`). With a document and a word list as the
+two files, the `<` lines are a spelling checker.
+
+Coroutines are what make it simple. An in-order walk is naturally
+recursive, and the merge must advance two walks alternately. Without
+coroutines each walk would have to be rewritten with an explicit stack
+or with parent pointers; with them each is the ordinary recursive
+procedure on its own stack, handing over one word at a time.
+
+```oberon
+MODULE WordSets;  (* which words are in one file, the other, or both *)
+
+  IMPORT Coroutines, Files, Args, Out;
+
+  CONST maxWord = 64;
+
+  TYPE
+    Node = POINTER TO NodeDesc;
+    NodeDesc = RECORD
+      word: ARRAY maxWord OF CHAR;
+      left, right: Node
+    END;
+    Walker = RECORD
+      cor: Coroutines.Coroutine;
+      tree: Node;
+      current: Node   (* the word handed over; NIL after the last *)
+    END;
+
+  VAR
+    main: Coroutines.Coroutine;
+    a, b: Walker;
+    name: ARRAY 256 OF CHAR;
+
+  PROCEDURE Insert(VAR t: Node; VAR word: ARRAY OF CHAR);
+  BEGIN
+    IF t = NIL THEN NEW(t); COPY(word, t.word)
+    ELSIF word < t.word THEN Insert(t.left, word)
+    ELSIF word > t.word THEN Insert(t.right, word)
+    END
+  END Insert;
+
+  PROCEDURE IsWordChar(ch: CHAR): BOOLEAN;
+  BEGIN
+    RETURN (CAP(ch) >= "A") & (CAP(ch) <= "Z") OR (ch >= "0") & (ch <= "9")
+  END IsWordChar;
+
+  PROCEDURE ReadWords(name: ARRAY OF CHAR; VAR tree: Node);
+    VAR f: Files.File; r: Files.Rider; ch: CHAR;
+      word: ARRAY maxWord OF CHAR; i: INTEGER;
+  BEGIN
+    f := Files.Old(name);
+    IF f = NIL THEN
+      Out.String("cannot open "); Out.String(name); Out.Ln; HALT(1)
+    END;
+    Files.Set(r, f, 0); Files.Read(r, ch);
+    WHILE ~r.eof DO
+      IF IsWordChar(ch) THEN
+        i := 0;
+        REPEAT
+          IF i < maxWord - 1 THEN word[i] := ch; INC(i) END;
+          Files.Read(r, ch)
+        UNTIL r.eof OR ~IsWordChar(ch);
+        word[i] := 0X; Insert(tree, word)
+      ELSE Files.Read(r, ch)
+      END
+    END
+  END ReadWords;
+
+  PROCEDURE Height(t: Node): LONGINT;
+    VAR l, r: LONGINT;
+  BEGIN
+    IF t = NIL THEN RETURN 0 END;
+    l := Height(t.left); r := Height(t.right);
+    IF l > r THEN RETURN l + 1 ELSE RETURN r + 1 END
+  END Height;
+
+  (* The walk: ordinary in-order recursion, handing each node to main. *)
+  PROCEDURE Walk(t: Node; VAR w: Walker);
+  BEGIN
+    IF t # NIL THEN
+      Walk(t.left, w);
+      w.current := t; Coroutines.Transfer(w.cor, main);
+      Walk(t.right, w)
+    END
+  END Walk;
+
+  (* A body must not return: after the last word, hand over NIL forever. *)
+  PROCEDURE Finish(VAR w: Walker);
+  BEGIN
+    w.current := NIL;
+    LOOP Coroutines.Transfer(w.cor, main) END
+  END Finish;
+
+  PROCEDURE WalkA; BEGIN Walk(a.tree, a); Finish(a) END WalkA;
+  PROCEDURE WalkB; BEGIN Walk(b.tree, b); Finish(b) END WalkB;
+
+  PROCEDURE Next(VAR w: Walker);
+  BEGIN Coroutines.Transfer(main, w.cor)
+  END Next;
+
+  PROCEDURE Show(mark: CHAR; n: Node);
+  BEGIN Out.Char(mark); Out.Char(" "); Out.String(n.word); Out.Ln
+  END Show;
+
+BEGIN
+  IF Args.argc # 3 THEN
+    Out.String("usage: wordsets file1 file2"); Out.Ln; HALT(2)
+  END;
+  Args.Get(1, name); ReadWords(name, a.tree);
+  Args.Get(2, name); ReadWords(name, b.tree);
+  (* A walk is as deep as its tree is high; sorted input makes a list. *)
+  Coroutines.Init(WalkA, 16384 + 256 * Height(a.tree), a.cor);
+  Coroutines.Init(WalkB, 16384 + 256 * Height(b.tree), b.cor);
+  Next(a); Next(b);
+  WHILE (a.current # NIL) OR (b.current # NIL) DO
+    IF (b.current = NIL) OR (a.current # NIL) & (a.current.word < b.current.word) THEN
+      Show("<", a.current); Next(a)
+    ELSIF (a.current = NIL) OR (b.current.word < a.current.word) THEN
+      Show(">", b.current); Next(b)
+    ELSE
+      Show("=", a.current); Next(a); Next(b)
+    END
+  END
+END WordSets.
+```
+
+**Why it runs unchanged on Unix and VMS:**
+
+- **Only portable modules.** It uses only `Files`, `Args` and `Out`,
+  which have the same interface in `rtl/llvm` and `rtl/vax`.
+- **Line ends.** On VMS, `Files.Old` reads a variable-length or VFC
+  text file a record at a time, with a line feed after each record
+  (`rtl/vax/Files.Mod`), so the word scanner sees the same text on both
+  systems.
+- **Running it on VMS.** It runs as a foreign command, for example
+  `WORDSETS :== $DEV:[DIR]WORDSETS.EXE`, then `WORDSETS MEMO.TXT
+  WORDS.TXT`.
+
+**How it follows 8.4's rules [inferred]:**
+
+- **I/O stays on the main stack.** All reading and output happen
+  there; the coroutines only walk trees, so nothing blocks on a
+  coroutine's stack and no C or RMS code runs there.
+- **Bodies never return.** `Finish` hands over `NIL` forever, as
+  Oakwood requires.
+- **Stack size comes from the data.** Each walk's recursion is as deep
+  as its tree is high. Sorted input turns the unbalanced tree into a
+  list, so a sorted 10000-word dictionary needs a deep stack. The
+  program measures the height and sizes each stack from it before
+  `Init`. On Unix that costs only the pages actually touched. On VMS
+  the whole stack is charged against the page-file quota, which
+  matters for very large inputs; a balanced tree would avoid both.
+
 ## 9. Option C: one possible interface
 
 Added 2026-11-13, at the user's request: one possible exported
