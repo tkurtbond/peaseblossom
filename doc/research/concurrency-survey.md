@@ -400,8 +400,7 @@ Findings:
    - how a stack is freed (section 8.3, item 3);
    - whether the collector's stack list belongs in
      `GarbageCollectedHeap` or in the new module;
-   - whether the switch saves the floating-point control registers;
-   - a run on arm64 and FreeBSD.
+   - whether the switch saves the floating-point control registers.
 3. **Option C is the natural next step after B** and can wait until
    programs ask for it. It too is a library, not a language change.
 4. **Options D and E: not adopted.**
@@ -464,16 +463,13 @@ and is not in the tree. Its parts were:
 |---|---|---|
 | atla | Linux (Fedora 44), x86-64 | everything, at `-opt 0` and `-opt 2`, and with `-lto` |
 | artos | NetBSD 11.0, amd64 (VM) | everything, with and without `MAP_STACK` |
+| alerik | FreeBSD 15.1, amd64 (VM) | everything, with and without `MAP_STACK` |
 | cymoril | OpenBSD 7.9, i386 (VM) | everything, with and without `MAP_STACK` |
+| rackhir | FreeBSD 15.1, arm64 (VM, emulated on atla) | everything, with and without `MAP_STACK` |
 | SIMH MicroVAX 3900 | VAX/VMS 5.5-2H4 | everything, with two ways to end a new stack's frame chain |
 
-Not run:
-
-- **arm64.** rackhir was shut off. The arm64 switch was written but
-  neither assembled nor run.
-- **FreeBSD.** alerik was shut off.
-- **NetBSD i386 and OpenBSD amd64.** yishana and jherek were not
-  tried.
+alerik and rackhir ran it later the same day, when they were back up.
+NetBSD i386 (yishana) and OpenBSD amd64 (jherek) were not tried.
 
 ### 8.2 Performance
 
@@ -481,13 +477,17 @@ Not run:
 operation, at the default `-opt` (2, but 0 on i386), from 10^5 to
 10^6 repetitions:
 
-| | atla x86-64 | artos amd64 | cymoril i386 | VAX (SIMH) |
-|---|---|---|---|---|
-| Procedure-variable call, for scale | ~1 ns | 1 ns | 2 ns | ~0.3 µs |
-| `Transfer` there and back (two switches) | 21-22 ns | 23 ns | 34 ns | ~2.4 µs |
-| `swapcontext` there and back, for comparison | 256-281 ns | 1268 ns | (none: OpenBSD has no `ucontext`) | — |
-| `Init` (allocate a stack, protect its guard page) | ~2.5 µs | ~2.0 µs | ~13 µs | ~70 µs |
-| First `Transfer` to a new stack (touches its first page) | ~125 ns | ~148 ns | ~251 ns | — |
+| | atla x86-64 | artos amd64 | alerik amd64 | cymoril i386 | rackhir arm64 (emulated) | VAX (SIMH) |
+|---|---|---|---|---|---|---|
+| Procedure-variable call, for scale | ~1 ns | 1 ns | 1 ns | 2 ns | 28 ns | ~0.3 µs |
+| `Transfer` there and back (two switches) | 21-22 ns | 23 ns | 22 ns | 34 ns | 410 ns | ~2.4 µs |
+| `swapcontext` there and back, for comparison | 256-281 ns | 1268 ns | 1041 ns | (none: OpenBSD has no `ucontext`) | 8569 ns | — |
+| `Init` (allocate a stack, protect its guard page) | ~2.5 µs | ~2.0 µs | ~25 µs | ~13 µs | ~27 µs | ~70 µs |
+| First `Transfer` to a new stack (touches its first page) | ~125 ns | ~148 ns | ~135 ns | ~251 ns | ~533 ns | below the clock's resolution |
+
+rackhir's absolute times are the emulator's, so only its ratios mean
+anything: there a round trip costs about 15 procedure calls, and
+`swapcontext` 21 times as much as `Transfer`.
 
 - **A round trip by `Transfer` costs about 20 procedure-variable calls
   on x86, and 8 on the VAX.** Most of it is saving and restoring the
@@ -503,6 +503,16 @@ operation, at the default `-opt` (2, but 0 on i386), from 10^5 to
   or `LIB$GET_VM_PAGE` plus `$SETPRT` on the VAX. A program that makes
   a coroutine per item, and not per task, would pay for that. A pool
   of stacks would be a library's answer [inferred].
+- **On the VAX the first `Transfer` costs no more than any other, as
+  far as the clock can tell.** Six runs each of 1000 and 1900 `Init`s,
+  with and without a first `Transfer` to each new stack and straight
+  back, took 63 and 69 centiseconds in all over 8700 of each: no
+  difference within the 10 ms unit, so the first switch is a round
+  trip (2.4-3.7 µs, by the run) plus less than about 10 µs. There is a
+  reason it is cheap: `CORO_NEW` writes the stack's first frame into
+  its top page, so `Init` has already touched the page the first
+  `Transfer` lands on. The same runs showed how coarse the clock is:
+  1900 `Init`s took 10-17 cs, no more than 1000 did (10-11 cs).
 
 **Memory [measured on atla].** A stack's size is reserved address
 space. Only the pages the coroutine touches become memory:
@@ -522,11 +532,11 @@ space. Only the pages the coroutine touches become memory:
 suspended stack, from its saved SP to its top (8.3, item 1), and the
 cost grows with how deep they are:
 
-| Collection of 100000 live objects | atla | artos | cymoril (`-opt 0`) |
-|---|---|---|---|
-| no coroutines (main stack only) | 1.08 ms | 1.14 ms | 10.1 ms |
-| + 10000 suspended stacks, each a few frames deep | 1.57-1.61 ms (~50 ns a stack) | 1.62 ms | 13.9 ms |
-| + 10000 more, each 100 frames deep | 2.2 ms | 2.25 ms | (not mapped) |
+| Collection of 100000 live objects | atla | artos | alerik | cymoril (`-opt 0`) | rackhir (emulated) |
+|---|---|---|---|---|---|
+| no coroutines (main stack only) | 1.08 ms | 1.14 ms | 1.13 ms | 10.1 ms | 8.5 ms |
+| + 10000 suspended stacks, each a few frames deep | 1.57-1.61 ms (~50 ns a stack) | 1.62 ms | 1.66 ms | 13.9 ms | 16.2 ms |
+| + 10000 more, each 100 frames deep | 2.2 ms | 2.25 ms | 2.38 ms | (not mapped) | 24.8 ms |
 
 A program with tens of coroutines would not notice this. A program
 with 10^4 of them adds about half a millisecond to each collection.
@@ -545,9 +555,12 @@ change, and no code in `Transfer`'s absence.
    without the hook [measured, every host]:
 
    - **With no support** (mode 0), the scan runs from a coroutine's
-     stack up to the main stack's base, across unmapped memory. It
-     crashed: SIGSEGV or SIGBUS on LLVM, ACCVIO on the VAX after one
-     list had already been freed.
+     stack up to the main stack's base, across unmapped memory. On
+     Linux, NetBSD and OpenBSD it crashed (SIGSEGV or SIGBUS), and on
+     the VAX it got ACCVIO after one list had already been freed. On
+     FreeBSD, amd64 and arm64 alike, it did not crash: it lost both
+     lists as mode 1 does. Why the scan did not fault there was not
+     isolated.
    - **Moving `stackBase` on each `Transfer`, but not scanning the
      suspended stacks** (mode 1), freed each side's list while the
      other side ran: "1 wrong, 9999 missing". The program did not
@@ -623,8 +636,8 @@ change, and no code in `Transfer`'s absence.
      (writing output, or the heap asking for memory). Every program
      then died with SIGSEGV, because OpenBSD checks that SP is in a
      `MAP_STACK` mapping at system-call entry. OpenBSD 7.9's `mmap(2)`
-     documents the flag but not that rule. NetBSD runs the same
-     programs without it.
+     documents the flag but not that rule. NetBSD and FreeBSD (amd64
+     and arm64) run the same programs without it.
    - **VMS**: `LIB$GET_VM_PAGE` gives page-aligned pages (*VMS 5.0
      RTL Library (LIB$) Manual*, chapter 5). `$SETPRT` with `PRT$C_NA`
      and equal start and end addresses protects one page (*VMS 5.5
@@ -699,4 +712,4 @@ change, and no code in `Transfer`'s absence.
 **Size of the work [inferred]:** about 150 lines of Oberon, 150 of C
 and 40 of MACRO-32, plus the heap's hook on both back ends, the
 fixtures (the four programs above, made to compare output), the
-guides, and runs on rackhir and alerik first.
+guides.
