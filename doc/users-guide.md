@@ -607,6 +607,16 @@ or a library: the module's own C, which its `["C"]` procedures call.
 clang++; a program or library with a C++ part is linked by clang++, which
 adds the C++ runtime. A module has one part, not both.
 
+**Threads.** A poc program has one thread, and must not start another,
+whether from its C part or by a C library that calls back into Oberon on
+a thread of its own. The collector looks for pointers only on the main
+thread's stack, so it would free what another thread holds; the heap has
+no locks, so `NEW` on two threads at once corrupts it; and `Out`, `Files`
+and the other runtime modules keep state that two threads would break. A
+C library may run threads of its own as long as none of them runs Oberon
+code or uses what the Oberon heap holds. A signal handler is not a
+thread, but it interrupts like one: chapter 10, "Signals", has its rule.
+
 A library wrapping a native one, say `fltk`, is built with the `-link`
 arguments that native library needs, `poc -link -lfltk -library fltk
 ...`; its manifest records them, so a program that uses the library,
@@ -897,6 +907,46 @@ $ ./Env
 (not set)
 $ GREETING=hello ./Env
 hello
+```
+
+**Signals** (`Platform`): `SetInterruptHandler` (and `SetQuitHandler`,
+`SetBadInstructionHandler`) names a procedure to call when the program
+gets the signal. It interrupts the program wherever it is, perhaps
+halfway through `NEW` or a call of `Out`, so it may only set the
+program's own variables: it must not use `NEW`, `Out`, `Err`, `In`,
+`Files`, `Texts` or `Oberon`. Nothing detects a handler that does, and
+what it breaks fails later, somewhere else. The main line reads what the
+handler set by `SYSTEM.GET`, which reads memory every time; a loop such
+as `WHILE ~interrupted DO .. END` may read the variable once, when
+optimized, and never end.
+
+<!-- example: runtime/Stop.Mod -->
+```
+MODULE Stop;
+  (* Work until interrupted: the handler only sets a variable, which the
+     main line reads by SYSTEM.GET *)
+  IMPORT SYSTEM, Platform, Out;
+  VAR interrupted, stop: BOOLEAN; rounds: LONGINT;
+
+  PROCEDURE Interrupt(signal: SYSTEM.INT32);
+  BEGIN interrupted := TRUE
+  END Interrupt;
+
+BEGIN
+  Platform.SetInterruptHandler(Interrupt);
+  REPEAT
+    INC(rounds);
+    SYSTEM.GET(SYSTEM.ADR(interrupted), stop)
+  UNTIL stop;
+  Out.String("interrupted"); Out.Ln
+END Stop.
+```
+
+<!-- run: runtime -->
+```
+$ poc Stop.Mod
+$ ./Stop & sleep 1; kill -INT $!; wait $!
+interrupted
 ```
 
 **Texts** (`Texts`, `Oberon`), for programs written for the Oberon system:

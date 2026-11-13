@@ -258,7 +258,22 @@ MODULE Platform;
   (* Signals: handler is called with the signal's number when the process
      gets it (SIGINT, SIGQUIT, SIGILL). A handler stays in place until
      another replaces it. Its type, SignalHandler, is not exported (as in
-     voc): PROCEDURE (signal: SYSTEM.INT32). *)
+     voc): PROCEDURE (signal: SYSTEM.INT32).
+
+     A handler interrupts the program wherever it is, perhaps halfway
+     through NEW, a collection or a call of Out, so it may only set the
+     program's own variables. It must not use
+     NEW, Out, Err, In, Files, Texts or Oberon: nothing detects it, and the
+     heap or the buffer it breaks fails later, somewhere else. The main
+     line reads what the handler set by SYSTEM.GET, which reads memory
+     every time; a plain loop such as WHILE ~interrupted DO .. END may read
+     the variable once, at -opt 1 and up, and never end.
+
+         PROCEDURE Interrupt(signal: SYSTEM.INT32);
+         BEGIN interrupted := TRUE
+         END Interrupt;
+         ...
+         REPEAT Work; SYSTEM.GET(SYSTEM.ADR(interrupted), stop) UNTIL stop *)
   PROCEDURE SetInterruptHandler*(handler: SignalHandler);
   BEGIN CSetHandler(interruptSignal, SYSTEM.VAL(SYSTEM.ADDRESS, handler))
   END SetInterruptHandler;

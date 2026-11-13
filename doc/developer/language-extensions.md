@@ -892,6 +892,7 @@ what that value is.
 | `COPY(x, v)` | copies up to the source's `0X`, at most `LEN(v) - 1` characters, and always terminates `v`; a source without a `0X` is read to its end (`llvm-no-trap-behavior` case 4) |
 | `=`, `<`, ... on character arrays with no `0X` | the array's end counts as a `0X`, so two equal unterminated arrays are equal; voc reads past the end. `LEN` is the declared length whatever the contents (`llvm-no-trap-behavior` case 5) |
 | A variable never assigned | zero: 0, `FALSE`, `0X`, `{}`, `NIL`, for module variables, locals (zeroed on every entry, since Phase 11 D16, 2026-09-26) and heap blocks alike; until D16 a local that was not a pointer or procedure value held whatever was in the frame (a probe read the 77s a previous call had left), as in voc (`llvm-no-trap-behavior` case 0) |
+| A second thread, or `NEW`, `Out`, `Err`, `In`, `Files`, `Texts` or `Oberon` in a signal handler (LLVM) | undefined: the heap or the module's state may be corrupted, and fails later somewhere else ("Threads and signal handlers"); at VAX AST level `NEW` without `AsynchronousTraps` is trap 15 instead |
 
 **Compile time: what is an error before the program runs.** Where the compiler
 can see a trap or an undefined result coming, it says so - as voc does, apart
@@ -1925,3 +1926,39 @@ with its probes and steps, is `predeclared-unsigned-types.md`.
   that a declaration after a procedure cannot reuse a name visible from an
   enclosing scope ("Declarations after procedures"), so one of these names
   declared there becomes an error.
+
+## Threads and signal handlers (decided 2026-11-13; Phase 19, candidate 7)
+
+`Oberon2.pdf` says nothing of concurrency. poc's answer, until a library
+offers more (`doc/research/concurrency-survey.md`, the Proposal):
+
+- **A program has one thread.** It must not start another, whether from a
+  module's part in C or through a C library that calls back into Oberon
+  on a thread of its own. The collector scans only the main thread's stack
+  (from `SetStackBase`), the heap has no locks, and the runtime modules
+  (`Out`, `Err`, `In`, `Files`, `Texts`, `Oberon`, `Modules`) keep global
+  state. A probe (the survey, section 4.3) crashed when two pthreads
+  allocated, and lost updates at `-opt 0`. A C library's own threads are
+  harmless while none runs Oberon code or uses what the Oberon heap holds.
+  Nothing checks it.
+- **A signal handler** (`Platform.SetInterruptHandler`,
+  `SetQuitHandler`, `SetBadInstructionHandler`) runs wherever the program
+  was interrupted, so it gets the AST rule of
+  `doc/developer/vax-macro32-backend.md` section 22: no `Out`, `Err`, `In`,
+  `Files`, `Texts` or `Oberon`. On LLVM it gets no `NEW` either, since the
+  heap does not detect re-entry (on the VAX a program that imports
+  `AsynchronousTraps` may use `NEW` at AST level, and one that does not
+  gets trap 15). So a handler sets the program's own variables and
+  nothing else.
+- **The main line reads such a variable by `SYSTEM.GET`**, which is a
+  volatile load (Phase 11 D13). An ordinary read in a loop that calls
+  nothing the optimizer cannot see into is loaded once: `WHILE
+  ~interrupted DO INC(n) END` never ended at `-opt 1` or `-opt 2` on atla
+  (2026-11-13), and `REPEAT INC(n); SYSTEM.GET(SYSTEM.ADR(interrupted),
+  stop) UNTIL stop` did at every level. A call to another module's
+  procedure in the loop also worked, but `-lto` can see into it.
+
+Documented in `Platform`'s comment (and so the Reference Guide), the User's
+Guide (chapter 9, "Threads"; chapter 10, "Signals", with `Stop.Mod`) and
+`rtl/vax/Platform.Mod`. A heap re-entry check on LLVM like the VAX's trap
+15, and a coroutine module (the Proposal's item 2), are not decided.

@@ -354,21 +354,19 @@ Findings:
    The context switch would instead be a few instructions per
    architecture: x86-64, i386 and arm64 in `rtl/llvm/*.c` with inline
    assembly, and VAX MACRO-32 in `PocRtl.mar`. **[inferred]** On the
-   VAX it is especially simple:
-   - call a `Transfer` routine whose entry mask saves R2-R11;
-   - store SP, FP and AP;
-   - load the other coroutine's SP, FP and AP;
-   - `RET`.
-
-   The new stack's first frame must end the FP chain that VMS condition
-   handling and traceback walk. That is still to be designed.
+   VAX it is especially simple. The probe of section 8 found it
+   simpler still: a routine whose entry mask saves R2-R11 stores its
+   FP, loads the other coroutine's FP and does `RET`, which restores
+   SP, AP and the registers from the other stack's frame. A new
+   stack's first frame is chained to `main`'s (section 8.3, items 4
+   and 7).
 
 ## 6. Options and proposal
 
 | | Option | What a program gets | Cost to poc | Both back ends? |
 |---|---|---|---|---|
 | A | **Leave concurrency out** (status quo, documented) | Nothing new. The guides say threads are unsupported, and why (section 4.3). | One paragraph in `language-extensions.md` and the Reference Guide. A rule for signal and AST handlers. | yes |
-| B | **Coroutines library** (Oakwood §1.2.8 interface, maybe with ISO Modula-2's names for the extras) | Explicit `Transfer` between coroutines with fixed stacks. A cooperative scheduler, generators and pipelines can be written in Oberon on top of it. | A runtime module and one context-switch routine per architecture (four). The collector scans a list of suspended stacks, empty unless the module is used. Stacks get guard pages (`mmap` with `MAP_STACK` on OpenBSD; on VMS, pages from `$EXPREG` with a protected guard page; **neither verified yet**). No compiler change. | yes |
+| B | **Coroutines library** (Oakwood §1.2.8 interface, maybe with ISO Modula-2's names for the extras) | Explicit `Transfer` between coroutines with fixed stacks. A cooperative scheduler, generators and pipelines can be written in Oberon on top of it. | A runtime module and one context-switch routine per architecture (four). The collector scans a list of suspended stacks, empty unless the module is used. A hook in the collector. Stacks get guard pages (`mmap` with `MAP_STACK` on OpenBSD; on VMS `LIB$GET_VM_PAGE` and `$SETPRT`; both verified, section 8). No compiler change. | yes |
 | C | **B plus a cooperative task library**: `Tasks` with spawn, yield, join, monitors/conditions and channels, written in Oberon over B. Blocking I/O wrapped as DEC Ada's `TASKING_SERVICES` does: asynchronous `SYS$QIO` plus an AST that wakes the task; `poll` on POSIX. | Go-like structure without parallelism or preemption. Atomicity between switch points is guaranteed. | B, plus the library, plus wrappers around `Files`, `In` and the console for each OS. No compiler change. | yes |
 | D | **Language-level tasks and monitors** (`EXCLUSIVE`/`AWAIT` à la Active Oberon, or protected types à la Ada) | Checked structure: shared data reachable only through the monitor's operations. | A Phase-sized extension: syntax, checker, `.sym`, both code generators, a shared-variable rule in `language-extensions.md`, `-strict` rejecting it. It needs C's runtime underneath. | yes, if built on C |
 | E | **Preemptive OS threads** (POSIX threads; DECthreads on VMS) | Real parallelism on the LLVM targets, but not on the VAX (DECthreads there is single-processor). | Stop-the-world, scanning of every thread's stack, a heap lock, a reentrant runtime library, finalizers on their own thread, a memory model, and a draft-4 vs. final pthread shim on VMS. Effectively a new runtime. | in name only |
@@ -381,6 +379,12 @@ Findings:
      of §22: no `NEW`, no `Out`/`Err`/`In`/`Files`.
 
    This fixes a gap that exists today.
+
+   **Done 2026-11-13** (`language-extensions.md`, "Threads and signal
+   handlers"). Writing it found one more rule: the main line must read
+   the handler's variable by `SYSTEM.GET`, since at `-opt 1` and up LLVM
+   loaded it once in `WHILE ~interrupted DO INC(n) END`, and the loop
+   never ended.
 2. **If the user wants concurrency at all: option B as a runtime
    module**, through `PLAN.md`'s "Ongoing library enhancements".
    - It is the step the Oberon tradition itself standardized.
@@ -388,12 +392,16 @@ Findings:
    - It needs no change to the language or the checker, and it runs the
      same on every target, the VAX included.
 
-   Its open design points are:
-   - the stack size and guard pages on each OS;
-   - what a returning body does (trap, as Oakwood forbids it);
-   - the FP-chain terminator on VMS;
+   Section 8 probed it on x86-64, i386 and the VAX: a round trip by
+   `Transfer` costs about 20 procedure calls (8 on the VAX), and the
+   guard pages, a returning body (exit 16) and the VMS frame chain
+   (chained to `main`'s) are settled there. Its open design points are
+   now:
+   - how a stack is freed (section 8.3, item 3);
    - whether the collector's stack list belongs in
-     `GarbageCollectedHeap` or in the new module.
+     `GarbageCollectedHeap` or in the new module;
+   - whether the switch saves the floating-point control registers;
+   - a run on arm64 and FreeBSD.
 3. **Option C is the natural next step after B** and can wait until
    programs ask for it. It too is a library, not a language change.
 4. **Options D and E: not adopted.**
@@ -417,10 +425,278 @@ Findings:
   slicing on VMS 5.5-2 was not tested. The *Guide to DECthreads* for 5.5
   is not held. It is the manual to fetch if option E is ever on the
   table on the VAX; add it to `vax-vms-manuals-to-get.md` then.
-- OpenBSD's `MAP_STACK` requirement for any stack a thread runs on is
-  from memory. Verify it against `mmap(2)` on cymoril before option B.
-- How a VMS coroutine stack should be allocated and protected
-  (`$EXPREG`/`$CRETVA` with `$SETPRT`) must come from the 5.5-2 System
-  Services manual, as the project rule requires.
+- OpenBSD's `MAP_STACK` requirement was verified on cymoril
+  (section 8.3, item 5).
+- A VMS coroutine stack's allocation and guard page were taken from
+  the VMS 5.0 RTL Library (LIB$) and 5.5 System Services manuals and
+  verified on the VAX (section 8.3, item 5). For stacks over 1000
+  pages the LIB$ manual recommends `$EXPREG` instead, which was not
+  tried.
 - The cause of the segfault in section 4.3 was not isolated. It does not
   matter for the proposal, because both candidate causes are present.
+
+## 8. Option B probed: what it costs, and what implementing it needs
+
+Added 2026-11-13, at the user's request: how a coroutines library
+would affect the performance of the programs that use it, and what
+implementing it would take, found by exploratory programming, without
+starting on B itself. The prototype was built in a scratch directory
+and is not in the tree. Its parts were:
+
+- a module `Coroutines` with Oakwood's interface (`Init(body,
+  stackSize, VAR cor)`, `Transfer(VAR from, to)`);
+- a context switch for x86-64, i386 and arm64 in C with inline
+  assembly, and for the VAX in MACRO-32;
+- a copy of each back end's `GarbageCollectedHeap` with a hook for
+  the suspended stacks (8.3, item 1);
+- four test programs:
+  - `Ping`: a generator, and a body that returns;
+  - `GcTest`: each of two stacks holds a list that nothing else
+    points to, while the other one allocates enough to collect many
+    times;
+  - `Fail`: a NIL trap, a stack overflow, `HALT` and (on the VAX) an
+    access violation, each on a coroutine;
+  - `Bench`: the timings below.
+
+### 8.1 Where it ran
+
+| Host | System, word size | Ran |
+|---|---|---|
+| atla | Linux (Fedora 44), x86-64 | everything, at `-opt 0` and `-opt 2`, and with `-lto` |
+| artos | NetBSD 11.0, amd64 (VM) | everything, with and without `MAP_STACK` |
+| cymoril | OpenBSD 7.9, i386 (VM) | everything, with and without `MAP_STACK` |
+| SIMH MicroVAX 3900 | VAX/VMS 5.5-2H4 | everything, with two ways to end a new stack's frame chain |
+
+Not run:
+
+- **arm64.** rackhir was shut off. The arm64 switch was written but
+  neither assembled nor run.
+- **FreeBSD.** alerik was shut off.
+- **NetBSD i386 and OpenBSD amd64.** yishana and jherek were not
+  tried.
+
+### 8.2 Performance
+
+**What a program pays for using it [measured].** All times are per
+operation, at the default `-opt` (2, but 0 on i386), from 10^5 to
+10^6 repetitions:
+
+| | atla x86-64 | artos amd64 | cymoril i386 | VAX (SIMH) |
+|---|---|---|---|---|
+| Procedure-variable call, for scale | ~1 ns | 1 ns | 2 ns | ~0.3 µs |
+| `Transfer` there and back (two switches) | 21-22 ns | 23 ns | 34 ns | ~2.4 µs |
+| `swapcontext` there and back, for comparison | 256-281 ns | 1268 ns | (none: OpenBSD has no `ucontext`) | — |
+| `Init` (allocate a stack, protect its guard page) | ~2.5 µs | ~2.0 µs | ~13 µs | ~70 µs |
+| First `Transfer` to a new stack (touches its first page) | ~125 ns | ~148 ns | ~251 ns | — |
+
+- **A round trip by `Transfer` costs about 20 procedure-variable calls
+  on x86, and 8 on the VAX.** Most of it is saving and restoring the
+  callee-saved registers, plus `Transfer`'s own bookkeeping in Oberon
+  (`SetStackBase`). Saving the x86 floating-point control registers
+  (MXCSR and the x87 control word) adds 2-3 ns of the 21-22.
+- **That is 10-50 times cheaper than `swapcontext`.** `swapcontext`
+  makes a `sigprocmask` system call on every switch. The VAX's 2.4 µs
+  is CPU time from `F$GETJPI("","CPUTIM")`, whose unit is 10 ms, over
+  10^5 round trips. It is two `CALLS` with a ten-register entry mask
+  and two `RET`s, plus `Transfer`'s code.
+- **`Init` is a system call or two.** That is `mmap` plus `mprotect`,
+  or `LIB$GET_VM_PAGE` plus `$SETPRT` on the VAX. A program that makes
+  a coroutine per item, and not per task, would pay for that. A pool
+  of stacks would be a library's answer [inferred].
+
+**Memory [measured on atla].** A stack's size is reserved address
+space. Only the pages the coroutine touches become memory:
+
+- 10000 coroutines with 64 KiB stacks, each switched to once, raised
+  the resident size by 40 MB, 4 KiB each, and the virtual size by
+  680 MB.
+- On a 32-bit host the address space is the limit. On cymoril a
+  second batch of 10000 64 KiB stacks (20002 in all, about 1.3 GB)
+  could not be mapped. The run had a 1 GB data limit (`ulimit -d`),
+  and which limit refused it was not isolated.
+- On the VAX each stack is pages of P0 space. They count against the
+  process's virtual-memory quotas as the heap's do; how much was not
+  measured.
+
+**What a collection pays [measured].** The collector must scan every
+suspended stack, from its saved SP to its top (8.3, item 1), and the
+cost grows with how deep they are:
+
+| Collection of 100000 live objects | atla | artos | cymoril (`-opt 0`) |
+|---|---|---|---|
+| no coroutines (main stack only) | 1.08 ms | 1.14 ms | 10.1 ms |
+| + 10000 suspended stacks, each a few frames deep | 1.57-1.61 ms (~50 ns a stack) | 1.62 ms | 13.9 ms |
+| + 10000 more, each 100 frames deep | 2.2 ms | 2.25 ms | (not mapped) |
+
+A program with tens of coroutines would not notice this. A program
+with 10^4 of them adds about half a millisecond to each collection.
+
+**What a program that does not use it pays [measured].** It pays one
+test of a procedure variable for NIL per collection, the heap's hook.
+That fits "cost only for users". Nothing else changes: no compiler
+change, and no code in `Transfer`'s absence.
+
+### 8.3 What implementing B needs
+
+1. **A hook in `GarbageCollectedHeap`, on both back ends.** This is the
+   one change outside the new module, and it cannot be avoided. Each
+   collector marks from the running stack, from the current SP up to
+   `stackBase`, which `main` records. `GcTest` shows what goes wrong
+   without the hook [measured, every host]:
+
+   - **With no support** (mode 0), the scan runs from a coroutine's
+     stack up to the main stack's base, across unmapped memory. It
+     crashed: SIGSEGV or SIGBUS on LLVM, ACCVIO on the VAX after one
+     list had already been freed.
+   - **Moving `stackBase` on each `Transfer`, but not scanning the
+     suspended stacks** (mode 1), freed each side's list while the
+     other side ran: "1 wrong, 9999 missing". The program did not
+     crash and printed wrong results, the worst outcome.
+   - **Moving `stackBase` and scanning every suspended stack** from
+     its saved SP (the VAX: its saved FP) to its top (mode 2) kept
+     both lists through 64-389 collections. That held on every host,
+     at `-opt 0` and with `-lto` too.
+
+   The prototype's hook is four exports:
+   - `MarkRange(low, high)`, which marks candidates in a range;
+   - `StackBase()`;
+   - `SetStackScanner(p)`;
+   - a call `IF stackScanner # NIL THEN stackScanner END` after
+     `MarkFromStack`.
+
+   A suspended stack's callee-saved registers are covered without more
+   work, because the switch pushes them onto that stack (on the VAX,
+   `CALLS` saves them in the switch routine's frame).
+
+   Whether the list of stacks lives in the heap or in the new module is
+   a choice. A stack that the heap knows about could also be freed by
+   it (item 3).
+
+2. **A `Coroutine` must name a descriptor, not hold the stack's
+   state.** Records can be copied, and `Transfer(VAR from, to)` writes
+   `from`. The prototype keeps a table of stacks (SP, low, high) and
+   puts an index in the record. The real module would put a pointer to
+   a descriptor there [inferred].
+
+3. **Freeing a stack is not solved.** Oakwood has no `Free`, a record
+   has no finalizer, and the prototype frees nothing. There are two
+   ways:
+   - **An explicit `Free` extension.** It is simple. A program that
+     frees a stack it later transfers to fails as a dangling pointer
+     does.
+   - **A collected descriptor.** The heap would scan a suspended stack
+     only when its descriptor has been marked, not as a root, and free
+     the stack when the descriptor dies. Otherwise a stack that holds
+     a pointer to its own descriptor keeps itself alive. That needs a
+     mark-time hook per object, and more heap change than item 1.
+
+   On the VAX, the guard page's protection must be restored before the
+   pages go back by `LIB$FREE_VM_PAGE` [inferred].
+
+4. **A context switch per architecture, and a first frame for a new
+   stack.** Each is a few instructions:
+
+   | Target | Saved | First frame |
+   |---|---|---|
+   | x86-64 | RBP, RBX, R12-R15, MXCSR, x87 control word: 9 words | returns into a trampoline with the body in R12 |
+   | i386 | EBP, EBX, ESI, EDI, x87 control word: 7 words | the body in EBX |
+   | arm64 | X19-X30, D8-D15, FPCR: 176 bytes | the body in X19, the trampoline in X30 |
+   | VAX | R2-R11 by the entry mask: `MOVL FP,@4(AP)`, `MOVL 8(AP),FP`, `RET` | a fake `CALLS #0` frame: mask `^X2FFC0000`, saved PC the trampoline, saved R2 the body |
+
+   - **The trampoline calls the body.** If the body returns, which
+     Oakwood forbids, the program ends with status 16, "coroutine body
+     returned" (on the VAX `%X10000082`, as poc's traps map status
+     16). This ran on every host.
+   - **The floating-point control registers are optional.** poc gives
+     a program no way to change the rounding mode or the exception
+     masks. A module's C part could, though, and saving the registers
+     costs 2-3 ns.
+   - **On the VAX the switch is three instructions.** The entry mask
+     saves the registers, and `RET` through the other stack's frame
+     restores everything, AP and PSW included.
+
+5. **Stacks with a guard page below.**
+   - **POSIX**: `mmap` with `MAP_PRIVATE | MAP_ANON`, then `mprotect`
+     of the lowest page to `PROT_NONE`.
+   - **OpenBSD needs `MAP_STACK` [measured].** Without it, `Ping`'s
+     transfers worked until the coroutine made its first system call
+     (writing output, or the heap asking for memory). Every program
+     then died with SIGSEGV, because OpenBSD checks that SP is in a
+     `MAP_STACK` mapping at system-call entry. OpenBSD 7.9's `mmap(2)`
+     documents the flag but not that rule. NetBSD runs the same
+     programs without it.
+   - **VMS**: `LIB$GET_VM_PAGE` gives page-aligned pages (*VMS 5.0
+     RTL Library (LIB$) Manual*, chapter 5). `$SETPRT` with `PRT$C_NA`
+     and equal start and end addresses protects one page (*VMS 5.5
+     System Services Reference Manual*, SYS-529). Both worked.
+
+6. **What ends a program on a coroutine [measured]:**
+
+   | | LLVM | VAX |
+   |---|---|---|
+   | NIL dereference | the trap's message (with `-trap-location`, its place and procedure), the finalizers, exit 4 | `%X10000022` (trap 4) |
+   | `HALT(3)` | the finalizers, exit 3 | `%X1000001A` |
+   | stack overflow into the guard page | SIGSEGV (139), as on the main stack | ACCVIO, see item 7 |
+   | access violation | not tried (SIGSEGV) | see item 7 |
+
+   poc's traps and `HALT` do not depend on the stack they run on. On
+   the VAX `POC_TRAP` leaves by `$EXIT` itself and needs no condition
+   handler.
+
+7. **On the VAX, where a new stack's frame chain ends.** The calling
+   standard says the search for a condition handler "ends when the old
+   FP is 0 or is not accessible" (*Introduction to VMS 5.4 System
+   Routines*, AA-LA66B, 2-48). The system's catch-all and traceback
+   handlers sit in frames below `main`'s. Both ways were tried with an
+   access violation on a coroutine:
+   - **Saved FP 0**: no handler is found. The last-chance handler
+     prints "Improperly handled condition, image exit forced" and a
+     register dump, and there is no traceback.
+   - **Saved FP set to `main`'s frame**, which is the `stackBase` that
+     `main` passes: the normal `%TRACE-F-TRACEBACK` lists the
+     coroutine's frames (the body, then the trampoline), and the image
+     exits `%X1000000C`.
+
+   Chaining to `main` is the better choice [inferred]. Its risk is a
+   handler that unwinds (`$UNWIND`) past the coroutine's frames, which
+   would land on the main stack's frames while SP is on the coroutine's
+   stack. poc's own code establishes no such handler, but a program's
+   `["VMS"]` code could.
+
+   A **stack overflow** ends the image with ACCVIO either way, with two
+   dumps, because delivering the exception needs room on the stack that
+   has none. The main stack does not have this problem, since VMS
+   extends it. A clean message would need the overflow caught before
+   the guard page, by a check in each procedure's prologue, which is a
+   compiler change and not worth it for B [inferred].
+
+8. **Rules for programs, to document [inferred]:**
+   - **No `Transfer` from a signal handler or an AST.**
+   - **Room on every stack for handlers.** A signal handler (LLVM) or
+     an AST (VMS) runs on whichever stack is current, so every
+     coroutine's stack needs room for one.
+   - **Bodies never return.**
+   - **The stack size is fixed.** There is no growth, as DEC Ada's task
+     stacks have none.
+
+9. **Things that would break it [inferred]:**
+   - **Shadow stacks.** Intel CET's shadow stack (and arm64's GCS)
+     would reject the switch's `ret` to another stack. poc's objects
+     carry no `-fcf-protection` notes, so the kernel does not enable
+     it today. If poc ever adds the notes, the switch would need the
+     shadow-stack instructions.
+   - **Debuggers.** gdb's backtrace and VMS DEBUG's `SHOW CALLS` on a
+     coroutine were not tried.
+
+10. **No compiler change.**
+    - A body is passed as `SYSTEM.VAL(SYSTEM.ADDRESS, body)` to an
+      external routine.
+    - Nested and type-bound procedures cannot be procedure values
+      already, so a body is always a global procedure.
+    - The optimizer treats the external switch as an opaque call, so
+      it reloads globals after it.
+
+**Size of the work [inferred]:** about 150 lines of Oberon, 150 of C
+and 40 of MACRO-32, plus the heap's hook on both back ends, the
+fixtures (the four programs above, made to compare output), the
+guides, and runs on rackhir and alerik first.

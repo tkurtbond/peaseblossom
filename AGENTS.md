@@ -465,6 +465,17 @@ not, and is itself a constant. `.sym` writes `VAL(CARDINAL, k)`. `In` and
 `InStr` get `HugeCard`. `-strict` rejects all five. The VAX backend has
 them too (`doc/developer/predeclared-unsigned-types.md` has the plan).
 
+### Threads and signal handlers (decided 2026-11-13; Phase 19, candidate 7)
+
+A program has one thread and must not start another, from C either: the
+collector scans only the main stack, the heap has no locks, and the
+runtime modules keep global state. A `Platform` signal handler gets the
+AST rule (`vax-macro32-backend.md` section 22) and, on LLVM, no `NEW`: it
+sets the program's own variables, which the main line reads by
+`SYSTEM.GET` (volatile; a plain read in a loop is hoisted at `-opt 1` and
+up). Documentation only; nothing checks it
+(`doc/research/concurrency-survey.md` has the survey).
+
 ## Project state
 
 Phases 0-15 of `PLAN.md` are complete (records in `doc/history/phases/` and

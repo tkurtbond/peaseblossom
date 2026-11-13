@@ -674,6 +674,18 @@ A24, moved here 2026-09-26), are Phase 14 now.
    at first; the risk is stack exhaustion. **Undecided**; the survey of
    other languages (the Oberons, Algol, Ada, C99, Modula-2 and -3) is
    still to do, as that file's section 8.
+7. **Concurrency** (the user's question, 2026-11-13): threads,
+   coroutines or nothing. Surveyed in
+   `doc/research/concurrency-survey.md` (the Oberons, Modula-2 and -3,
+   Ada, Go; pthreads probed on atla, DECthreads on the SIMH VAX). Its
+   Proposal's item 1 was **adopted and documented 2026-11-13**: a program
+   has one thread, and a signal handler only sets the program's own
+   variables, which the main line reads by `SYSTEM.GET` (a plain read in
+   a loop was hoisted at `-opt 1` and up, and the loop never ended).
+   `language-extensions.md`, "Threads and signal handlers". Documentation
+   only: nothing checks either rule. **Undecided**: a heap re-entry trap
+   on LLVM like the VAX's trap 15, an Oakwood `Coroutines` module (item
+   2), and a cooperative tasks library (item 3).
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
