@@ -464,12 +464,16 @@ and is not in the tree. Its parts were:
 | atla | Linux (Fedora 44), x86-64 | everything, at `-opt 0` and `-opt 2`, and with `-lto` |
 | artos | NetBSD 11.0, amd64 (VM) | everything, with and without `MAP_STACK` |
 | alerik | FreeBSD 15.1, amd64 (VM) | everything, with and without `MAP_STACK` |
+| jherek | OpenBSD 7.9, amd64 (VM) | everything, with and without `MAP_STACK`, with the installed poc 0.11.2 |
 | cymoril | OpenBSD 7.9, i386 (VM) | everything, with and without `MAP_STACK` |
+| yishana | NetBSD 11.0, i386 (VM) | everything, with and without `MAP_STACK`, with the installed poc 0.11.2 |
 | rackhir | FreeBSD 15.1, arm64 (VM, emulated on atla) | everything, with and without `MAP_STACK` |
 | SIMH MicroVAX 3900 | VAX/VMS 5.5-2H4 | everything, with two ways to end a new stack's frame chain |
 
-alerik and rackhir ran it later the same day, when they were back up.
-NetBSD i386 (yishana) and OpenBSD amd64 (jherek) were not tried.
+alerik and rackhir ran it later the same day, and jherek and yishana
+after them, as each came back up. jherek and yishana have no source
+tree, so their runs used the installed poc 0.11.2, whose `rtl/llvm` is
+the one the prototype patched.
 
 ### 8.2 Performance
 
@@ -477,17 +481,19 @@ NetBSD i386 (yishana) and OpenBSD amd64 (jherek) were not tried.
 operation, at the default `-opt` (2, but 0 on i386), from 10^5 to
 10^6 repetitions:
 
-| | atla x86-64 | artos amd64 | alerik amd64 | cymoril i386 | rackhir arm64 (emulated) | VAX (SIMH) |
-|---|---|---|---|---|---|---|
-| Procedure-variable call, for scale | ~1 ns | 1 ns | 1 ns | 2 ns | 28 ns | ~0.3 µs |
-| `Transfer` there and back (two switches) | 21-22 ns | 23 ns | 22 ns | 34 ns | 410 ns | ~2.4 µs |
-| `swapcontext` there and back, for comparison | 256-281 ns | 1268 ns | 1041 ns | (none: OpenBSD has no `ucontext`) | 8569 ns | — |
-| `Init` (allocate a stack, protect its guard page) | ~2.5 µs | ~2.0 µs | ~25 µs | ~13 µs | ~27 µs | ~70 µs |
-| First `Transfer` to a new stack (touches its first page) | ~125 ns | ~148 ns | ~135 ns | ~251 ns | ~533 ns | below the clock's resolution |
+| | atla x86-64 | artos amd64 | alerik amd64 | jherek amd64 | cymoril i386 | yishana i386 | rackhir arm64 (emulated) | rackhir, as procedure calls | VAX (SIMH) |
+|---|---|---|---|---|---|---|---|---|---|
+| Procedure-variable call, for scale | ~1 ns | 1 ns | 1 ns | ≤1 ns | 2 ns | 2 ns | 28 ns | 1 | ~0.3 µs |
+| `Transfer` there and back (two switches) | 21-22 ns | 23 ns | 22 ns | 24-25 ns | 34 ns | 29 ns | 410 ns | ~15 | ~2.4 µs |
+| `swapcontext` there and back, for comparison | 256-281 ns | 1268 ns | 1041 ns | (none: OpenBSD has no `ucontext`) | (none) | 1488 ns | 8569 ns | ~306 | — |
+| `Init` (allocate a stack, protect its guard page) | ~2.5 µs | ~2.0 µs | ~25 µs | ~5 µs | ~13 µs | ~3.2 µs | ~27 µs | ~956 | ~70 µs |
+| First `Transfer` to a new stack (touches its first page) | ~125 ns | ~148 ns | ~135 ns | ~220 ns | ~251 ns | ~196 ns | ~533 ns | ~19 | below the clock's resolution |
 
 rackhir's absolute times are the emulator's, so only its ratios mean
-anything: there a round trip costs about 15 procedure calls, and
-`swapcontext` 21 times as much as `Transfer`.
+anything. Its second column gives them, each time divided by its
+procedure-variable call: a round trip costs about 15 procedure calls,
+and `swapcontext` 21 times as much as `Transfer`. jherek's procedure
+call measured 0 ns in one run and 1 ns in the other.
 
 - **A round trip by `Transfer` costs about 20 procedure-variable calls
   on x86, and 8 on the VAX.** Most of it is saving and restoring the
@@ -520,10 +526,14 @@ space. Only the pages the coroutine touches become memory:
 - 10000 coroutines with 64 KiB stacks, each switched to once, raised
   the resident size by 40 MB, 4 KiB each, and the virtual size by
   680 MB.
-- On a 32-bit host the address space is the limit. On cymoril a
-  second batch of 10000 64 KiB stacks (20002 in all, about 1.3 GB)
-  could not be mapped. The run had a 1 GB data limit (`ulimit -d`),
-  and which limit refused it was not isolated.
+- **OpenBSD counts the stacks against the data limit.** On cymoril
+  (i386) and jherek (amd64) alike, a second batch of 10000 64 KiB
+  stacks (20002 in all, about 1.3 GB) could not be mapped under the
+  runs' 1 GB `ulimit -d`. jherek mapped them at its default 1.5 GB, so
+  there the data limit refused them [measured]. cymoril's was probably
+  the same limit and not the address space [inferred]. On a 32-bit host
+  the address space is still the eventual bound: yishana (NetBSD i386)
+  mapped all 20002.
 - On the VAX each stack is pages of P0 space. They count against the
   process's virtual-memory quotas as the heap's do; how much was not
   measured.
@@ -532,11 +542,15 @@ space. Only the pages the coroutine touches become memory:
 suspended stack, from its saved SP to its top (8.3, item 1), and the
 cost grows with how deep they are:
 
-| Collection of 100000 live objects | atla | artos | alerik | cymoril (`-opt 0`) | rackhir (emulated) |
-|---|---|---|---|---|---|
-| no coroutines (main stack only) | 1.08 ms | 1.14 ms | 1.13 ms | 10.1 ms | 8.5 ms |
-| + 10000 suspended stacks, each a few frames deep | 1.57-1.61 ms (~50 ns a stack) | 1.62 ms | 1.66 ms | 13.9 ms | 16.2 ms |
-| + 10000 more, each 100 frames deep | 2.2 ms | 2.25 ms | 2.38 ms | (not mapped) | 24.8 ms |
+| Collection of 100000 live objects | atla | artos | alerik | jherek | cymoril (`-opt 0`) | yishana (`-opt 0`) | rackhir (emulated) | rackhir, as its first row |
+|---|---|---|---|---|---|---|---|---|
+| no coroutines (main stack only) | 1.08 ms | 1.14 ms | 1.13 ms | 1.66 ms | 10.1 ms | 8.3 ms | 8.5 ms | 1 |
+| + 10000 suspended stacks, each a few frames deep | 1.57-1.61 ms (~50 ns a stack) | 1.62 ms | 1.66 ms | 2.3-2.6 ms | 13.9 ms | 11.6 ms | 16.2 ms | 1.9 |
+| + 10000 more, each 100 frames deep | 2.2 ms | 2.25 ms | 2.38 ms | 3.1 ms (with a 1.5 GB data limit) | (not mapped) | 97.7 ms | 24.8 ms | 2.9 |
+
+yishana's last row is out of line with the rest, nine times its second.
+Its 100-frame stacks at `-opt 0` are deeper in bytes than at `-opt 2`,
+but why by that much was not looked into.
 
 A program with tens of coroutines would not notice this. A program
 with 10^4 of them adds about half a millisecond to each collection.
@@ -636,7 +650,8 @@ change, and no code in `Transfer`'s absence.
      (writing output, or the heap asking for memory). Every program
      then died with SIGSEGV, because OpenBSD checks that SP is in a
      `MAP_STACK` mapping at system-call entry. OpenBSD 7.9's `mmap(2)`
-     documents the flag but not that rule. NetBSD and FreeBSD (amd64
+     documents the flag but not that rule. It holds on amd64 (jherek)
+     as on i386 (cymoril). NetBSD (amd64 and i386) and FreeBSD (amd64
      and arm64) run the same programs without it.
    - **VMS**: `LIB$GET_VM_PAGE` gives page-aligned pages (*VMS 5.0
      RTL Library (LIB$) Manual*, chapter 5). `$SETPRT` with `PRT$C_NA`
