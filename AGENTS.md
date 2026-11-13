@@ -331,10 +331,10 @@ writes `:= ..`). `-strict` rejects it.
 
 ### What traps, and what does not (Phase 11 C9)
 
-The tables of trap statuses 2-14, what ends a program silently, what nothing
-stops, and what is a compile-time error. `poc -trap-location` (C7) prefixes
-every trap message with `file:line:column:` and ends it with the procedure,
-"(in List.Insert)". Since Phase 12 step 1 (2026-09-27) a function that reaches
+The tables of trap statuses 2-18 (15 VAX/VMS only, 16-18 `Coroutines`'),
+what ends a program silently, what nothing stops, and what is a
+compile-time error. `poc -trap-location` (C7) prefixes every trap message
+with `file:line:column:` and ends it with the procedure, "(in List.Insert)". Since Phase 12 step 1 (2026-09-27) a function that reaches
 its `END` traps (12), a record assigned to a `VAR` parameter or `p^` whose
 dynamic type extends its static type traps (13), both always, as the report
 requires; `-range-checks` makes `SHORT`/`CHR` of a value that does not fit
@@ -475,6 +475,19 @@ sets the program's own variables, which the main line reads by
 `SYSTEM.GET` (volatile; a plain read in a loop is hoisted at `-opt 1` and
 up). Documentation only; nothing checks it
 (`doc/research/concurrency-survey.md` has the survey).
+
+### Coroutines (decided 2026-11-13; Phase 19, candidate 7)
+
+A runtime module with Oakwood's `Init`/`Transfer`, plus `Free` and
+`DefaultStackSize`; being implemented (`doc/developer/coroutines.md`).
+Fixed stacks rounded to pages, with a guard page, a floor (LLVM 16 KiB, VAX
+8 KiB) and a recommended size (256 KiB, 32 KiB). The collector scans every
+suspended stack. Traps 16 (a body returned), 17 (misuse: a freed or
+uninitialized target, freeing the running or `main`'s, `Transfer` in a
+finalizer, a signal handler or an AST) and 18 (no memory for a stack,
+always); none has a `-trap-location`. A blocking call stops them all;
+switching out of a C callback is allowed only if it is resumed and returns
+first; nothing may unwind across a switch.
 
 ## Project state
 

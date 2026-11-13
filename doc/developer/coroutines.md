@@ -87,6 +87,10 @@ Oakwood's text, which these keep:
      `Transfer` to any copy of `cor` traps (17), rather than running on
      freed memory, and checking costs one comparison.
    - Freeing the running coroutine or `main`'s traps (17).
+   - `Free` of a record never initialized, or of a coroutine already freed
+     (through any copy), does nothing (decided with the user 2026-11-13).
+     Copies are routine, so freeing one coroutine through two records is
+     easy and harmless, and cleanup code need not know whether `Init` ran.
    - A coroutine that is never freed keeps its stack, and the collector
      keeps scanning that stack, until the program ends. That is the
      price of the explicit way, and the documentation says so.
@@ -282,6 +286,10 @@ how many default stacks fit.
 Write the decisions, with Phase 1's values, into `language-extensions.md`
 (the trap rows, the rules) and `AGENTS.md`'s summary, under the same
 headings.
+
+Done 2026-11-13: the trap table's rows 16-18 with 17's texts, two rows in
+"What ends the program without a message", and a section "Coroutines" after
+"Threads and signal handlers", in both files.
 
 ### Phase 3: The LLVM module
 

@@ -813,7 +813,11 @@ signal death is 128 + the signal number, as a shell reports it).
 message's line) and exits with the status; the numbers are poc's own (voc's Halt codes
 in the last column are `Halt(n)` printed as "Terminated by Halt(n)", exit 256-n).
 No location is reported by default; **`poc -trap-location`** (C7, below) adds
-one to every trap in this table. Each status is pinned by a fixture.
+one to every trap in this table but 16-18, which come from the runtime and not
+from generated code. Each status is pinned by a fixture (16-18's come with
+`Coroutines`, `doc/developer/coroutines.md`, Phases 3 and 4). On VAX/VMS a
+trap's condition value is `%X10000002` plus 8 times the status (16-18 are
+`%X10000082`, `%X1000008A`, `%X10000092`).
 
 | Status | What | Message | voc |
 |---|---|---|---|
@@ -831,6 +835,9 @@ one to every trap in this table. Each status is pinned by a fixture.
 | 13 | `v := e` for records where `v`, a `VAR` parameter (a receiver too) or `p^`, has a dynamic type that extends its static type (Oberon2.pdf 9.1; `llvm-record-assign-trap`; Phase 12 step 1, until then the static type's fields were copied) | `record assigned to a variable whose dynamic type extends its static type` | Halt(-6), 250; not under `voc -t` |
 | 14 | With `-range-checks` only: `SHORT(x)` of an integer `x` outside the result type, `CHR(x)` of `x` outside 0..255 (`llvm-range-checks`; Phase 12 step 1) | `SHORT argument out of range`, `CHR argument out of range` | `voc -r`: Halt(-8), 248, except `CHR` of a negative value (voc's check compares signed); no switch: truncates |
 | 15 | VAX/VMS only: an AST routine, a CTRL/C handler included, that calls `NEW` (or `GarbageCollectedHeap.Collect` or `RegisterFinalizer`) while the main line is inside the heap, in a program that does not import `AsynchronousTraps` (`vax-asts-heap`; Phase 17 step 6, `vax-macro32-backend.md` section 22.7). With the import the heap disables ASTs while it works and `NEW` at AST level is safe | `heap re-entered at AST level: import AsynchronousTraps` | none: voc has no ASTs |
+| 16 | A coroutine's body returned (Oakwood: "Procedure p must never return"; "Coroutines"; `llvm-coroutines-traps`, `vax-coroutines-traps`, planned) | `coroutine body returned` | none: voc has no `Coroutines` |
+| 17 | Misuse of `Coroutines` ("Coroutines"; the same fixtures): `Transfer` to a record never given to `Init`, or to a freed coroutine; `Free` of the running coroutine or of `main`'s; `Transfer` in a finalizer, in a signal handler (LLVM) or at AST level (VAX, in a program that imports `AsynchronousTraps`) | one text for each case: `Transfer to a coroutine never initialized`, `Transfer to a freed coroutine`, `Free of the running coroutine`, `Free of the main program's coroutine`, `Transfer in a finalizer`, `Transfer in a signal handler`, `Transfer at AST level` | none |
+| 18 | `Coroutines.Init` cannot get memory for the stack, always: unlike `NEW` there is no NIL to test (the same fixtures) | `no memory for a coroutine's stack` | none |
 
 **The library's own failure.** `Files` stops the program with status 99 when
 it meets an error it cannot hand back to the caller - a file that cannot be
@@ -875,6 +882,8 @@ happened; deliberate (C6) where noted.
 | `SYSTEM.GET`/`PUT`/`MOVE` at an address that is not mapped | `SIGSEGV`, status 139 | voc's handler turns it into "NIL access" (Halt(-10), 246). `llvm-no-trap-behavior` case 11 |
 | `HALT(n)` | exit status `n`, silent (C6) | `n` is a constant in **0..255**, anything else is a compile-time error (as voc's err 218): the status keeps only its low 8 bits on every host poc runs on (C `exit(30000)` is 48, `exit(256)` is 0 - success - and `exit(-1)` is 255, checked on Linux, OpenBSD, NetBSD and FreeBSD 2026-09-21), while Windows keeps 32 (a `DWORD`). The report leaves the meaning of `n` to the system. VMS is different again, see `000-todo.org`. voc prints "Terminated by Halt(n)". `llvm-predeclared-halt`, `llvm-no-trap-behavior` |
 | `NEW` the heap cannot satisfy | the pointer is NIL, no message; the next dereference is trap 4 | as in voc, and the default; `-trap-heap-exhausted` makes it trap 11 instead. Which requests "cannot" be satisfied depends on the size model and the machine's limits: `NEW(p, MAX(LONGINT))` of 4-byte elements under `-OC` overflows the address space (trap 7), under `-O2` it asks for 8 GB, which was NIL under a 1.2 GB address-space limit |
+| A stack overflow on a coroutine (`Coroutines`) | LLVM: `SIGSEGV` (or `SIGBUS`), at the guard page below the stack; VAX: an access violation, with two register dumps | stacks are fixed in size and do not grow ("Coroutines"); `llvm-coroutines-overflow`, planned |
+| A C++ exception, a `longjmp` or a VMS `$UNWIND` that crosses a coroutine switch | undefined: it unwinds onto another stack's frames | "Coroutines" |
 
 **What nothing stops.** The program goes on with a value; the second column is
 what that value is.
@@ -1961,4 +1970,82 @@ offers more (`doc/research/concurrency-survey.md`, the Proposal):
 Documented in `Platform`'s comment (and so the Reference Guide), the User's
 Guide (chapter 9, "Threads"; chapter 10, "Signals", with `Stop.Mod`) and
 `rtl/vax/Platform.Mod`. A heap re-entry check on LLVM like the VAX's trap
-15, and a coroutine module (the Proposal's item 2), are not decided.
+15 is not decided. A coroutine module, the Proposal's item 2, is: "Coroutines",
+below.
+
+## Coroutines (decided 2026-11-13; Phase 19, candidate 7)
+
+A runtime module `Coroutines` with the interface of Oakwood's optional
+module (Appendix 1.2.8) and two additions, decided with the user 2026-11-13.
+It is being implemented: `doc/developer/coroutines.md` has the decisions and the
+plan, and `doc/research/concurrency-survey.md`, section 8, the reasons and the
+prototype's measurements.
+
+```oberon
+DEFINITION Coroutines;
+  CONST DefaultStackSize = ...;   (* not in Oakwood *)
+  TYPE
+    Coroutine = RECORD END;
+    Body = PROCEDURE;
+  PROCEDURE Init (body: Body; stackSize: LONGINT; VAR cor: Coroutine);
+  PROCEDURE Transfer (VAR from, to: Coroutine);
+  PROCEDURE Free (VAR cor: Coroutine);   (* not in Oakwood *)
+END Coroutines.
+```
+
+What a program can observe:
+
+- **A `Coroutine` names a descriptor**, which every copy of the record
+  shares. `Transfer(from, to)` stores the running coroutine in `from`;
+  `main`'s is made by the first `Transfer` out of it. `Transfer` to the
+  running coroutine does nothing.
+- **Stacks.** `Init` rounds `stackSize` up to whole pages and adds a guard
+  page below, not counted. A size below the floor is raised to it, to leave
+  room for a signal handler (LLVM) or an AST (VMS), which run on whichever
+  stack is current. `DefaultStackSize` is a recommendation; `Init` always
+  takes a size, as Oakwood's does.
+
+  | | Floor | `DefaultStackSize` |
+  |---|---|---|
+  | LLVM | 16 KiB | 256 KiB |
+  | VAX | 8 KiB | 32 KiB |
+
+  On LLVM only the pages a coroutine touches cost memory; on VMS the whole
+  stack is charged to the page-file quota. Phase 1's probes
+  (`concurrency-survey.md` 8.7) confirmed both: a coroutine that runs FLTK
+  touched 32 KiB of its 256.
+- **`Free(cor)`** gives back the stack. A coroutine never freed keeps its
+  stack, and the collector keeps scanning it, until the program ends.
+  `Free` of a record never given to `Init`, or of a coroutine already freed
+  (through any copy), does nothing; the record still names the freed
+  descriptor, so a later `Transfer` to it is trap 17's "freed coroutine".
+- **The collector** scans every suspended stack from its saved stack
+  pointer (frame pointer on the VAX) to its top, `main`'s included, and the
+  running one from where it is. A program that does not import
+  `Coroutines` pays one NIL test per collection.
+- **A switch keeps the floating-point control registers** with each
+  coroutine (MXCSR and the x87 control word on x86, FPCR on arm64), as
+  `swapcontext` does. On the VAX a coroutine's first frame is chained to
+  `main`'s, so a traceback lists its frames.
+- **Traps** 16 (a body returned), 17 (misuse, where it is cheap to catch)
+  and 18 (no memory for a stack), in "What traps, and what does not". 18
+  traps always, unlike a failed `NEW`. None carries a `-trap-location`
+  location.
+- **Rules the program keeps, which nothing checks but where noted:**
+  - A blocking call, I/O included, stops every coroutine.
+  - No `Transfer` in a signal handler, an AST or a finalizer (trap 17: a
+    finalizer always, a signal handler on LLVM, an AST in a VAX program
+    that imports `AsynchronousTraps`, which disables ASTs around the
+    switch).
+  - A coroutine may switch out of a C callback, but must be resumed, and
+    must return to C, before anything else uses that library. The pattern
+    shown is the library owning `main`'s stack, and its callbacks resuming
+    coroutines.
+  - A body never returns (trap 16). Stacks do not grow: an overflow is
+    `SIGSEGV` on LLVM and an access violation on the VAX ("What ends the
+    program without a message").
+  - No C++ exception, `longjmp` or `$UNWIND` may cross a switch.
+  - Shadow stacks (Intel CET, arm64's GCS and PAC) would break the
+    switch. poc does not enable them.
+- `GarbageCollectedHeap` exports `MarkRange`, `StackBase` and
+  `SetStackScanner` for `Coroutines`; calling them otherwise is undefined.
