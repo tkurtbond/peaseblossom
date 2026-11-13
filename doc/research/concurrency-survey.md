@@ -529,31 +529,51 @@ space. Only the pages the coroutine touches become memory:
 - **OpenBSD counts the stacks against the data limit.** On cymoril
   (i386) and jherek (amd64) alike, a second batch of 10000 64 KiB
   stacks (20002 in all, about 1.3 GB) could not be mapped under the
-  runs' 1 GB `ulimit -d`. jherek mapped them at its default 1.5 GB, so
-  there the data limit refused them [measured]. cymoril's was probably
-  the same limit and not the address space [inferred]. On a 32-bit host
-  the address space is still the eventual bound: yishana (NetBSD i386)
-  mapped all 20002.
+  runs' 1 GB `ulimit -d`. jherek mapped them at its default 1.5 GB, and
+  cymoril at its hard limit of 3 GB, so on both the data limit refused
+  them, not the address space [measured]. On a 32-bit host the address
+  space is still the eventual bound: yishana (NetBSD i386) mapped all
+  20002.
 - On the VAX each stack is pages of P0 space. They count against the
   process's virtual-memory quotas as the heap's do; how much was not
   measured.
 
 **What a collection pays [measured].** The collector must scan every
-suspended stack, from its saved SP to its top (8.3, item 1), and the
-cost grows with how deep they are:
+suspended stack, from its saved SP to its top (8.3, item 1), so the
+cost grows with how many bytes of stack are suspended. Each host ran
+the benchmark twice, at its default `-opt` and with its whole hard
+data limit; a range is the two runs:
 
 | Collection of 100000 live objects | atla | artos | alerik | jherek | cymoril (`-opt 0`) | yishana (`-opt 0`) | rackhir (emulated) | rackhir, as its first row |
 |---|---|---|---|---|---|---|---|---|
-| no coroutines (main stack only) | 1.08 ms | 1.14 ms | 1.13 ms | 1.66 ms | 10.1 ms | 8.3 ms | 8.5 ms | 1 |
-| + 10000 suspended stacks, each a few frames deep | 1.57-1.61 ms (~50 ns a stack) | 1.62 ms | 1.66 ms | 2.3-2.6 ms | 13.9 ms | 11.6 ms | 16.2 ms | 1.9 |
-| + 10000 more, each 100 frames deep | 2.2 ms | 2.25 ms | 2.38 ms | 3.1 ms (with a 1.5 GB data limit) | (not mapped) | 97.7 ms | 24.8 ms | 2.9 |
+| no coroutines (main stack only) | 1.20-1.32 ms | 1.30-1.41 ms | 1.29-1.30 ms | 1.91-1.97 ms | 10.0-13.3 ms | 9.3-9.6 ms | 8.2-9.4 ms | 1 |
+| + 10000 suspended stacks, each a few frames deep | 1.81-1.85 ms | 1.78-2.27 ms | 1.91-1.98 ms | 2.50-2.66 ms | 14.6-15.6 ms | 12.5-14.2 ms | 14.8-15.5 ms | 1.7 |
+| + 10000 more, each 100 frames deep | 8.04-8.09 ms | 7.64-9.54 ms | 8.35-8.44 ms | 10.6-12.2 ms | 111.4-111.5 ms | 103.0-110.7 ms | 111.8-111.9 ms | 12.7 |
 
-yishana's last row is out of line with the rest, nine times its second.
-Its 100-frame stacks at `-opt 0` are deeper in bytes than at `-opt 2`,
-but why by that much was not looked into.
+How many bytes the collector scanned, the sum over the suspended
+stacks of their top less their saved SP (the coroutine that echoes
+`main` included), was the same on every host of an architecture:
 
-A program with tens of coroutines would not notice this. A program
-with 10^4 of them adds about half a millisecond to each collection.
+| Suspended stack scanned | x86-64, `-opt 2` (atla, artos, alerik, jherek) | i386, `-opt 0` (cymoril, yishana) | arm64, `-opt 2` (rackhir) |
+|---|---|---|---|
+| + 10000 shallow stacks | 1.28 MB (about 128 bytes a stack) | 2.32 MB (232) | 2.24 MB (224) |
+| + 10000 deep stacks | 50.56 MB (4928 bytes more a stack, about 49 a frame) | 84.64 MB (8232, about 82 a frame) | 52.48 MB (5024, about 50 a frame) |
+
+So the cost is about 0.13 ns a byte, 1 ns a word, on the x86-64 hosts
+at `-opt 2` (6.2 ms for 49.3 MB on atla), and about 1.1-1.2 ns a byte
+on the i386 hosts at `-opt 0`, where the runtime library is compiled
+at `-opt 0` too. Ten thousand shallow stacks add about half a
+millisecond to a collection on x86-64; 50 MB of deep ones add 6-7 ms.
+A program with tens of coroutines would not notice either.
+
+A first version of this benchmark measured something else in its last
+row. Its recursive procedure ended in the recursive call and never read
+its local array, so at `-opt 2` LLVM made the recursion a loop, and its
+"100 frames deep" stacks were about 112 bytes each: the row showed
+2.2-3.1 ms on the x86-64 hosts and 24.8 ms on rackhir, and only
+yishana, at `-opt 0`, scanned deep stacks (97.7 ms), which made it look
+out of line with the rest. The version measured above reads the array
+after the call, and the scanned bytes confirm the stacks' depth.
 
 **What a program that does not use it pays [measured].** It pays one
 test of a procedure variable for NIL per collection, the heap's hook.
