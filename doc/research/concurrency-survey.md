@@ -751,6 +751,130 @@ and 40 of MACRO-32, plus the heap's hook on both back ends, the
 fixtures (the four programs above, made to compare output), the
 guides.
 
+### 8.4 Coroutines, I/O and C libraries
+
+Added 2026-11-13, at the user's request, before B's plan: how
+coroutines meet I/O and C libraries, with pofltk (the FLTK binding for
+poc, Unix only, never VMS) as the case in point. Nothing here was run.
+It rests on the measurements above, pofltk's `Fl.Mod` and FLTK's
+design, and all of it is **[inferred]**.
+
+Under B the one new fact is that code runs on stacks other than the
+main one. There is still one thread and no preemption, so whatever a
+program could do between two calls before, it still can.
+
+1. **A blocking call stops every coroutine.** `In.Line`,
+   `Files.ReadBytes`, an RMS `$GET`, `Fl.Run` or `Fl.Wait`: whichever
+   coroutine makes the call, the whole program waits. B has no
+   scheduler, so that is what B means, not a defect, and its
+   documentation says so. Getting around it is C's job (an `Event`
+   over `poll` or a `$QIO` AST, section 9). A GUI program already has
+   a way: FLTK's `Fl.AddFd` and its timeouts make FLTK's event loop
+   the place the program waits.
+
+2. **The runtime's I/O is safe because it never switches.** `Out`'s
+   buffer, `Files`' buffers, `Texts` and the heap keep global state,
+   and no runtime module calls `Transfer`, so no switch comes in the
+   middle of one of their operations. Output from several coroutines
+   comes out in the order of the calls. The runtime calls a program's
+   own code in three places, and each needs a rule:
+   - **finalizers**: no `Transfer` (they run from the collector or
+     from `atexit`);
+   - **signal handlers and ASTs**: no `Transfer` (8.3, item 8);
+   - **`Modules` commands**: ordinary calls, no rule.
+
+3. **C code on a coroutine's stack** runs as it does on the main
+   stack, with four differences:
+   - **Stack size.** C libraries can use far more stack than Oberon
+     code: fontconfig, Xft, Cairo, libpng and FLTK's layout and
+     drawing never run short on the main stack, but could overflow a
+     64 KiB coroutine's (SIGSEGV). Only touched pages cost memory
+     (8.2), so a coroutine that calls C can have 1 MiB for little more
+     than its pages. Item 4's pattern (a) avoids the question.
+   - **One guard page.** A C frame with more than 4 KiB of locals can
+     step over it into the memory below ("stack clash"). Fedora builds
+     its system libraries with stack-clash probing; the BSDs, an FLTK
+     a program builds itself, and clang's defaults may not. A larger
+     guard area, or "big C on big stacks", helps.
+   - **The collector** scans a suspended stack from its saved SP up,
+     C frames included, so a pointer held only in a C frame is still
+     seen. One held only in C's heap is still not seen, as today:
+     that is why pofltk keeps its registry.
+   - **No exception or `longjmp` across a switch.** Each must start
+     and end on one stack. libpng's error handling and FLTK's image
+     loading use them inside a call, which is fine. A C++ exception
+     that reaches the trampoline at a coroutine's base ends in
+     `std::terminate`. pofltk's `Fl.cpp` has no `try` or `catch`.
+
+4. **Switching out of a callback, with pofltk as the case.** FLTK
+   calls Oberon (`Callback`, `Handle`, `Draw`, a timer's `Fire`) from
+   inside `Fl.Run`. There are two ways to use coroutines with it:
+   - **(a) FLTK owns the main stack, and callbacks resume
+     coroutines.** A button's `Callback` does `Transfer(main,
+     script)`; the script coroutine runs until it needs the next
+     input, then `Transfer(script, main)`, and the callback returns to
+     FLTK. FLTK's frames are left exactly as they were. This is the
+     useful pattern, a dialog written as straight-line code instead of
+     a state machine, and it keeps FLTK's deep drawing on the main
+     stack. A coroutine may call widget methods: that is the callback
+     calling them.
+   - **(b) A coroutine is suspended with FLTK's frames on its
+     stack**: a callback switches away and does not come straight
+     back. FLTK is part way through dispatching an event, which is
+     safe only if nothing changes FLTK's state before the coroutine is
+     resumed and returns:
+     - FLTK's event state is global (`Fl.Mod`: "while Handle runs,
+       the Event procedures below say what the event was"). Another
+       coroutine's `Fl.Wait` overwrites it, so a `Handle` reads what
+       it needs before it switches.
+     - A nested `Fl.Wait` from another coroutine is FLTK's
+       modal-dialog case and is allowed, but a widget deleted
+       meanwhile leaves the suspended frames pointing at freed memory.
+       FLTK's deferred `Fl::delete_widget` and `Fl_Widget_Tracker`
+       exist for that.
+     - A stack never resumed leaves FLTK mid-dispatch for good, and
+       C++ destructors on it never run. If B gets a `Free` (8.3,
+       item 3), freeing a stack with C frames on it is the same
+       problem.
+
+   (a) is the way to document. The rule for (b), for any C library
+   that calls back into Oberon: a coroutine that switches out of a C
+   callback must be resumed, and must return to C, before anything
+   else uses that library.
+
+5. **VMS.** pofltk does not apply, but the same questions do:
+   - RMS runs in executive mode on its own stack, so it needs less of
+     a coroutine's stack than C does, but it still blocks the process.
+   - An AST is delivered on whichever stack is current (8.3, item 8),
+     and may set a flag but not `Transfer`.
+   - A `LIB$` routine's condition handler that calls `$UNWIND` could
+     unwind onto the wrong stack, since a coroutine's frames are
+     chained to `main`'s (8.3, item 7).
+
+6. **What it means for C.** The scheduler's wait for something to
+   happen must be replaceable. A pofltk program already waits in
+   FLTK's loop (`Fl.Wait`, `AddFd`, timeouts), and a `Tasks` with its
+   own `poll` loop would compete with it. So `Tasks` should either be
+   able to use `Fl.Wait` as its idle step, or let FLTK own the loop
+   and resume tasks from callbacks, pattern (a). pofltk is Unix only,
+   so this is a hook in `Tasks`, not a dependency on pofltk.
+
+**To settle before B's plan:**
+
+1. B documents that a blocking call stops every coroutine, and has no
+   I/O wrappers.
+2. `Transfer` is forbidden in signal handlers, ASTs and finalizers.
+3. Switching out of a C callback is allowed, under item 4's rule.
+4. The default stack size: larger than 64 KiB on the LLVM targets,
+   where it is cheap. On VMS, `LIB$GET_VM_PAGE` charges the page-file
+   quota for the whole stack, so a smaller default fits there.
+5. A pofltk probe before the plan is final:
+   - pattern (a) with a script coroutine;
+   - the main stack's high-water mark in a typical pofltk program, to
+     size a coroutine stack that calls FLTK;
+   - a nested `Fl.Wait` from a coroutine, to see whether (b) is
+     workable at all.
+
 ## 9. Option C: one possible interface
 
 Added 2026-11-13, at the user's request: one possible exported
