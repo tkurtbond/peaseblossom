@@ -11,7 +11,8 @@ decision; not adopted is a legitimate result").
 The survey says what each source *does* and marks what could not be
 verified. Section 4 probes what poc does today, on the LLVM back end
 and with DECthreads on the SIMH VAX. Section 6 gives the options and
-a proposal. **Nothing here changes poc.**
+a proposal. Section 9 sketches one possible interface for option C.
+**Nothing here changes poc.**
 
 "[inferred]" marks a conclusion of this survey, not something a source
 says.
@@ -403,6 +404,7 @@ Findings:
    - whether the switch saves the floating-point control registers.
 3. **Option C is the natural next step after B** and can wait until
    programs ask for it. It too is a library, not a language change.
+   Section 9 sketches one possible interface for it.
 4. **Options D and E: not adopted.**
    - D would be worth reconsidering only after C has been used. That
      use would show whether the checked structure is worth a language
@@ -748,3 +750,130 @@ change, and no code in `Transfer`'s absence.
 and 40 of MACRO-32, plus the heap's hook on both back ends, the
 fixtures (the four programs above, made to compare output), the
 guides.
+
+## 9. Option C: one possible interface
+
+Added 2026-11-13, at the user's request: one possible exported
+interface for option C's `Tasks` module, as a starting point if C is
+ever taken up. Nothing here is decided, built or measured; all of it
+is **[inferred]**.
+
+### 9.1 The interface
+
+```oberon
+DEFINITION Tasks;  (* cooperative tasks over Coroutines; one OS thread *)
+
+  CONST defaultStackSize = 65536;
+
+  (* Tasks.  The body is a type-bound procedure of a heap object: Go's
+     go f(x) without closures.  The extension's fields are its arguments
+     and results. *)
+  TYPE
+    Task = POINTER TO TaskDesc;
+    TaskDesc = RECORD END;
+
+  PROCEDURE (t: Task) Run;      (* abstract: the body; returning ends it *)
+  PROCEDURE Start (t: Task; stackSize: LONGINT);
+  PROCEDURE Current (): Task;   (* the main program is a task too *)
+  PROCEDURE Yield;
+  PROCEDURE Join (t: Task);     (* until t's Run has returned *)
+  PROCEDURE Done (t: Task): BOOLEAN;
+  PROCEDURE Sleep (milliseconds: LONGINT);
+
+  (* Conditions and locks.  A zeroed variable is ready to use (poc zeroes
+     every variable), and they are passed by VAR, never copied. *)
+  TYPE
+    Condition = RECORD END;
+    Mutex = RECORD END;
+
+  PROCEDURE Wait (VAR c: Condition);       (* WHILE ~ok DO Wait(c) END *)
+  PROCEDURE Signal (VAR c: Condition);
+  PROCEDURE Broadcast (VAR c: Condition);
+  PROCEDURE Lock (VAR m: Mutex);
+  PROCEDURE Unlock (VAR m: Mutex);
+
+  (* Channels.  Without generics a message is an extensible record,
+     unpacked by a type guard. *)
+  TYPE
+    Message = POINTER TO MessageDesc;
+    MessageDesc = RECORD END;
+    Channel = POINTER TO ChannelDesc;
+    ChannelDesc = RECORD END;
+
+  PROCEDURE NewChannel (capacity: LONGINT): Channel;   (* 0: unbuffered *)
+  PROCEDURE Send (ch: Channel; m: Message);
+  PROCEDURE Receive (ch: Channel; VAR m: Message): BOOLEAN;  (* FALSE: closed and empty *)
+  PROCEDURE TrySend (ch: Channel; m: Message): BOOLEAN;
+  PROCEDURE TryReceive (ch: Channel; VAR m: Message): BOOLEAN;
+  PROCEDURE Close (ch: Channel);
+  PROCEDURE Select (VAR from: ARRAY OF Channel; VAR m: Message): LONGINT;
+    (* receive from whichever channel is ready first; its index, or -1
+       when all are closed *)
+
+  (* Events: how asynchronous I/O wakes a task. *)
+  TYPE Event = RECORD END;
+
+  PROCEDURE Await (VAR e: Event);   (* block until posted, then reset *)
+  PROCEDURE Post (VAR e: Event);    (* only sets a flag: safe in an AST or
+                                       signal handler *)
+END Tasks.
+```
+
+A task, as a program would write one:
+
+```oberon
+TYPE
+  Worker = POINTER TO RECORD (Tasks.TaskDesc) n: LONGINT; out: Tasks.Channel END;
+  Result = POINTER TO RECORD (Tasks.MessageDesc) value: LONGINT END;
+
+PROCEDURE (w: Worker) Run;
+  VAR r: Result;
+BEGIN NEW(r); r.value := w.n * w.n; Tasks.Send(w.out, r)
+END Run;
+```
+
+### 9.2 Why this shape
+
+- **A body is a type-bound procedure of an extended `TaskDesc`**, not
+  a procedure value with an argument. poc has no nested procedure
+  values (section 5, finding 7), and an object is how Oberon-2 hands
+  state to a body; Modula-3's `Thread.Closure` is the same idea.
+  `Coroutines` still sees a global procedure: `Tasks`'s own
+  trampoline, which calls `Current().Run`.
+- **A task's stack can be freed when its `Run` returns.** That settles
+  part of section 8.3, item 3, for tasks: the scheduler owns the
+  trampoline, so it marks the task done, wakes any `Join`, and frees
+  the stack at once. Only the descriptor lives on, for the collector
+  to free. Returning is the normal end of a task, not trap 16.
+- **Locks are rarely needed.** Nothing preempts, so code between two
+  switch points is atomic already. `Mutex` is only for a region that
+  contains a switch point (a `Send`, an `Await`, blocking I/O). Most
+  programs need only `Condition`.
+- **`Event` is the bridge to I/O.** A VMS `SYS$QIO` completion AST,
+  or the scheduler's POSIX `poll` loop, calls `Post`; the waiting task
+  is in `Await`. Allocation and switching stay out of handler context,
+  as the AST and signal rule (section 5, finding 5; §22) requires.
+- **The I/O wrappers are separate modules** (say `TaskFiles` and
+  `TaskConsole`) over `Event`. Plain `In`, `Out` and `Files` still
+  work, but a blocking call stops every task. On POSIX, `poll` calls a
+  regular file always ready, so disk reads block anyway (Go uses extra
+  threads for them); VMS's `$QIO` is asynchronous for disk files too.
+
+### 9.3 Open questions
+
+1. **When the program ends:** when the main module's body ends, as in
+   Go (`Join` to wait), or only once every task has ended, as Ada's
+   master rule does.
+2. **Deadlock:** when every task is blocked and none waits on a timer
+   or I/O, trap with a message and a new status, as Go's "all
+   goroutines are asleep" does.
+3. **Messages as extensible records** cost an allocation each, and the
+   wrong type fails at the receiver's type guard. The alternative is
+   typed channel modules for the basic types (`IntChannel` and so on).
+4. **`Select`:** whether it covers sending too, and whether it takes a
+   timeout. Go's full `select` with only procedures gets awkward fast.
+5. **Cancellation:** Modula-3's `Alert`/`TestAlert` (a flag the
+   blocking calls check), or none at first.
+6. **Mixing with `Coroutines`:** whether a program that uses `Tasks`
+   may still `Transfer` itself, and if so only to coroutines `Tasks`
+   does not own.
