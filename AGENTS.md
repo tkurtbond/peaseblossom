@@ -331,7 +331,8 @@ writes `:= ..`). `-strict` rejects it.
 
 ### What traps, and what does not (Phase 11 C9)
 
-The tables of trap statuses 2-18 (15 VAX/VMS only, 16-18 `Coroutines`'),
+The tables of trap statuses 2-20 (15 VAX/VMS only, 16-18 `Coroutines`', 19-20
+`Tasks`', decided, not yet implemented),
 what ends a program silently, what nothing stops, and what is a
 compile-time error. `poc -trap-location` (C7) prefixes every trap message
 with `file:line:column:` and ends it with the procedure, "(in List.Insert)". Since Phase 12 step 1 (2026-09-27) a function that reaches
@@ -488,6 +489,21 @@ finalizer, a signal handler or an AST) and 18 (no memory for a stack,
 always); none has a `-trap-location`. A blocking call stops them all;
 switching out of a C callback is allowed only if it is resumed and returns
 first; nothing may unwind across a switch.
+
+### Tasks (decided 2026-11-14; Phase 19, candidate 7)
+
+A runtime module over `Coroutines`, the same Oberon on both back ends, not
+implemented yet (`doc/developer/tasks.md`, Phases 9-13; probes in
+`concurrency-survey.md` section 10). A task is a `TaskDesc` extension with an
+exported `Run`; nothing preempts; the program ends with the main body,
+abandoning tasks. Mesa conditions, mutexes, channels of extensible records,
+a receive-only `Select`, `After` as a timeout channel. `Post` only sets
+flags, for signal handlers and ASTs; the idle wait is `poll` and a
+self-pipe on POSIX, `$HIBER`/`$WAKE` and its own `$SETIMR` on VMS (never
+`$CANWAK`), replaceable by `SetIdleStep` (which must watch
+`WakeDescriptor()`). `Sleep` waits at least its time. Traps 19 (all
+blocked) and 20 (misuse); on VMS no AST-level check (its cost), so a
+blocking call in an AST is undefined.
 
 ## Project state
 

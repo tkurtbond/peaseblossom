@@ -1298,6 +1298,18 @@ Those done while Phase 15 was current, 1 and 2, are in
     with the User's Guide's chapter 11 and the VAX/VMS Guide's
     "Coroutines".
 
+5.  A `Tasks` module on both back ends (the user, 2026-11-14; Phase
+    19's candidate 7, option C of `doc/research/concurrency-survey.md`,
+    whose section 10 records its probes): cooperative tasks over
+    `Coroutines`, the same Oberon source in `rtl/llvm` and `rtl/vax`,
+    with Mesa conditions, mutexes, channels, `Select`, `Sleep`, `After`,
+    events a signal handler or an AST may post, a replaceable idle step
+    (for pofltk), `AwaitReadable`/`AwaitWritable` on POSIX, a
+    `TaskInput` module, and trap statuses 19 and 20. No compiler
+    change. The plan, fourteen decisions (decided 2026-11-14, Phase 8)
+    and seven phases (7-13), is in `doc/developer/tasks.md`; the work
+    is on the `tasks` branch.
+
 ## Ongoing language enhancements
 
 Language extensions that using poc on other programs shows are wanted,

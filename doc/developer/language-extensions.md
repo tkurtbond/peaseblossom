@@ -813,11 +813,12 @@ signal death is 128 + the signal number, as a shell reports it).
 message's line) and exits with the status; the numbers are poc's own (voc's Halt codes
 in the last column are `Halt(n)` printed as "Terminated by Halt(n)", exit 256-n).
 No location is reported by default; **`poc -trap-location`** (C7, below) adds
-one to every trap in this table but 16-18, which come from the runtime and not
+one to every trap in this table but 16-20, which come from the runtime and not
 from generated code. Each status is pinned by a fixture (16-18's come with
-`Coroutines`, `doc/developer/coroutines.md`, Phases 3 and 4). On VAX/VMS a
-trap's condition value is `%X10000002` plus 8 times the status (16-18 are
-`%X10000082`, `%X1000008A`, `%X10000092`).
+`Coroutines`, `doc/developer/coroutines.md`, Phases 3 and 4; 19 and 20 will
+come with `Tasks`, `doc/developer/tasks.md`, Phase 9). On VAX/VMS a
+trap's condition value is `%X10000002` plus 8 times the status (16-20 are
+`%X10000082`, `%X1000008A`, `%X10000092`, `%X1000009A`, `%X100000A2`).
 
 | Status | What | Message | voc |
 |---|---|---|---|
@@ -838,6 +839,8 @@ trap's condition value is `%X10000002` plus 8 times the status (16-18 are
 | 16 | A coroutine's body returned (Oakwood: "Procedure p must never return"; "Coroutines"; `llvm-coroutines-traps`, `vax-coroutines-traps`) | `coroutine body returned` | none: voc has no `Coroutines` |
 | 17 | Misuse of `Coroutines` ("Coroutines"; the same fixtures): `Transfer` to a record never given to `Init`, or to a freed coroutine; `Free` of the running coroutine or of `main`'s; `Transfer` in a finalizer, in a signal handler (LLVM) or at AST level (VAX, in a program that imports `AsynchronousTraps`) | one text for each case: `Transfer to a coroutine never initialized`, `Transfer to a freed coroutine`, `Free of the running coroutine`, `Free of the main program's coroutine`, `Transfer in a finalizer`, `Transfer in a signal handler`, `Transfer at AST level` | none |
 | 18 | `Coroutines.Init` cannot get memory for the stack, always: unlike `NEW` there is no NIL to test (the same fixtures) | `no memory for a coroutine's stack` | none |
+| 19 | Decided, not yet implemented: a `Tasks` program in which every task is blocked, with no task ready, no timer pending, no task waiting for a descriptor and no task in `Await` ("Tasks"; `llvm-tasks-traps`, `vax-tasks-traps`) | `all tasks are blocked` | none: voc has no `Tasks` |
+| 20 | Decided, not yet implemented: misuse of `Tasks` ("Tasks"; the same fixtures): `Unlock` of a mutex the running task does not hold, `Join` of the running task, `Send` on a closed channel, `Close` of a channel already closed, `Start` of a task already started, `NewChannel` with a negative capacity | one text for each case | none |
 
 **The library's own failure.** `Files` stops the program with status 99 when
 it meets an error it cannot hand back to the caller - a file that cannot be
@@ -2051,3 +2054,60 @@ What a program can observe:
 - `GarbageCollectedHeap` exports `MarkRange`, `StackBase`,
   `SetStackScanner` and `RunningFinalizer` for `Coroutines`; calling them
   otherwise is undefined.
+
+## Tasks (decided 2026-11-14; Phase 19, candidate 7)
+
+A runtime module `Tasks` of cooperative tasks, conditions, mutexes and
+channels, in Oberon over `Coroutines`, the same source on both back ends,
+with a way for signals, ASTs, timers and descriptors to wake a task. Option
+C of `doc/research/concurrency-survey.md`; decided with the user 2026-11-14,
+after the probes the survey's section 10 records. `doc/developer/tasks.md`
+has the interface, the fourteen decisions and the plan. Not implemented yet.
+
+What a program will be able to observe:
+
+- **A task is an extension of `Tasks.TaskDesc` with its own `Run`**,
+  which must be exported (`PROCEDURE (t: T) Run*`). `Start(t, stackSize)`
+  runs it on a coroutine of its own; returning from `Run` ends the task
+  (not trap 16), and the next task to run frees its stack. The main program
+  is a task too.
+- **Nothing preempts.** A task runs until it makes a call that can block
+  (`Yield`, `Join`, `Sleep`, `Wait`, `Lock`, `Send`, `Receive`, `Select`,
+  `Await`, `AwaitReadable`, `AwaitWritable`), and code between two such
+  calls is atomic. The run queue is FIFO, `Signal` wakes the longest
+  waiter, and conditions are Mesa's: a woken task tests again.
+- **The program ends when the main module's body ends**, as in Go: tasks
+  still running are abandoned, their finalizers run, their `Run`s do not
+  finish. `Join` is how to wait.
+- **Channels carry extensible records** (`Message`; `NIL` too), buffered
+  or not. `Select` receives only, and a timeout is a channel, `After(ms)`.
+- **`Post(e)` only sets flags**, so a signal handler or an AST may call
+  it; `Await(e)` waits for it. When no task is ready, `Tasks` waits for the
+  nearest timer, the descriptors tasks wait for and a post: `poll` and a
+  self-pipe on POSIX, `$HIBER`, `$WAKE` and a `$SETIMR` of its own on VMS
+  (never `$CANWAK`, which would cancel other code's wakeups).
+- **`Sleep` and `After` wait at least their time**: up to two 10 ms
+  clock ticks longer on OpenBSD, NetBSD and the VAX.
+- **A ready descriptor is noticed within about 1 ms** even while tasks
+  keep yielding.
+- **`SetIdleStep(p)` replaces the wait**, for a toolkit's own loop such
+  as pofltk's `Fl.Wait`. The step must return when `WakeDescriptor()` is
+  readable (POSIX), must watch the descriptors tasks wait for, and runs on
+  whichever task's stack is current, so every task needs room for it.
+- **Traps** 19 (every task blocked) and 20 (misuse), in "What traps, and
+  what does not". A blocking call in a finalizer or, on LLVM, a signal
+  handler is trap 17, through `Coroutines`. On VMS `Tasks` switches
+  without `Coroutines`' AST-level check, which would cost some 20 µs a
+  switch in a program that imports `AsynchronousTraps`, so a blocking call
+  in an AST routine is undefined.
+- **Rules the program keeps, which nothing checks:**
+  - A blocking call that is not one of `Tasks`' (a disk read, `In`,
+    `Platform.Delay`) stops every task.
+  - `Coroutines` may be used only inside one task, and that task must be
+    back on its own coroutine before it calls `Tasks` again.
+  - A task blocked on a channel nothing else can reach is a leak.
+  - On VMS, run a `Tasks` program under the debugger only with `DEFINE
+    DBG$PROCESS NONE`: the default two-process debugger loses a
+    remembered `$WAKE`.
+- `Coroutines` gets one export for `Tasks`, a `Transfer` without the
+  AST-level check; calling it otherwise is undefined.
