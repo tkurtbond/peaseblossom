@@ -1,0 +1,61 @@
+build status: %X10000001
+== 1
+a body returns
+finalized 1
+status: %X10000082
+coroutine body returned
+== 2
+finalized 1
+status: %X1000008A
+Transfer to a coroutine never initialized
+== 3
+finalized 1
+status: %X1000008A
+Transfer to a freed coroutine
+== 4
+finalized 1
+status: %X1000008A
+Free of the running coroutine
+== 5
+finalized 1
+status: %X1000008A
+Free of the main program's coroutine
+== 6
+a finalizer transfers
+finalized 1
+status: %X1000008A
+Transfer in a finalizer
+== 7
+finalized 1
+status: %X1000008A
+Transfer at AST level
+== 8
+finalized 1
+status: %X10000092
+no memory for a coroutine's stack
+== 9
+NIL dereferenced on a coroutine
+finalized 1
+status: %X10000022
+NIL pointer dereference
+== 10
+finalized 1
+status: %X10000152
+== 11
+finalized 1
+status: %X10000052
+assertion failed (77)
+== 12
+finalized 1
+status: %X10000022
+NIL pointer dereference
+== 13
+stacks of 1 MiB, none freed
+finalized 1
+status: %X10000092
+no memory for a coroutine's stack
+== 14
+status: %X1000000C
+a coroutine recurses without end
+finalized 1
+an access violation reported

@@ -20,7 +20,7 @@ builds() {
 rm -rf work
 mkdir work
 generated="DSCDEF SORDEF SOR_ROUTINES SSDEF"
-(cd work && poc -target vax-dec-vms $vax_way_option -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar) >work/out 2>&1 \
+(cd work && poc -target vax-dec-vms $vax_way_option -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar ../$rtl/CoroutineSwitch.mar) >work/out 2>&1 \
   || cat work/out >>result
 (cd work && poc -target vax-dec-vms $vax_way_option -output-dir libs -library-path libs -library VMSDEF \
   $(for m in $generated; do echo ../$vms/$m.Mod; done)) >>result 2>&1

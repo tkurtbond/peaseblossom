@@ -1,0 +1,6 @@
+build status: %X10000001
+main collected more than twice: yes
+worker's list: 0 wrong, 0 missing
+worker collected more than twice: yes
+main's list: 0 wrong, 0 missing
+run status: %X00000001

@@ -27,8 +27,8 @@ start() {
 : >result
 rtl=../../../rtl/vax
 lib=libs/vax-dec-vms/O2
-echo "== poc -target vax-dec-vms -vax-objects -output-dir libs -library POCRTL rtl/vax/*.Mod rtl/vax/PocRtl.mar" >>result
-poc -target vax-dec-vms -vax-objects -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar >>result 2>&1
+echo "== poc -target vax-dec-vms -vax-objects -output-dir libs -library POCRTL rtl/vax/*.Mod rtl/vax/PocRtl.mar rtl/vax/CoroutineSwitch.mar" >>result
+poc -target vax-dec-vms -vax-objects -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar >>result 2>&1
 echo "exit $?" >>result
 run -target vax-dec-vms -vax-objects -output-dir libs -library-path libs -library HOLDLIB HoldLib.mod PlainLib.mod
 echo "HOLDLIB's modules:" >>result
@@ -41,7 +41,7 @@ start emit/PlainUse.mar PLAINUSE
 run -target vax-dec-vms -library-path libs -output-dir main -o HoldUse -build HoldUse.mod
 start main/HoldUse.mar
 run -target vax-dec-vms -vax-objects -library-path libs -output-dir main -o HoldUse -build HoldUse.mod
-vax_do guest-run.com guest-run.expected $lib/*.obj $lib/PocRtl.mar $lib/*_build.com $lib/*_setup.com \
+vax_do guest-run.com guest-run.expected $lib/*.obj $lib/PocRtl.mar $lib/CoroutineSwitch.mar $lib/*_build.com $lib/*_setup.com \
   main/HoldUse.obj HoldUse.com
 rm -rf libs main emit
 rm -f HoldUse.com HoldUse.sym HoldLib.sym PlainUse.sym PlainLib.sym

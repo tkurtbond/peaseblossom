@@ -604,7 +604,7 @@ VAXKITDIR ?= $(DATADIR)/peaseblossom/vax
 VAXDOCDIR ?= $(PREFIX)/share/doc/peaseblossom-vax
 VAX_LIB := $(STAGE2_LIB)/vax-dec-vms
 VAX_LIBRARIES := POCRTL VMSDEF VMSLIB
-VAX_RTL_SRCS := $(sort $(wildcard rtl/vax/*.Mod)) rtl/vax/PocRtl.mar
+VAX_RTL_SRCS := $(sort $(wildcard rtl/vax/*.Mod)) rtl/vax/PocRtl.mar rtl/vax/CoroutineSwitch.mar
 VMSDEF_SRCS := $(sort $(wildcard rtl/vax/vms/*.Mod))
 VMSLIB_SRCS := $(sort $(wildcard rtl/vax/vmslib/*.Mod))
 INSTALL_VAX_LIBS := $(foreach m,O2 OC,$(foreach l,$(VAX_LIBRARIES),$(VAX_LIB)/$(m)/$(l).library))
@@ -803,7 +803,8 @@ test-vax-guest-poc: build
 # time, one on each of the guest's accounts. Not part of make check: it
 # holds both accounts, about five minutes at 20.
 VAX_ASTS_REPEAT ?= 20
-VAX_AST_TESTS = vax-asts vax-asts-heap vax-conditions-handlers vax-subprocesses
+VAX_AST_TESTS = vax-asts vax-asts-heap vax-conditions-handlers vax-subprocesses \
+  vax-coroutines-asts
 
 test-vax-asts: build
 	VAX_REPEAT=$(VAX_ASTS_REPEAT) test/run-tests.sh -j 2 $(VAX_AST_TESTS)

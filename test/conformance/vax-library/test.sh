@@ -56,7 +56,7 @@ rtl=../../../rtl/vax
 lib=libs/vax-dec-vms/O2
 # in C's order, as ls sorts the library directory below: a glob follows the
 # locale, which puts MathL.Mod before Math.Mod in en_US
-run -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar
+run -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar
 run -target vax-dec-vms -output-dir libs -library-path libs -library VAXLIB VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
 compare expected-VAXLIB_build.com $lib/VAXLIB_build.com
 compare expected-VAXLIB_setup.com $lib/VAXLIB_setup.com
@@ -65,6 +65,7 @@ compare expected-VAXLIB.library manifest
 rm -f manifest
 grep -c '^UNIVERSAL=' $lib/POCRTL_build.com | sed 's/^/POCRTL symbols made universal: /' >>result
 cmp -s $rtl/PocRtl.mar $lib/PocRtl.mar && echo "PocRtl.mar copied whole" >>result
+cmp -s $rtl/CoroutineSwitch.mar $lib/CoroutineSwitch.mar && echo "CoroutineSwitch.mar copied whole" >>result
 (cd $lib && LC_ALL=C ls) | sed 's/^/in the library directory: /' >>result
 mkdir main
 run -target vax-dec-vms -library-path libs -output-dir main -o useolb -build VaxLibUse.mod
@@ -104,7 +105,7 @@ compare useolb.com useinst-renamed.com
 rm -rf main2 useinst.com useinst-renamed.com
 # the same libraries from poc's objects (step 6b)
 olib=objects/libs/vax-dec-vms/O2
-run -target vax-dec-vms -vax-objects -output-dir objects/libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar
+run -target vax-dec-vms -vax-objects -output-dir objects/libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar
 run -target vax-dec-vms -vax-objects -output-dir objects/libs -library-path objects/libs -library VAXLIB \
   VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
 compare expected-VAXLIB_build-objects.com $olib/VAXLIB_build.com
@@ -116,8 +117,8 @@ grep '^UNIVERSAL=' $lib/POCRTL_build.com >universal.mar
 grep '^UNIVERSAL=' $olib/POCRTL_build.com >universal.obj
 cmp -s universal.mar universal.obj && echo "POCRTL's UNIVERSAL= lines are the same from objects" >>result
 rm -f universal.mar universal.obj
-# VAXLIB's files and POCRTL's hand-written part: each module's .obj, no .mar
-(cd $olib && LC_ALL=C ls) | grep -E '^(VaxLib|VAXLIB|PocRtl|Args\.)' |
+# VAXLIB's files and POCRTL's hand-written parts: each module's .obj, no .mar
+(cd $olib && LC_ALL=C ls) | grep -E '^(VaxLib|VAXLIB|PocRtl|CoroutineSwitch|Args\.)' |
   sed 's/^/in the objects library directory: /' >>result
 rm -f useolb.com useshr.com
 mkdir objects/main-macro32 objects/main-objects

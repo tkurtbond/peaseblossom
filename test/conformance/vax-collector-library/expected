@@ -1,4 +1,4 @@
-== poc -target vax-dec-vms -vax-objects -output-dir libs -library POCRTL rtl/vax/*.Mod rtl/vax/PocRtl.mar
+== poc -target vax-dec-vms -vax-objects -output-dir libs -library POCRTL rtl/vax/*.Mod rtl/vax/PocRtl.mar rtl/vax/CoroutineSwitch.mar
 exit 0
 == poc -target vax-dec-vms -vax-objects -output-dir libs -library-path libs -library HOLDLIB HoldLib.mod PlainLib.mod
 exit 0

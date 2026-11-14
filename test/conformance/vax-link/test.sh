@@ -56,7 +56,7 @@ vax_do guest-link.com guest-link.expected VaxLink.com VaxLink.mar \
 rtl=../../../rtl/vax
 lib=libs/vax-dec-vms/O2
 # in C's order: a glob follows the locale (vax-library)
-run -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar
+run -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar
 run -target vax-dec-vms -output-dir libs -library-path libs -link FOREIGN.OLB/LIBRARY \
   -link 'PSECT_ATTR=NO_SUCH_PSECT,NOSHR ! twice' -library VAXLINK VaxLinkLib.mod
 compare expected-VAXLINK_build.com $lib/VAXLINK_build.com

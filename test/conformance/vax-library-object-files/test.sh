@@ -82,9 +82,9 @@ cp hand-Thrice.mar work/Thrice.mar
 (cd work && poc -target vax-dec-vms -emit-vax-object Helper.mod) >>result 2>&1
 mv work/Helper.obj work/other/Helper.obj
 every_object >work/Every.obj
-(cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar) >>result 2>&1
+(cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar) >>result 2>&1
 echo "POCRTL exit $?" >>result
-(cd work && poc -target vax-dec-vms -vax-objects -output-dir olibs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar) >>result 2>&1
+(cd work && poc -target vax-dec-vms -vax-objects -output-dir olibs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar) >>result 2>&1
 echo "POCRTL from objects exit $?" >>result
 run -target vax-dec-vms -output-dir libs -library-path libs -library EXT ExtLib.mod Thrice.mar other/Helper.obj Every.obj
 compare expected-EXT_build.com $lib/EXT_build.com

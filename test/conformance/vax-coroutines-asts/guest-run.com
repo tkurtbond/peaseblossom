@@ -1,0 +1,55 @@
+$ ! vax-coroutines-asts (doc/developer/coroutines.md, Phase 4): poc's
+$ ! runtime and Coroutines' switch, COROUTINESWITCH.MAR, are assembled;
+$ ! then COROUTINEASTS.COM, which poc -build wrote, links the program with
+$ ! the switch by its -link line, and the image runs three times, its
+$ ! SYS$ERROR a file shown after each run. Everything made is deleted
+$ SET NOON
+$ IF P1 .EQS. "RUNS" THEN GOTO RUNS
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN MACRO/OBJECT COROUTINESWITCH.MAR
+$ IF S THEN S = $STATUS
+$ IF S THEN @COROUTINEASTS
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ !
+$ ! the runs, once; or, with P1 = n (vax_do's VAX_REPEAT), n times, the
+$ ! first one's output shown and each later one's compared with it and
+$ ! shown only where it differs. The procedure runs itself to make them,
+$ ! with P1 = RUNS, so that a run's output can go to a file.
+$ SELF = F$ENVIRONMENT("PROCEDURE")
+$ PASSES = F$INTEGER(P1)
+$ IF PASSES .LE. 1 THEN @'SELF' RUNS
+$ IF PASSES .LE. 1 THEN GOTO CLEAN
+$ @'SELF'/OUTPUT=PASS1.TXT RUNS
+$ TYPE PASS1.TXT
+$ PASS = 2
+$NEXT_RUN:
+$ @'SELF'/OUTPUT=PASS.TXT RUNS
+$ DIFFERENCES/OUTPUT=NL: PASS1.TXT PASS.TXT
+$ SAME = $SEVERITY .EQ. 1
+$ IF .NOT. SAME THEN WRITE SYS$OUTPUT "run ", PASS, " of ", PASSES, " differs from the first:"
+$ IF .NOT. SAME THEN DIFFERENCES PASS1.TXT PASS.TXT
+$ DELETE/NOLOG PASS.TXT;*
+$ PASS = PASS + 1
+$ IF PASS .LE. PASSES THEN GOTO NEXT_RUN
+$ DELETE/NOLOG PASS1.TXT;*
+$CLEAN:
+$ DELETE/NOLOG POCRTL.OBJ;*,COROUTINESWITCH.OBJ;*
+$ DELETE/NOLOG COROUTINEASTS.OBJ;*,COROUTINES.OBJ;*,ASYNCHRONOUSTRAPS.OBJ;*,GARBAGECOLLECTEDHEAP.OBJ;*,OUT.OBJ;*,LINEOUTPUT.OBJ;*,FORMATTEDOUTPUT.OBJ;*,FORMATTEDTEXT.OBJ;*,REALDIGITS.OBJ;*
+$ IF F$SEARCH("COROUTINEASTS.OPT") .NES. "" THEN DELETE/NOLOG COROUTINEASTS.OPT;*
+$ IF F$SEARCH("COROUTINEASTS.EXE") .NES. "" THEN DELETE/NOLOG COROUTINEASTS.EXE;*
+$ EXIT 1
+$ !
+$RUNS:
+$ N = 0
+$RUN:
+$ N = N + 1
+$ DEFINE/USER_MODE SYS$ERROR COROUTINEASTS.ERR
+$ RUN COROUTINEASTS
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ IF F$SEARCH("COROUTINEASTS.ERR") .NES. "" THEN TYPE COROUTINEASTS.ERR
+$ IF F$SEARCH("COROUTINEASTS.ERR") .NES. "" THEN DELETE/NOLOG COROUTINEASTS.ERR;*
+$ IF N .LT. 3 THEN GOTO RUN
+$ EXIT 1

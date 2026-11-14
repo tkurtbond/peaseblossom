@@ -1,3 +1,8 @@
+;; Changed by Claude, 2026-11-13, for doc/developer/coroutines.md Phase 4,
+;; for the user's review: only the external POC_K1_...,
+;; GarbageCollectedHeap's key, changed, since its interface gained
+;; StackBase, MarkRange, SetStackScanner, RunningFinalizer and
+;; AstsExpected, for Coroutines. The file as the user reviewed it before:
 ;; Changed by Claude, 2026-10-22, for doc/developer/vms-memory.md steps 1
 ;; and 3; reviewed by the user, 2026-10-22: only the key of
 ;; GarbageCollectedHeap, which those steps change (POC_K1_...), is new.
@@ -75,7 +80,7 @@ L_ROOTS:
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_C_G3O8P0I1
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_C_KH7U9V1O
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
-	.EXTERNAL	POC_K1_09D4AA4B44131C60
+	.EXTERNAL	POC_K1_B846BE2B86FB357F
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name

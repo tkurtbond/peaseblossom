@@ -1,12 +1,13 @@
-== poc -target vax-dec-vms -output-dir libs -library POCRTL ../../../rtl/vax/Args.Mod ../../../rtl/vax/AsynchronousTraps.Mod ../../../rtl/vax/CardinalTypes.Mod ../../../rtl/vax/Console.Mod ../../../rtl/vax/DecimalToReal.Mod ../../../rtl/vax/Directories.Mod ../../../rtl/vax/Err.Mod ../../../rtl/vax/Files.Mod ../../../rtl/vax/FormattedInput.Mod ../../../rtl/vax/FormattedOutput.Mod ../../../rtl/vax/FormattedText.Mod ../../../rtl/vax/GarbageCollectedHeap.Mod ../../../rtl/vax/In.Mod ../../../rtl/vax/InStr.Mod ../../../rtl/vax/LineOutput.Mod ../../../rtl/vax/Math.Mod ../../../rtl/vax/MathL.Mod ../../../rtl/vax/Modules.Mod ../../../rtl/vax/Oberon.Mod ../../../rtl/vax/Out.Mod ../../../rtl/vax/OutStr.Mod ../../../rtl/vax/Platform.Mod ../../../rtl/vax/RealDigits.Mod ../../../rtl/vax/Reals.Mod ../../../rtl/vax/RecordFiles.Mod ../../../rtl/vax/Strings.Mod ../../../rtl/vax/Texts.Mod ../../../rtl/vax/VT100.Mod ../../../rtl/vax/VmsArguments.Mod ../../../rtl/vax/PocRtl.mar
+== poc -target vax-dec-vms -output-dir libs -library POCRTL ../../../rtl/vax/Args.Mod ../../../rtl/vax/AsynchronousTraps.Mod ../../../rtl/vax/CardinalTypes.Mod ../../../rtl/vax/Console.Mod ../../../rtl/vax/Coroutines.Mod ../../../rtl/vax/DecimalToReal.Mod ../../../rtl/vax/Directories.Mod ../../../rtl/vax/Err.Mod ../../../rtl/vax/Files.Mod ../../../rtl/vax/FormattedInput.Mod ../../../rtl/vax/FormattedOutput.Mod ../../../rtl/vax/FormattedText.Mod ../../../rtl/vax/GarbageCollectedHeap.Mod ../../../rtl/vax/In.Mod ../../../rtl/vax/InStr.Mod ../../../rtl/vax/LineOutput.Mod ../../../rtl/vax/Math.Mod ../../../rtl/vax/MathL.Mod ../../../rtl/vax/Modules.Mod ../../../rtl/vax/Oberon.Mod ../../../rtl/vax/Out.Mod ../../../rtl/vax/OutStr.Mod ../../../rtl/vax/Platform.Mod ../../../rtl/vax/RealDigits.Mod ../../../rtl/vax/Reals.Mod ../../../rtl/vax/RecordFiles.Mod ../../../rtl/vax/Strings.Mod ../../../rtl/vax/Texts.Mod ../../../rtl/vax/VT100.Mod ../../../rtl/vax/VmsArguments.Mod ../../../rtl/vax/PocRtl.mar ../../../rtl/vax/CoroutineSwitch.mar
 exit 0
 == poc -target vax-dec-vms -output-dir libs -library-path libs -library VAXLIB VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
 exit 0
 libs/vax-dec-vms/O2/VAXLIB_build.com matches expected-VAXLIB_build.com
 libs/vax-dec-vms/O2/VAXLIB_setup.com matches expected-VAXLIB_setup.com
 manifest matches expected-VAXLIB.library
-POCRTL symbols made universal: 588
+POCRTL symbols made universal: 603
 PocRtl.mar copied whole
+CoroutineSwitch.mar copied whole
 in the library directory: Args.mar
 in the library directory: Args.owner
 in the library directory: Args.sym
@@ -19,6 +20,10 @@ in the library directory: CardinalTypes.sym
 in the library directory: Console.mar
 in the library directory: Console.owner
 in the library directory: Console.sym
+in the library directory: CoroutineSwitch.mar
+in the library directory: Coroutines.mar
+in the library directory: Coroutines.owner
+in the library directory: Coroutines.sym
 in the library directory: DecimalToReal.mar
 in the library directory: DecimalToReal.owner
 in the library directory: DecimalToReal.sym
@@ -138,7 +143,7 @@ inst/vax-dec-vms/O2 has the files of libs/vax-dec-vms/O2
 == poc -target vax-dec-vms -library-path inst -output-dir main2 -o useinst -build VaxLibUse.mod
 exit 0
 useinst-renamed.com matches useolb.com
-== poc -target vax-dec-vms -vax-objects -output-dir objects/libs -library POCRTL ../../../rtl/vax/Args.Mod ../../../rtl/vax/AsynchronousTraps.Mod ../../../rtl/vax/CardinalTypes.Mod ../../../rtl/vax/Console.Mod ../../../rtl/vax/DecimalToReal.Mod ../../../rtl/vax/Directories.Mod ../../../rtl/vax/Err.Mod ../../../rtl/vax/Files.Mod ../../../rtl/vax/FormattedInput.Mod ../../../rtl/vax/FormattedOutput.Mod ../../../rtl/vax/FormattedText.Mod ../../../rtl/vax/GarbageCollectedHeap.Mod ../../../rtl/vax/In.Mod ../../../rtl/vax/InStr.Mod ../../../rtl/vax/LineOutput.Mod ../../../rtl/vax/Math.Mod ../../../rtl/vax/MathL.Mod ../../../rtl/vax/Modules.Mod ../../../rtl/vax/Oberon.Mod ../../../rtl/vax/Out.Mod ../../../rtl/vax/OutStr.Mod ../../../rtl/vax/Platform.Mod ../../../rtl/vax/RealDigits.Mod ../../../rtl/vax/Reals.Mod ../../../rtl/vax/RecordFiles.Mod ../../../rtl/vax/Strings.Mod ../../../rtl/vax/Texts.Mod ../../../rtl/vax/VT100.Mod ../../../rtl/vax/VmsArguments.Mod ../../../rtl/vax/PocRtl.mar
+== poc -target vax-dec-vms -vax-objects -output-dir objects/libs -library POCRTL ../../../rtl/vax/Args.Mod ../../../rtl/vax/AsynchronousTraps.Mod ../../../rtl/vax/CardinalTypes.Mod ../../../rtl/vax/Console.Mod ../../../rtl/vax/Coroutines.Mod ../../../rtl/vax/DecimalToReal.Mod ../../../rtl/vax/Directories.Mod ../../../rtl/vax/Err.Mod ../../../rtl/vax/Files.Mod ../../../rtl/vax/FormattedInput.Mod ../../../rtl/vax/FormattedOutput.Mod ../../../rtl/vax/FormattedText.Mod ../../../rtl/vax/GarbageCollectedHeap.Mod ../../../rtl/vax/In.Mod ../../../rtl/vax/InStr.Mod ../../../rtl/vax/LineOutput.Mod ../../../rtl/vax/Math.Mod ../../../rtl/vax/MathL.Mod ../../../rtl/vax/Modules.Mod ../../../rtl/vax/Oberon.Mod ../../../rtl/vax/Out.Mod ../../../rtl/vax/OutStr.Mod ../../../rtl/vax/Platform.Mod ../../../rtl/vax/RealDigits.Mod ../../../rtl/vax/Reals.Mod ../../../rtl/vax/RecordFiles.Mod ../../../rtl/vax/Strings.Mod ../../../rtl/vax/Texts.Mod ../../../rtl/vax/VT100.Mod ../../../rtl/vax/VmsArguments.Mod ../../../rtl/vax/PocRtl.mar ../../../rtl/vax/CoroutineSwitch.mar
 exit 0
 == poc -target vax-dec-vms -vax-objects -output-dir objects/libs -library-path objects/libs -library VAXLIB VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
 exit 0
@@ -149,6 +154,7 @@ POCRTL's UNIVERSAL= lines are the same from objects
 in the objects library directory: Args.obj
 in the objects library directory: Args.owner
 in the objects library directory: Args.sym
+in the objects library directory: CoroutineSwitch.mar
 in the objects library directory: PocRtl.mar
 in the objects library directory: VAXLIB.library
 in the objects library directory: VAXLIB_build.com

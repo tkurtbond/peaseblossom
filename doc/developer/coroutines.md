@@ -350,7 +350,12 @@ The kits are checked by `tools/bootstrap/check-vax-kit`.
 
 `WordSets` and `Queens` go into `doc/examples/`, the User's Guide section
 goes around them, and `tools/guide-examples update` is run. `Queens` is run
-with fixed input, so the fixture compares its output.
+with fixed input, so the fixture compares its output. A VAX fixture,
+`vax-coroutines-examples`, builds both programs from `doc/examples/` both
+ways (MACRO-32 and objects) and runs them on the guest with the guide's
+inputs, and `Queens` with other sizes too, expecting the same output as on
+Unix: the run that shows the survey's "runs unchanged on Unix and VMS"
+holds.
 
 ### Phase 6: Documents and packaging
 

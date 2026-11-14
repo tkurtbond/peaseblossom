@@ -1,0 +1,23 @@
+build status: %X10000001
+the body runs
+main resumes the body
+Inner writes to address 0
+%SYSTEM-F-ACCVIO, access violation, reason mask=04, virtual address=00000000, PC=00002426, PSL=03C00004
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+COROUTINETRACE  INNER                              13      00000026  00002426
+COROUTINETRACE  MIDDLE                             18      00000006  00002430
+COROUTINETRACE  BODY                               25      00000054  00002485
+COROUTINES      START                             138      00000069  00004B69
+COROUTINESWITCH POC_COROUTINE_START                        00000005  00007DBC
+run status: %X1000000C
+%SYSTEM-F-ACCVIO, access violation, reason mask=04, virtual address=00000000, PC=00002426, PSL=03C00004
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+COROUTINETRACE  INNER                              13      00000026  00002426
+COROUTINETRACE  MIDDLE                             18      00000006  00002430
+COROUTINETRACE  BODY                               25      00000054  00002485
+COROUTINES      START                             138      00000069  00004B69
+COROUTINESWITCH POC_COROUTINE_START                        00000005  00007DBC

@@ -100,7 +100,7 @@ for model in O2 OC; do
   libs=$KIT/libs/vax-dec-vms/$model
   (cd "$KIT/libs" &&
    "$POC_BIN_DIR/poc" -$model -target vax-dec-vms -clear-library-path -output-dir . -library POCRTL \
-     $(LC_ALL=C ls "$ROOT"/rtl/vax/*.Mod) "$ROOT/rtl/vax/PocRtl.mar" &&
+     $(LC_ALL=C ls "$ROOT"/rtl/vax/*.Mod) "$ROOT/rtl/vax/PocRtl.mar" "$ROOT/rtl/vax/CoroutineSwitch.mar" &&
    "$POC_BIN_DIR/poc" -$model -target vax-dec-vms -clear-library-path -library-path . -output-dir . \
      -library VMSDEF $(LC_ALL=C ls "$ROOT"/rtl/vax/vms/*.Mod) &&
    "$POC_BIN_DIR/poc" -$model -target vax-dec-vms -clear-library-path -library-path . -output-dir . \
@@ -135,7 +135,7 @@ copy base SRC/BACK/VAX "$ROOT"/src/back/vax/*.Mod
 copy base SRC/BACK/VAX/VMS "$ROOT"/src/back/vax/vms/*.Mod
 copy base SRC/DRIVER "$ROOT"/src/driver/*.Mod
 copy base SRC/DRIVER/NO-LLVM "$ROOT"/src/driver/no-llvm/*.Mod
-copy base SRC/RTL "$ROOT"/rtl/vax/*.Mod "$ROOT/rtl/vax/PocRtl.mar"
+copy base SRC/RTL "$ROOT"/rtl/vax/*.Mod "$ROOT/rtl/vax/PocRtl.mar" "$ROOT/rtl/vax/CoroutineSwitch.mar"
 copy base SRC/GEN "$GEN/BuildInfo.Mod"
 copy vms SRC/RTL/VMS "$ROOT"/rtl/vax/vms/*.Mod
 copy vms SRC/RTL/VMSLIB "$ROOT"/rtl/vax/vmslib/*.Mod

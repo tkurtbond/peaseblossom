@@ -1,0 +1,19 @@
+build status: %X10000001
+batches checked: 200 or more
+bad batches: 0
+bad lists of the coroutines: 0
+lists checked: 10 or more
+collections during the run: 3 or more
+run status: %X00000001
+batches checked: 200 or more
+bad batches: 0
+bad lists of the coroutines: 0
+lists checked: 10 or more
+collections during the run: 3 or more
+run status: %X00000001
+batches checked: 200 or more
+bad batches: 0
+bad lists of the coroutines: 0
+lists checked: 10 or more
+collections during the run: 3 or more
+run status: %X00000001

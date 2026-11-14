@@ -1,0 +1,15 @@
+build status: %X10000001
+generated 1
+generated 2
+generated 3
+generated through a copy 4
+generated 5
+main transferred to itself
+A runs and resumes B
+B runs and resumes main
+main resumed by B
+B resumed, transfers to itself
+B goes on, resumes A
+A resumed, recursion depth 1000
+main resumed by A
+run status: %X00000001

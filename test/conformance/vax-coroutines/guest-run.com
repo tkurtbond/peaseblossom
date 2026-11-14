@@ -1,0 +1,19 @@
+$ ! vax-coroutines (doc/developer/coroutines.md, Phase 4): poc's runtime
+$ ! and Coroutines' switch, COROUTINESWITCH.MAR, are assembled; then
+$ ! COROUTINEBASICS.COM, which poc -build wrote, links the program with the
+$ ! switch by its -link line, and the image runs. Everything made is
+$ ! deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN MACRO/OBJECT COROUTINESWITCH.MAR
+$ IF S THEN S = $STATUS
+$ IF S THEN @COROUTINEBASICS
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF S THEN RUN COROUTINEBASICS
+$ IF S THEN WRITE SYS$OUTPUT "run status: ", $STATUS
+$ DELETE/NOLOG POCRTL.OBJ;*,COROUTINESWITCH.OBJ;*,OUT.OBJ;*,LINEOUTPUT.OBJ;*,FORMATTEDOUTPUT.OBJ;*,FORMATTEDTEXT.OBJ;*
+$ DELETE/NOLOG REALDIGITS.OBJ;*,GARBAGECOLLECTEDHEAP.OBJ;*,COROUTINES.OBJ;*,COROUTINEBASICS.OBJ;*
+$ DELETE/NOLOG COROUTINEBASICS.OPT;*,COROUTINEBASICS.EXE;*
+$ EXIT 1

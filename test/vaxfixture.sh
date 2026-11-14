@@ -250,7 +250,7 @@ vax_build() {
 # vax_files <file>...: vax_do's files, quoted for eval in vax_files: a
 # pattern that matched nothing (still holding a "*") left out, and in
 # vax_build's objects way each <Module>.mar replaced by the <Module>.obj
-# the way wrote beside it, once, but PocRtl.mar and a hand-written
+# the way wrote beside it, once, but PocRtl.mar, CoroutineSwitch.mar and a hand-written
 # hand-<name>.mar, which are MACRO's in both ways; a .mar with no such
 # object goes to result, since the way must have written every module's.
 vax_files=
@@ -260,7 +260,7 @@ vax_files() {
     case $vax_file in *'*'*) [ -e "$vax_file" ] || continue ;; esac
     if [ "${vax_way:-}" = objects ]; then
       case $vax_file in
-        */PocRtl.mar|PocRtl.mar|*/hand-*.mar|hand-*.mar) ;;
+        */PocRtl.mar|PocRtl.mar|*/CoroutineSwitch.mar|CoroutineSwitch.mar|*/hand-*.mar|hand-*.mar) ;;
         *.mar)
           vax_object=${vax_file%.mar}.obj
           if [ -f "$vax_object" ] && ! [ vax-way.stamp -nt "$vax_object" ]; then

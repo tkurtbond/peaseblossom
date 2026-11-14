@@ -1,0 +1,6 @@
+build status: %X10000001
+Free of a record never given to Init: nothing
+ran 1000 coroutines of 1 MiB
+a second Free, through a copy: nothing
+run status: %X1000008A
+Transfer to a freed coroutine

@@ -68,7 +68,7 @@ cp "$ROOT/tools/bootstrap/vax-kit/check/KitHello.Mod" "$work/KITHELLO.MOD"
 poc=${POC_BIN_DIR:-$ROOT/build/bin}/poc
 (cd "$work/cross" &&
  "$poc" -target vax-dec-vms -clear-library-path -output-dir libs -library POCRTL \
-   $(LC_ALL=C ls "$ROOT"/rtl/vax/*.Mod) "$ROOT/rtl/vax/PocRtl.mar" >libs.log 2>&1 &&
+   $(LC_ALL=C ls "$ROOT"/rtl/vax/*.Mod) "$ROOT/rtl/vax/PocRtl.mar" "$ROOT/rtl/vax/CoroutineSwitch.mar" >libs.log 2>&1 &&
  cp ../KITHELLO.MOD KitHello.Mod &&
  "$poc" -target vax-dec-vms -vax-objects -clear-library-path -library-path libs \
    -build KitHello.Mod && rm -r KitHello.Mod KitHello.sym libs libs.log) || {

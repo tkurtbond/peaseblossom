@@ -49,7 +49,7 @@ rtl=../../../../rtl/vax
 lib=libs/vax-dec-vms/O2
 cp Value.mod SevenLib.mod SevenUse.mod Seven.opt work/
 awk '{ printf "%s\r\n", $0 }' Seven.opt >work/SEVEN-CRLF.OPT
-(cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar) >>result 2>&1
+(cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar) >>result 2>&1
 echo "POCRTL exit $?" >>result
 run -target vax-dec-vms -library-path libs -build Value.mod Seven.opt
 compare expected-Value.com Value.com
@@ -79,7 +79,7 @@ if [ "${VAX_GUEST:-}" = skip ]; then
   echo "SKIPPED: building and running Value and SevenUse on the VAX (VAX_GUEST=skip)"
 elif ../../../tools/vax-assemble -available; then
   (cd work && poc -target vax-dec-vms -vax-objects -output-dir olibs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) \
-     $rtl/PocRtl.mar) >work/out 2>&1 || { echo "POCRTL from objects failed:" >>result; cat work/out >>result; }
+     $rtl/PocRtl.mar $rtl/CoroutineSwitch.mar) >work/out 2>&1 || { echo "POCRTL from objects failed:" >>result; cat work/out >>result; }
   quiet -target vax-dec-vms -vax-objects -output-dir olibs -library-path olibs -library SEVEN SevenLib.mod Seven.opt
   mkdir work/main-value work/main-macro32 work/main-objects
   quiet -target vax-dec-vms -vax-objects -library-path olibs -output-dir main-value -build Value.mod Seven.opt
