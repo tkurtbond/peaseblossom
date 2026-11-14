@@ -27,8 +27,9 @@ which fails when what the guide shows is not what poc does.
 8. Debugging
 9. Calling C
 10. The runtime modules
-11. Coming from voc
-12. poc on VAX/VMS
+11. Coroutines
+12. Coming from voc
+13. poc on VAX/VMS
 
 ## 1. Installing
 
@@ -705,6 +706,7 @@ from voc's, its source's first comment says how.
 | `Reals` | converting reals to digits and back |
 | `VT100` | the terminal's escape sequences: cursor movement, colors |
 | `GarbageCollectedHeap` | the collector: `Collect`, statistics, and finalizers |
+| `Coroutines` | coroutines: `Init`, `Transfer`, `Free` (section 11) |
 
 Each example below is in `doc/examples/runtime`.
 
@@ -1005,7 +1007,484 @@ working
 released the file
 ```
 
-## 11. Coming from voc
+## 11. Coroutines
+
+A coroutine is a procedure running on a stack of its own, which can stop
+in the middle of what it is doing, hand control to another coroutine, and
+later carry on where it stopped. The module `Coroutines` has the
+interface of Oakwood's optional module of that name, plus `Free` and
+`DefaultStackSize`:
+
+- `Init(body, stackSize, cor)` makes `cor` a new coroutine, which calls
+  `body` the first time it is resumed. The stack has `stackSize` bytes,
+  rounded up to whole pages; `Coroutines.DefaultStackSize` is a
+  recommendation.
+- `Transfer(from, to)` stores the running coroutine in `from` and resumes
+  `to` where it last stopped. The main program is a coroutine too: the
+  first `Transfer` out of it stores it in `from`, so that a `Transfer`
+  back to that resumes it.
+- `Free(cor)` gives back `cor`'s stack. A stack never freed is kept until
+  the program ends.
+
+Only `Transfer` switches: there are no threads underneath, so coroutines
+share the program's variables without locks, and none can change them
+while another is running. Each example below is in
+`doc/examples/coroutines`.
+
+**Two walks in step.** `WordSets` reads the words of two files into two
+sorted trees, and says which words are only in the first (`<`), only in
+the second (`>`), or in both (`=`). It must walk the two trees in order,
+one word at a time from each, as a merge does. Each walk is the ordinary
+recursive procedure, on its own coroutine, handing over one word and
+transferring back to the main program; without coroutines each would have
+to be rewritten with a stack of its own.
+
+<!-- example: coroutines/WordSets.Mod -->
+```
+MODULE WordSets;  (* which words are in one file, the other, or both *)
+
+  IMPORT Coroutines, Files, Args, Out;
+
+  CONST maxWord = 64;
+
+  TYPE
+    Node = POINTER TO NodeDesc;
+    NodeDesc = RECORD
+      word: ARRAY maxWord OF CHAR;
+      left, right: Node
+    END;
+    Walker = RECORD
+      cor: Coroutines.Coroutine;
+      tree: Node;
+      current: Node   (* the word handed over; NIL after the last *)
+    END;
+
+  VAR
+    main: Coroutines.Coroutine;
+    a, b: Walker;
+    name: ARRAY 256 OF CHAR;
+
+  PROCEDURE Insert(VAR t: Node; VAR word: ARRAY OF CHAR);
+  BEGIN
+    IF t = NIL THEN NEW(t); COPY(word, t.word)
+    ELSIF word < t.word THEN Insert(t.left, word)
+    ELSIF word > t.word THEN Insert(t.right, word)
+    END
+  END Insert;
+
+  PROCEDURE IsWordChar(ch: CHAR): BOOLEAN;
+  BEGIN
+    RETURN (CAP(ch) >= "A") & (CAP(ch) <= "Z") OR (ch >= "0") & (ch <= "9")
+  END IsWordChar;
+
+  PROCEDURE ReadWords(name: ARRAY OF CHAR; VAR tree: Node);
+    VAR f: Files.File; r: Files.Rider; ch: CHAR;
+      word: ARRAY maxWord OF CHAR; i: INTEGER;
+  BEGIN
+    f := Files.Old(name);
+    IF f = NIL THEN
+      Out.String("cannot open "); Out.String(name); Out.Ln; HALT(1)
+    END;
+    Files.Set(r, f, 0); Files.Read(r, ch);
+    WHILE ~r.eof DO
+      IF IsWordChar(ch) THEN
+        i := 0;
+        REPEAT
+          IF i < maxWord - 1 THEN word[i] := ch; INC(i) END;
+          Files.Read(r, ch)
+        UNTIL r.eof OR ~IsWordChar(ch);
+        word[i] := 0X; Insert(tree, word)
+      ELSE Files.Read(r, ch)
+      END
+    END
+  END ReadWords;
+
+  PROCEDURE Height(t: Node): LONGINT;
+    VAR l, r: LONGINT;
+  BEGIN
+    IF t = NIL THEN RETURN 0 END;
+    l := Height(t.left); r := Height(t.right);
+    IF l > r THEN RETURN l + 1 ELSE RETURN r + 1 END
+  END Height;
+
+  (* The walk: ordinary in-order recursion, handing each node to main. *)
+  PROCEDURE Walk(t: Node; VAR w: Walker);
+  BEGIN
+    IF t # NIL THEN
+      Walk(t.left, w);
+      w.current := t; Coroutines.Transfer(w.cor, main);
+      Walk(t.right, w)
+    END
+  END Walk;
+
+  (* A body must not return: after the last word, hand over NIL forever. *)
+  PROCEDURE Finish(VAR w: Walker);
+  BEGIN
+    w.current := NIL;
+    LOOP Coroutines.Transfer(w.cor, main) END
+  END Finish;
+
+  PROCEDURE WalkA; BEGIN Walk(a.tree, a); Finish(a) END WalkA;
+  PROCEDURE WalkB; BEGIN Walk(b.tree, b); Finish(b) END WalkB;
+
+  PROCEDURE Next(VAR w: Walker);
+  BEGIN Coroutines.Transfer(main, w.cor)
+  END Next;
+
+  PROCEDURE Show(mark: CHAR; n: Node);
+  BEGIN Out.Char(mark); Out.Char(" "); Out.String(n.word); Out.Ln
+  END Show;
+
+BEGIN
+  IF Args.argc # 3 THEN
+    Out.String("usage: wordsets file1 file2"); Out.Ln; HALT(2)
+  END;
+  Args.Get(1, name); ReadWords(name, a.tree);
+  Args.Get(2, name); ReadWords(name, b.tree);
+  (* A walk is as deep as its tree is high; sorted input makes a list. *)
+  Coroutines.Init(WalkA, 16384 + 256 * Height(a.tree), a.cor);
+  Coroutines.Init(WalkB, 16384 + 256 * Height(b.tree), b.cor);
+  Next(a); Next(b);
+  WHILE (a.current # NIL) OR (b.current # NIL) DO
+    IF (b.current = NIL) OR (a.current # NIL) & (a.current.word < b.current.word) THEN
+      Show("<", a.current); Next(a)
+    ELSIF (a.current = NIL) OR (b.current.word < a.current.word) THEN
+      Show(">", b.current); Next(b)
+    ELSE
+      Show("=", a.current); Next(a); Next(b)
+    END
+  END
+END WordSets.
+```
+
+With a memo and a list of words:
+
+<!-- example: coroutines/memo.txt -->
+```
+The meeting moved to Thursday. Bring the
+budget, the schedule and the new plans.
+```
+
+<!-- example: coroutines/words.txt -->
+```
+and bring budget meeting moved new plan plans
+schedule the thursday to tuesday
+```
+
+<!-- run: coroutines -->
+```
+$ poc WordSets.Mod
+$ ./WordSets memo.txt words.txt
+< Bring
+< The
+< Thursday
+= and
+> bring
+= budget
+= meeting
+= moved
+= new
+> plan
+= plans
+= schedule
+= the
+> thursday
+= to
+> tuesday
+```
+
+Words are compared as they are spelt, capitals included, so `Bring` at
+the start of a sentence is not `bring`. The `<` lines are what a spelling
+checker would report.
+
+**A search that hands over its results.** `Queens` places `k` queens on an
+`n`×`n` board, no two attacking each other, with Wirth's backtracking
+search. Each time the search finds a solution it transfers to the main
+program, which shows it and decides whether to ask for another. The
+search stays the textbook's recursive procedure, and the main program
+stays in control: it can stop after any solution, or wait for the user
+between two of them, without the search knowing why.
+
+<!-- example: coroutines/Queens.Mod -->
+```
+MODULE Queens;  (* k queens on an n x n board, one solution at a time *)
+
+  IMPORT Coroutines, Args, In, Out;
+
+  CONST
+    maxSize = 26;   (* files a to z *)
+    (* modes *)
+    askEachTime = 0; firstCount = 1; everySolution = 2;
+
+  VAR
+    main, solver: Coroutines.Coroutine;
+    n, k: INTEGER;   (* the board's size and the number of queens *)
+    column: ARRAY maxSize OF INTEGER;   (* row r's queen's column, -1 if none *)
+    columnTaken: ARRAY maxSize OF BOOLEAN;
+    upTaken, downTaken: ARRAY 2 * maxSize - 1 OF BOOLEAN;   (* the diagonals *)
+    found: BOOLEAN;   (* TRUE: column holds a solution; FALSE: no more *)
+    mode: INTEGER;
+    count, limit: LONGINT;
+    going: BOOLEAN;
+    answer: ARRAY 80 OF CHAR;
+
+  (* Wirth's backtracking search, with two changes: a row may be left
+     empty while enough rows remain for the queens still to place, and
+     each solution is handed to main instead of printed. A row not yet
+     given a queen has column -1, and every path puts that back. *)
+  PROCEDURE Place(row, placed: INTEGER);
+    VAR c: INTEGER;
+  BEGIN
+    IF placed = k THEN
+      found := TRUE; Coroutines.Transfer(solver, main)
+    ELSIF n - row >= k - placed THEN
+      FOR c := 0 TO n - 1 DO
+        IF ~columnTaken[c] & ~upTaken[row + c] & ~downTaken[row - c + n - 1] THEN
+          column[row] := c;
+          columnTaken[c] := TRUE; upTaken[row + c] := TRUE;
+          downTaken[row - c + n - 1] := TRUE;
+          Place(row + 1, placed + 1);
+          columnTaken[c] := FALSE; upTaken[row + c] := FALSE;
+          downTaken[row - c + n - 1] := FALSE;
+          column[row] := -1
+        END
+      END;
+      Place(row + 1, placed)   (* and with this row empty *)
+    END
+  END Place;
+
+  (* The solver's body. It must not return: after the last solution it
+     answers every Transfer with "no more". *)
+  PROCEDURE Solve;
+    VAR r: INTEGER;
+  BEGIN
+    FOR r := 0 TO n - 1 DO column[r] := -1 END;
+    Place(0, 0);
+    found := FALSE;
+    LOOP Coroutines.Transfer(solver, main) END
+  END Solve;
+
+  PROCEDURE NextSolution(): BOOLEAN;
+  BEGIN
+    Coroutines.Transfer(main, solver);
+    RETURN found
+  END NextSolution;
+
+  PROCEDURE Rule;
+    VAR c: INTEGER;
+  BEGIN
+    Out.Char("+");
+    FOR c := 0 TO n - 1 DO Out.String("---+") END;
+    Out.Ln
+  END Rule;
+
+  (* The solution's number, its queens' squares in chess notation, and
+     the board, the last rank at the top. *)
+  PROCEDURE Show(number: LONGINT);
+    VAR r, c: INTEGER;
+  BEGIN
+    Out.String("Solution "); Out.Int(number, 0); Out.Char(":");
+    FOR r := 0 TO n - 1 DO
+      IF column[r] >= 0 THEN
+        Out.Char(" "); Out.Char(CHR(ORD("a") + column[r])); Out.Int(r + 1, 0)
+      END
+    END;
+    Out.Ln;
+    FOR r := n - 1 TO 0 BY -1 DO
+      Rule; Out.Char("|");
+      FOR c := 0 TO n - 1 DO
+        IF column[r] = c THEN Out.String(" Q |") ELSE Out.String("   |") END
+      END;
+      Out.Ln
+    END;
+    Rule
+  END Show;
+
+  PROCEDURE Usage;
+  BEGIN
+    Out.String("usage: queens [-n size] [-k queens] [all | count]"); Out.Ln;
+    Out.String("size 1 to 26, 8 if not given; queens 1 to size, size if not given");
+    Out.Ln;
+    HALT(2)
+  END Usage;
+
+  PROCEDURE Upper(ch: CHAR): CHAR;
+  BEGIN
+    IF (ch >= "a") & (ch <= "z") THEN ch := CAP(ch) END;
+    RETURN ch
+  END Upper;
+
+  (* Whether s is word, in either case: DCL passes an argument not in
+     quotes in capitals. *)
+  PROCEDURE Is(s, word: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (word[i] # 0X) & (Upper(s[i]) = Upper(word[i])) DO INC(i) END;
+    RETURN (word[i] = 0X) & (s[i] = 0X)
+  END Is;
+
+  (* Argument i as a number from low to high, or the usage message *)
+  PROCEDURE Number(i: INTEGER; low, high: LONGINT): LONGINT;
+    VAR value: LONGINT;
+  BEGIN
+    value := low - 1; Args.GetInt(i, value);
+    IF (value < low) OR (value > high) THEN Usage END;
+    RETURN value
+  END Number;
+
+  PROCEDURE ReadArguments;
+    VAR i: INTEGER; arg: ARRAY 32 OF CHAR;
+  BEGIN
+    n := 8; k := 0; mode := askEachTime;
+    i := 1;
+    WHILE i < Args.argc DO
+      Args.Get(i, arg);
+      IF Is(arg, "-n") & (i + 1 < Args.argc) THEN
+        INC(i); n := SHORT(Number(i, 1, maxSize))
+      ELSIF Is(arg, "-k") & (i + 1 < Args.argc) THEN
+        INC(i); k := SHORT(Number(i, 1, maxSize))
+      ELSIF mode # askEachTime THEN Usage
+      ELSIF Is(arg, "all") THEN mode := everySolution
+      ELSE mode := firstCount; limit := Number(i, 1, MAX(LONGINT))
+      END;
+      INC(i)
+    END;
+    IF k = 0 THEN k := n ELSIF k > n THEN Usage END
+  END ReadArguments;
+
+BEGIN
+  ReadArguments;
+  IF mode = askEachTime THEN In.Open END;
+  Out.Int(k, 0); Out.String(" queen");
+  IF k > 1 THEN Out.Char("s") END;
+  Out.String(" on a "); Out.Int(n, 0); Out.Char("x");
+  Out.Int(n, 0); Out.String(" board"); Out.Ln;
+  (* The search is at most n + 1 calls of Place deep, below Solve: a
+     small stack is plenty. *)
+  Coroutines.Init(Solve, 16384, solver);
+  count := 0; going := TRUE;
+  WHILE going & NextSolution() DO
+    INC(count); Show(count);
+    CASE mode OF
+    | askEachTime:
+        Out.String("Another? [Y/n] "); Out.Flush;
+        In.Line(answer);
+        going := In.Done & (Upper(answer[0]) # "N")
+    | firstCount:
+        going := count < limit
+    | everySolution:
+    END
+  END;
+  IF going THEN
+    Out.String("No more: "); Out.Int(count, 0); Out.String(" solutions in all.");
+    Out.Ln
+  END
+END Queens.
+```
+
+`queens [-n size] [-k queens] [all | count]`: with no count, it asks after
+each solution whether to go on (Return or `y` goes on; `n`, or the end of
+the input, stops). A count prints that many solutions, `all` every one:
+
+<!-- run: coroutines -->
+```
+$ poc Queens.Mod
+$ ./Queens -n 5 -k 3 2
+3 queens on a 5x5 board
+Solution 1: a1 c2 e3
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   |   |   |   | Q |
++---+---+---+---+---+
+|   |   | Q |   |   |
++---+---+---+---+---+
+| Q |   |   |   |   |
++---+---+---+---+---+
+Solution 2: a1 c2 b4
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   | Q |   |   |   |
++---+---+---+---+---+
+|   |   |   |   |   |
++---+---+---+---+---+
+|   |   | Q |   |   |
++---+---+---+---+---+
+| Q |   |   |   |   |
++---+---+---+---+---+
+$ ./Queens -n 4 all
+4 queens on a 4x4 board
+Solution 1: b1 d2 a3 c4
++---+---+---+---+
+|   |   | Q |   |
++---+---+---+---+
+| Q |   |   |   |
++---+---+---+---+
+|   |   |   | Q |
++---+---+---+---+
+|   | Q |   |   |
++---+---+---+---+
+Solution 2: c1 a2 d3 b4
++---+---+---+---+
+|   | Q |   |   |
++---+---+---+---+
+|   |   |   | Q |
++---+---+---+---+
+| Q |   |   |   |
++---+---+---+---+
+|   |   | Q |   |
++---+---+---+---+
+No more: 2 solutions in all.
+$ ./Queens all | tail -n 1
+No more: 92 solutions in all.
+```
+
+Both programs run unchanged on VAX/VMS, as foreign commands
+(`QUEENS :== $DEV:[DIR]QUEENS.EXE`, then `QUEENS -N 4 ALL`).
+
+**The rules.** `Coroutines` checks what is cheap to check, and the rest
+is the program's to keep:
+
+- **A body never returns.** It ends by transferring away for good, as
+  `Finish` and `Solve` do above. One that returns traps (status 16).
+- **Misuse traps** (status 17), with a message that says which: a
+  `Transfer` to a coroutine never given to `Init`, or to one freed; a
+  `Free` of the running coroutine or of the main program's; a `Transfer`
+  in a finalizer, or in a `Platform` signal handler (on VAX/VMS, at AST
+  level).
+- **No memory for a stack** traps (status 18), always: unlike `NEW`,
+  `Init` has no NIL to leave.
+- **A stack does not grow.** It is fixed at `Init`, with an inaccessible
+  page below it, and running past its end ends the program with
+  `SIGSEGV` (on VAX/VMS, an access violation). Only the pages a coroutine
+  touches cost memory on Unix, so `DefaultStackSize` is 256 KiB there and
+  the least is 16 KiB; on VAX/VMS the whole stack counts against the
+  page-file quota, and they are 32 KiB and 8 KiB. A deep recursion needs
+  a stack sized for it: `WordSets` sizes each from its tree's height.
+- **A blocking call stops every coroutine.** Reading input waits for the
+  whole program, which is what `Queens` wants while it waits for the
+  user.
+- **A coroutine may switch out of a C callback**, but must be resumed,
+  and must return to C, before anything else uses that library. No C++
+  exception or `longjmp` may cross a switch.
+- **The program has one thread.** It must not start another, from C
+  either.
+
+The collector finds the pointers on every coroutine's stack, suspended or
+running.
+
+A debugger sees only the running coroutine. gdb's backtrace in a
+coroutine lists its procedures down to its body and ends at
+`Coroutines.-start`; a suspended coroutine has no thread to switch to, so
+its frames can be seen only once it is resumed. On VAX/VMS a traceback,
+or the debugger's `SHOW CALLS`, ends at `POC_COROUTINE_START` in the same
+way.
+
+## 12. Coming from voc
 
 poc reads what voc reads, with the same two size models, and a program
 written for voc usually builds unchanged. What differs:
@@ -1047,7 +1526,7 @@ and `SYSTEM.CARD`, with `VAL` to cross to the signed ones, which
 voc does not have (Reference Guide, "Unsigned integer types"). `-strict`
 rejects them all.
 
-## 12. poc on VAX/VMS
+## 13. poc on VAX/VMS
 
 poc also compiles for VAX/VMS 5.5-2, writing VAX MACRO-32 that VMS's own
 assembler and linker make into an image. It does so on Unix as a

@@ -354,3 +354,10 @@ test/conformance/vax-coroutines-asts/*.sym
 test/conformance/vax-coroutines-asts/*.obj
 test/conformance/vax-coroutines-asts/*.com
 !test/conformance/vax-coroutines-asts/guest-run.com
+test/conformance/vax-coroutines-examples/*.mar
+test/conformance/vax-coroutines-examples/*.sym
+test/conformance/vax-coroutines-examples/*.obj
+test/conformance/vax-coroutines-examples/*.com
+!test/conformance/vax-coroutines-examples/guest-run.com
+test/conformance/vax-coroutines-examples/*.Mod
+test/conformance/vax-coroutines-examples/*.txt
