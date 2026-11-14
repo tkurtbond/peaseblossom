@@ -19,6 +19,7 @@ test/conformance/**/*.c
 !test/conformance/llvm-object-reuse/src/A.c
 !test/conformance/llvm-system-val-external/part/Compare.c
 !test/conformance/llvm-external-variable/part/Counters.c
+!test/conformance/llvm-coroutines-c-callback/part/Callback.c
 test/conformance/**/*.h
 # a fixture's own C header (Phase 13 step 2: -c-flag)
 !test/conformance/poc-c-flag/include/fnv.h
@@ -313,3 +314,12 @@ test/conformance/llvm-predeclared-cardinal-import/llvm-predeclared-cardinal-impo
 test/conformance/llvm-predeclared-val/*.exe
 test/conformance/llvm-for-loop-end/llvm-for-loop-end
 test/conformance/llvm-string-in-index/llvm-string-in-index
+test/conformance/llvm-coroutines/llvm-coroutines
+test/conformance/llvm-coroutines/llvm-coroutines-oc
+test/conformance/llvm-coroutines-collector/llvm-coroutines-collector
+test/conformance/llvm-coroutines-collector/*.exe
+test/conformance/llvm-coroutines-free/*.exe
+test/conformance/llvm-coroutines-traps/*.exe
+test/conformance/llvm-coroutines-overflow/*.exe
+test/conformance/llvm-coroutines-c-callback/llvm-coroutines-c-callback
+test/conformance/llvm-coroutines-unwind/work/

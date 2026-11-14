@@ -1,0 +1,8 @@
+the worker rounds upward: yes
+the callback switches out
+main rounds upward: no
+main collected more than twice: yes
+the callback is resumed
+the list C held: 0 wrong, 0 missing
+the worker rounds upward: yes
+main rounds upward: no

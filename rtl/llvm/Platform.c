@@ -224,15 +224,31 @@ void PlatformDelay(int64_t milliseconds)
   while (nanosleep(&request, &remaining) < 0 && errno == EINTR) request = remaining;
 }
 
+/* The number of signal handlers running, which Coroutines reads to refuse
+   a Transfer in one (doc/developer/coroutines.md, decision 7), and each
+   signal's handler, called through dispatch, which counts it. */
+volatile int32_t PlatformHandlersRunning NAME("handlers-running") = 0;
+static void (*volatile handlers[NSIG])(int32_t);
+
+static void dispatch(int number)
+{
+  void (*handler)(int32_t) = handlers[number];
+  PlatformHandlersRunning++;
+  if (handler != 0) handler(number);
+  PlatformHandlersRunning--;
+}
+
 /* Makes handler the handler of the signal number, which is called with the
    signal's number; system calls it interrupts are restarted, as with
-   signal() on all four systems. */
+   signal() on all four systems. A NIL handler restores the default. */
 void PlatformSetHandler(int32_t number, void (*handler)(int32_t)) NAME("set-handler");
 void PlatformSetHandler(int32_t number, void (*handler)(int32_t))
 {
   struct sigaction action;
+  if (number <= 0 || number >= NSIG) return;
   memset(&action, 0, sizeof action);
-  action.sa_handler = (void (*)(int))handler;
+  handlers[number] = handler;
+  action.sa_handler = handler == 0 ? SIG_DFL : dispatch;
   sigemptyset(&action.sa_mask);
   action.sa_flags = SA_RESTART;
   sigaction(number, &action, 0);

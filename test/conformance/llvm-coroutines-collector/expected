@@ -1,0 +1,16 @@
+main collected more than twice: yes
+worker's list: 0 wrong, 0 missing
+worker collected more than twice: yes
+main's list: 0 wrong, 0 missing
+== -opt 0
+main collected more than twice: yes
+worker's list: 0 wrong, 0 missing
+worker collected more than twice: yes
+main's list: 0 wrong, 0 missing
+exit=0
+== -lto
+main collected more than twice: yes
+worker's list: 0 wrong, 0 missing
+worker collected more than twice: yes
+main's list: 0 wrong, 0 missing
+exit=0

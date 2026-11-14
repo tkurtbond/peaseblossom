@@ -2024,7 +2024,8 @@ What a program can observe:
   running one from where it is. A program that does not import
   `Coroutines` pays one NIL test per collection.
 - **A switch keeps the floating-point control registers** with each
-  coroutine (MXCSR and the x87 control word on x86, FPCR on arm64), as
+  coroutine (MXCSR and the x87 control word on x86-64, the x87 control
+  word on i386, FPCR on arm64), as
   `swapcontext` does. On the VAX a coroutine's first frame is chained to
   `main`'s, so a traceback lists its frames.
 - **Traps** 16 (a body returned), 17 (misuse, where it is cheap to catch)
@@ -2047,5 +2048,6 @@ What a program can observe:
   - No C++ exception, `longjmp` or `$UNWIND` may cross a switch.
   - Shadow stacks (Intel CET, arm64's GCS and PAC) would break the
     switch. poc does not enable them.
-- `GarbageCollectedHeap` exports `MarkRange`, `StackBase` and
-  `SetStackScanner` for `Coroutines`; calling them otherwise is undefined.
+- `GarbageCollectedHeap` exports `MarkRange`, `StackBase`,
+  `SetStackScanner` and `RunningFinalizer` for `Coroutines`; calling them
+  otherwise is undefined.

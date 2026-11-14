@@ -1056,6 +1056,87 @@ MODULE Console;
 END Console.
 ```
 
+### Coroutines
+
+```text
+Coroutines with the interface of Oakwood's optional module (Appendix
+1.2.8), plus DefaultStackSize and Free (doc/developer/coroutines.md;
+AGENTS.md, "Coroutines").
+
+A coroutine is a stack of its own. Init makes one that will call body
+when it is first resumed; Transfer(from, to) stores the running
+coroutine in from and resumes to where it last left off. The main
+program is a coroutine too: the first Transfer out of it stores it in
+from, so that a Transfer back to that resumes it.
+
+    VAR main, generator: Coroutines.Coroutine; value: INTEGER;
+
+    PROCEDURE Generate;
+    BEGIN
+      value := 0;
+      LOOP INC(value); Coroutines.Transfer(generator, main) END
+    END Generate;
+    ...
+    Coroutines.Init(Generate, Coroutines.DefaultStackSize, generator);
+    Coroutines.Transfer(main, generator);
+    Coroutines.Transfer(main, generator);
+
+After the first Transfer value is 1, after the second 2.
+
+A Coroutine names a descriptor, which every copy of the record shares.
+
+STACKS. Init rounds stackSize up to whole pages, raised to 16 KiB
+first if it is less, and puts a guard page below it, not counted: a
+signal handler runs on whichever stack is current, and needs room. A
+stack does not grow, and running past its end is SIGSEGV. Only the
+pages a coroutine touches cost memory. DefaultStackSize is a
+recommendation. Free gives a stack back; one never freed is kept, and
+scanned by the collector, until the program ends.
+
+TRAPS. A body that returns traps (16): a body ends by transferring
+away for good. Misuse traps (17): a Transfer to a record never given
+to Init, or to a freed coroutine; a Free of the running coroutine or
+of the main program's; a Transfer in a finalizer or in a Platform
+signal handler. Init traps when the system refuses the stack's memory
+(18), always, unlike NEW. A NIL body traps (4) when the coroutine is
+first resumed, as a call of a NIL procedure value does.
+
+RULES the program keeps, which nothing checks:
+- A blocking call, I/O included, stops every coroutine.
+- A coroutine may switch out of a C callback, but must be resumed, and
+  must return to C, before anything else uses that library.
+- No C++ exception or longjmp may cross a switch.
+- The program has one thread (AGENTS.md, "Threads and signal
+  handlers").
+
+The switch keeps each coroutine's floating-point control registers:
+MXCSR and the x87 control word on x86-64, the x87 control word on
+i386, FPCR on arm64. It is in Coroutines.c, as are the stacks and the
+traps' messages.
+```
+
+```oberon
+MODULE Coroutines;
+  CONST
+    DefaultStackSize* = 262144;
+  TYPE
+    Body* = PROCEDURE;
+    Coroutine* = RECORD  END;
+
+  (* Makes cor a new coroutine that calls body when it is first resumed,
+     on a stack of stackSize bytes (STACKS above). *)
+  PROCEDURE Init*(body: Body; stackSize: LONGINT; VAR cor: Coroutine);
+
+  (* Stores the running coroutine in from, and resumes to. Nothing more
+     when to is the running coroutine. from and to may be one variable. *)
+  PROCEDURE Transfer*(VAR from: Coroutine; VAR to: Coroutine);
+
+  (* Gives back cor's stack. Nothing if cor was never given to Init or is
+     freed already. *)
+  PROCEDURE Free*(VAR cor: Coroutine);
+END Coroutines.
+```
+
 ### Directories
 
 ```text
@@ -1809,6 +1890,9 @@ MODULE GarbageCollectedHeap;
        (Census); types a program in strict Oberon2.pdf can name *)
     CensusVisitor* = PROCEDURE(tag: SYSTEM.PTR; dataBytes: LONGINT; blockBytes: LONGINT);
 
+    (* called by Collect after it scans the machine stack (SetStackScanner) *)
+    StackScanner* = PROCEDURE;
+
   (* One full collection: roots, then the machine stack, then whatever
      they reach, then the sweep. Called by Allocate when it has run out
      of room, and directly by anything that wants one. *)
@@ -1821,6 +1905,24 @@ MODULE GarbageCollectedHeap;
 
   (* The base of the machine stack, as the program's `main` sees it. *)
   PROCEDURE SetStackBase*(base: SYSTEM.ADDRESS);
+
+  (* The base SetStackBase recorded last. *)
+  PROCEDURE StackBase*(): SYSTEM.ADDRESS;
+
+  (* For Coroutines (doc/developer/coroutines.md, decision 5): marks what
+     every word from low up to high might point to, as the scan of the
+     machine stack does. Only during a collection, from the procedure
+     SetStackScanner installed. *)
+  PROCEDURE MarkRange*(low: SYSTEM.ADDRESS; high: SYSTEM.ADDRESS);
+
+  (* For Coroutines: scanner is called by every collection after the
+     machine stack has been scanned, to scan the stacks of the suspended
+     coroutines with MarkRange. NIL removes it. *)
+  PROCEDURE SetStackScanner*(scanner: StackScanner);
+
+  (* For Coroutines: whether a finalizer is running, in which a Transfer
+     traps (decision 7). *)
+  PROCEDURE RunningFinalizer*(): BOOLEAN;
 
   (* The most bytes the heap may ask calloc for in total. A limit already
      below what is held is accepted; the heap just cannot grow. *)

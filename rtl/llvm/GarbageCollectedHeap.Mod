@@ -170,6 +170,8 @@ MODULE GarbageCollectedHeap;
     blockAreaBytes: SYSTEM.ADDRESS; (* the sum of every chunk's block area *)
     heapLimit, chunkBytes: SYSTEM.ADDRESS;
     stackBase: SYSTEM.ADDRESS;
+    stackScanner: PROCEDURE; (* Coroutines' scan of the suspended stacks *)
+    finalizersRunning: LONGINT; (* the finalizer calls under way, for Coroutines *)
     markStack, markStackCapacity, markStackCount: SYSTEM.ADDRESS;
     markStackOverflowed: BOOLEAN;
     collecting: BOOLEAN;
@@ -189,6 +191,8 @@ MODULE GarbageCollectedHeap;
        (Census); types a program in strict Oberon2.pdf can name *)
     CensusVisitor* = PROCEDURE (tag: SYSTEM.PTR; dataBytes, blockBytes: LONGINT);
     ExitHandler = PROCEDURE;
+    (* called by Collect after it scans the machine stack (SetStackScanner) *)
+    StackScanner* = PROCEDURE;
 
   PROCEDURE ["C", "calloc"] CAllocate(count, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "free"] CFree(block: SYSTEM.ADDRESS);
@@ -670,7 +674,9 @@ MODULE GarbageCollectedHeap;
     DEC(count);
     object := GetWord(table + 2 * count * word);
     SYSTEM.GET(table + (2 * count + 1) * word, finalize);
-    finalize(SYSTEM.VAL(SYSTEM.PTR, object))
+    INC(finalizersRunning);
+    finalize(SYSTEM.VAL(SYSTEM.PTR, object));
+    DEC(finalizersRunning)
   END FinalizeLast;
 
   (* Runs the finalizers of the pending objects, newest first. *)
@@ -754,6 +760,7 @@ MODULE GarbageCollectedHeap;
       MarkPending(0);
       SpillRegisters;
       MarkFromStack;
+      IF stackScanner # NIL THEN stackScanner END;
       FinishMarking;
       IF registeredCount > 0 THEN FindUnreachable END;
       Sweep;
@@ -809,6 +816,40 @@ MODULE GarbageCollectedHeap;
   BEGIN
     stackBase := base
   END SetStackBase;
+
+  (* The base SetStackBase recorded last. *)
+  PROCEDURE StackBase*(): SYSTEM.ADDRESS;
+  BEGIN
+    RETURN stackBase
+  END StackBase;
+
+  (* For Coroutines (doc/developer/coroutines.md, decision 5): marks what
+     every word from low up to high might point to, as the scan of the
+     machine stack does. Only during a collection, from the procedure
+     SetStackScanner installed. *)
+  PROCEDURE MarkRange*(low, high: SYSTEM.ADDRESS);
+  BEGIN
+    low := low - low MOD word;
+    WHILE high - low >= word DO
+      MarkCandidate(GetWord(low));
+      low := low + word
+    END
+  END MarkRange;
+
+  (* For Coroutines: scanner is called by every collection after the
+     machine stack has been scanned, to scan the stacks of the suspended
+     coroutines with MarkRange. NIL removes it. *)
+  PROCEDURE SetStackScanner*(scanner: StackScanner);
+  BEGIN
+    stackScanner := scanner
+  END SetStackScanner;
+
+  (* For Coroutines: whether a finalizer is running, in which a Transfer
+     traps (decision 7). *)
+  PROCEDURE RunningFinalizer*(): BOOLEAN;
+  BEGIN
+    RETURN finalizersRunning > 0
+  END RunningFinalizer;
 
   (* The most bytes the heap may ask calloc for in total. A limit already
      below what is held is accepted; the heap just cannot grow. *)

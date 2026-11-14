@@ -117,9 +117,19 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   finalization (`RegisterFinalizer`, `FinalizeAll`; Phase 12 step 5c):
   after the collection that finds an object unreachable, and for every
   object still registered when the program ends, traps included.
+  `MarkRange`, `StackBase`, `SetStackScanner` and `RunningFinalizer` are
+  exported for `Coroutines` only.
+- `Coroutines.Mod`, `Coroutines.c` - Oakwood's `Coroutines` (`Init`,
+  `Transfer`) plus `Free` and `DefaultStackSize`
+  (`doc/developer/coroutines.md`): stacks of their own, `mmap`'d with a
+  guard page, scanned by the collector through the heap's stack scanner
+  while suspended. The C part has the context switch and the first frame's
+  trampoline for x86-64, i386 and arm64, the stacks, and the traps' texts
+  (16-18). `Platform.c` counts the signal handlers running, so that
+  `Transfer` in one traps.
 
 Written in ordinary Oberon-2 over `SYSTEM.ADDRESS` (no pointer variables),
-except `Platform.c`, so poc compiles them itself; a program picks them up through the import
+except the C parts (`Platform.c`, `Coroutines.c`), so poc compiles them itself; a program picks them up through the import
 path - the `llvm-gc-*` fixtures set `POC_IMPORT_PATH=../../../rtl/llvm`.
 Sources use the `.Mod` spelling; `ReadModuleSource` finds either.
 voc compiles five of these for Stage 0 (Phase 11 D11), so that the

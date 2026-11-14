@@ -1,0 +1,62 @@
+== 1
+a body returns
+coroutine body returned
+finalized 1
+exit=16
+== 2
+Transfer to a coroutine never initialized
+finalized 1
+exit=17
+== 3
+Transfer to a freed coroutine
+finalized 1
+exit=17
+== 4
+Free of the running coroutine
+finalized 1
+exit=17
+== 5
+Free of the main program's coroutine
+finalized 1
+exit=17
+== 6
+a finalizer transfers
+Transfer in a finalizer
+finalized 1
+exit=17
+== 7
+Transfer in a signal handler
+finalized 1
+exit=17
+== 8
+no memory for a coroutine's stack
+finalized 1
+exit=18
+== 9
+NIL dereferenced on a coroutine
+NIL pointer dereference
+finalized 1
+exit=4
+== 10
+finalized 1
+exit=42
+== 11
+assertion failed (77)
+finalized 1
+exit=10
+== 12
+NIL pointer dereference
+finalized 1
+exit=4
+== -trap-location
+a body returns
+coroutine body returned
+finalized 1
+exit=16
+Free of the running coroutine
+finalized 1
+exit=17
+NIL dereferenced on a coroutine
+traps.mod:58:5: NIL pointer dereference (in traps.Dereferences)
+finalized 1
+exit=4

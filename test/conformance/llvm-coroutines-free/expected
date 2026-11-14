@@ -1,0 +1,5 @@
+Free of a record never given to Init: nothing
+ran 2000 coroutines of 4 MiB
+a second Free, through a copy: nothing
+Transfer to a freed coroutine
+exit=17
