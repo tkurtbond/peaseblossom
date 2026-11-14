@@ -11,8 +11,9 @@ decision; not adopted is a legitimate result").
 The survey says what each source *does* and marks what could not be
 verified. Section 4 probes what poc does today, on the LLVM back end
 and with DECthreads on the SIMH VAX. Section 6 gives the options and
-a proposal. Section 9 sketches one possible interface for option C.
-**Nothing here changes poc.**
+a proposal. Section 9 sketches one possible interface for option C,
+and section 10 records the probes of its plan (`doc/developer/tasks.md`,
+Phase 7). **Nothing here changes poc.**
 
 "[inferred]" marks a conclusion of this survey, not something a source
 says.
@@ -1705,3 +1706,309 @@ END Run;
 6. **Mixing with `Coroutines`:** whether a program that uses `Tasks`
    may still `Transfer` itself, and if so only to coroutines `Tasks`
    does not own.
+
+## 10. Option C probed: Phase 7 of the Tasks plan
+
+Added 2026-11-14: the results of the probes in Phase 7 of
+`doc/developer/tasks.md`, run before that plan's decisions are final.
+They used a scratch prototype, `ProtoTasks`, over `Coroutines`. It has
+decisions 2, 3 and 9, channels with `Select`, timers, `After`, events,
+and the idle step: `poll` and a self-pipe on POSIX, `$HIBER`/`$WAKE` on
+VMS. The prototype is not in the tree.
+
+### 10.1 The manuals (Phase 7.1)
+
+**Sources.** All are in `~/Reference/Computer/OS/VMS/`:
+- the VMS 5.5 *System Services Reference Manual* (`AA-LA69B`). It was
+  fetched 2026-10-05, so `tasks.md` 7.1's "not downloaded yet" is
+  stale;
+- the 5.4 *I/O User's Reference Manual*, Part 1 (`AA-LA84B`);
+- the 5.5 and 5.5-2 release notes (`AA-LB22D`, `AV-PQZAB`).
+
+**`$HIBER` and `$WAKE`** (SYS-402, SYS-665):
+- An AST interrupts `$HIBER`. Unless a wakeup was issued, the system
+  re-executes `$HIBER` after the AST, so an AST that posts must also
+  `$WAKE`.
+- A `$WAKE` while the process is not hibernating makes the next
+  `$HIBER` return at once. No count is kept: several wakes count as
+  one.
+
+**`$SCHDWK` and `$CANWAK`** (SYS-509, SYS-53):
+- `$SCHDWK` costs `ASTLM` quota and a timer queue entry, and its wakes
+  are remembered like `$WAKE`'s, so one can arrive late.
+- `$CANWAK` cancels every scheduled wakeup of the process, other
+  code's too.
+- So `Tasks` must not use `$CANWAK`. It must accept a `$HIBER` that
+  returns for no reason of its own: it loops and checks again. Its
+  timer is a `$SETIMR` with its own request identifier, which `$CANTIM`
+  cancels alone. The probe in 10.3 does this.
+
+**`$QIO`** (SYS-483): the AST runs in the caller's mode. A `$QIO`
+costs `BIOLM` or `DIOLM`, `BYTLM`, and with an AST `ASTLM` too. Check
+the IOSB as well as R0.
+
+**The terminal driver** (I/O manual 8.2.2.1):
+- In full duplex, a read becomes active at its first input character,
+  and writes queue behind it until it completes.
+- In half duplex there is one queue: a write waits behind an earlier
+  read.
+- So while `TaskInput`'s `$QIO` read is pending and the user is
+  typing, a ticker task's `$QIOW` output stops the whole process. This
+  is for Phase 11 to settle.
+
+**The debugger** (5.5 release notes 2.10.1 and 3.6.2.2; 5.5-2 notes
+3.14.3):
+- Since VMS 5.2 the debugger runs as a separate process by default.
+- Under it, "a `$WAKE` call followed by a `$HIBER` call, the user
+  application hibernates": the remembered wake is lost.
+- `DEFINE DBG$PROCESS NONE` gives the one-process debugger.
+- So a `Tasks` program under the default debugger can hang, and the
+  guide must say to define `DBG$PROCESS NONE`. The probes and the
+  fixtures run with `vax-do`, not `vax-run`.
+
+[inferred] A `SYS$INPUT` redirected to a disk file is not a device a
+record `$QIO` reads. When `SYS$INPUT` is neither a terminal nor a
+mailbox, `TaskInput` on VMS needs a synchronous RMS fallback.
+
+### 10.2 The prototype's costs (Phase 7.2)
+
+The prototype's direct switching (decision 3) was measured against a
+variant in which every switch goes through a scheduler coroutine.
+
+The table gives nanoseconds per operation. The VAX guest's are by wall
+clock on SIMH, with a 10 ms clock.
+
+| Host | Variant | `Transfer` round trip | `Yield` pair | Round trip, unbuffered | Round trip, capacity 1 | `Start` + `Join` | `Init` + `Transfer` + `Free` |
+|---|---|---|---|---|---|---|---|
+| atla | direct | 23-24 | 15-16 | 44-46 | 45-46 | 2284-2364 | 2190-2329 |
+| atla | scheduler | | 53-54 | 84-85 | 84 | ~2450 | |
+| alerik | direct | 24-25 | 16-17 | 45-46 | 43-45 | ~1630 | ~1560 |
+| alerik | scheduler | | 53 | 73 | 74 | | |
+| artos | direct | 25-28 | 16-17 | 48 | 48-50 | ~1680 | ~1620 |
+| artos | scheduler | | 48 | 80 | 82 | | |
+| cymoril (i386) | direct | 33-35 | 33 | 92-94 | 92-93 | ~27300-28600 | ~26700-27000 |
+| cymoril (i386) | scheduler | | 82 | 135 | 139 | | |
+| VAX guest | direct | 3300-3800 | 6850-8250 | ~15000-15350 | ~15250-15400 | 94000 | 54000 |
+| VAX guest | scheduler | 3300-4750 | 10000-10350 | ~18750-19100 | ~18550-19250 | 100000 | |
+
+- **Direct switching is worth its "stack to free" variable.** The
+  scheduler variant costs more:
+  - 2.6-3.5 times as much per `Yield` on x86;
+  - 1.5-1.8 times per channel round trip on x86;
+  - 1.3-1.5 times on the VAX.
+- **A `Yield` pair costs less than a bare `Transfer` round trip** on
+  x86. perf shows why: the bare round trip mispredicts one return per
+  switch (20.0 million branch misses over 10 million round trips). Two
+  tasks running the same code mispredict almost none (3168). 8.2's
+  `Transfer` figure is the case that mispredicts.
+- **`Start` + `Join` costs about what `Init` + `Transfer` + `Free`
+  does:** the stack's memory calls dominate. On the VAX, the extra
+  40 µs is the `NEW`s and the bookkeeping.
+- **An override of `Run` must be exported** (`Run*`), because the base
+  procedure is. The guide must say so.
+
+### 10.3 Waking (Phase 7.3)
+
+**POSIX.** The probe has three parts:
+- **Phase A** runs three tasks:
+  - a ticker: 400 sleeps of 5 ms;
+  - a reader of a pipe that a child writes a line to every 10 ms;
+  - an awaiter of an event that a SIGINT handler posts.
+
+  A second child sends 5000 signals at random moments, 0-300 µs apart,
+  and waits for each to be acknowledged, so a single lost wake hangs
+  the probe.
+- **Phase B** is the awaiter alone, 5000 more times. There, only the
+  self-pipe can end the idle step's `poll`.
+- **Phase C** looks for starvation; it is described below.
+
+| Host | Ticker's worst lateness | Signal to wake, mean / max (A) | Mean / max (B) |
+|---|---|---|---|
+| atla | 1 ms | 1-3 / 15-126 µs | 2 / 49-123 µs |
+| alerik | 1 ms | 1 / 12-22 µs | 1 / 10-21 µs |
+| artos | 20 ms | 14 / 188-584 µs | 10-15 / 75-238 µs |
+| cymoril | 17-19 ms | 17 / 75-143 µs | 12-18 / 69-116 µs |
+| rackhir | 1 ms | 31 / 463-782 µs | 28-29 / 228-266 µs |
+
+- **No wake was lost on any host.** Each host had 10,000 posts, and
+  every one was acknowledged.
+- Every byte of the slow pipe arrived.
+- **A sleep can end late.** OpenBSD's and NetBSD's `poll` rounds a
+  timeout up to the 10 ms clock tick, so a `Sleep` there can end up to
+  two ticks late. The guide should say that `Sleep` waits "at least"
+  its time.
+
+**Starvation (Phase C).** In the prototype, as decision 9 of `tasks.md`
+sketches it, the idle step polls only when no task is ready. Phase C
+runs:
+- a task that only yields, for 500 ms;
+- a reader of a pipe that is ready at once.
+
+The reader waited until the yielding task stopped: 500 ms of 500, on
+every host. A non-blocking poll while tasks are ready fixes this. One
+such poll costs:
+
+| Host | One poll |
+|---|---|
+| atla | about 130 ns |
+| alerik, artos | about 300 ns |
+| cymoril | about 4.5 µs |
+| rackhir (emulated) | about 7.4 µs |
+
+The cost per pick of a yield that switches to no other task, in ns,
+under each rule for when to poll:
+
+| Rule | atla | alerik | artos | cymoril | rackhir |
+|---|---|---|---|---|---|
+| never (starves) | 2 | 2-3 | 5 | 11 | 58 |
+| poll every 64 picks | 4-5 | 7-8 | 8 | 80-85 | 176-178 |
+| every 256 | 3 | 4 | 6 | 29-30 | 88-92 |
+| every 1024 | 3 | 3 | 5 | 16 | 66-70 |
+| clock every 64, poll if 1 ms passed | 3 | 4 | 40 | 31 | 69 |
+| clock every 256, poll if 1 ms passed | 3 | 3 | 13 | 17 | 62 |
+
+Reading the clock is a system call on cymoril (about 1.3 µs) and on
+artos (about 2.2 µs).
+
+**Proposal for Phase 8:**
+- While tasks are ready and descriptors are waited for, count the
+  picks.
+- Every 256th pick, read the clock. If 1 ms has passed since the last
+  poll, poll without blocking.
+- A ready descriptor then waits at most about 1 ms plus 256 picks. The
+  cost is at most a few ns per pick, and nothing when no descriptor is
+  waited for.
+- Events need no such rule: the scheduler collects posted events at
+  every pick.
+
+**VMS.** `WakeProbe` ran on the guest twice, with `vax-do`. The probe
+declares its own system services and does not import
+`AsynchronousTraps`. Phase A runs three tasks:
+- a ticker: 150 sleeps of 20 ms, by a `$SETIMR` in the idle step;
+- a reader of a mailbox (`$CREMBX`), which a `LIB$SPAWN`ed subprocess
+  writes 100 lines to, 50 ms apart. Each read is a `$QIO` whose AST
+  posts;
+- an awaiter of an event that an AST posts. The AST comes from a
+  `$SETIMR` 10-30 ms ahead or, one time in five, from `$DCLAST`. A
+  random busy loop of up to about 10 ms comes before each `Await`, so
+  the AST lands anywhere in the main line.
+
+A watchdog timer of 3 s on each wait counts a lost wake instead of
+hanging. Phase B is the awaiter alone, 500 times.
+
+- **No wake was lost.** Each run had 700 posts, 136 of them by
+  `$DCLAST`, and no watchdog fired.
+- Every mailbox line arrived.
+- **A post makes a `$WAKE` only when the main line is idle.** Each run
+  made 664 `$WAKE` calls for its 800 posts (700 signals and 100
+  mailbox reads), besides the ticker's 150 timer wakes.
+- The guest's 10 ms clock cannot measure the latency: every wake read
+  0.
+
+**`AsynchronousTraps` on VMS.** A program that imports it makes every
+`Coroutines.Transfer` call `LIB$AST_IN_PROG` and `$SETAST` twice.
+STARLET imports it, and so does most of VMSLIB. The prototype's
+benchmark, with `AsynchronousTraps` imported:
+
+| | Without | With |
+|---|---|---|
+| `Transfer` round trip | 3300-3800 ns | 27500-29300 ns |
+| `Yield` pair | 6850-8250 ns | 30000-30900 ns |
+| Round trip, unbuffered | ~15000-15350 ns | 38950-39900 ns |
+| `Start` + `Join` | 94000 ns | 122000 ns |
+
+`Tasks`' own ASTs only post, so `Tasks` need not import
+`AsynchronousTraps`. But a `Tasks` program that uses STARLET or VMSLIB
+pays an extra 20-24 µs per switch.
+
+Open question for Phase 8: a cheaper guard in `Coroutines.Transfer`
+when ASTs are expected (decision 7 of `coroutines.md`), or a rule in
+the guide.
+
+### 10.4 A replaced idle step: pofltk (Phase 7.4)
+
+**The setup.** The probe ran on atla, under Xvfb, with xdotool
+clicking. pofltk was built from its HEAD with the development poc.
+- The prototype had `SetIdleStep(FlStep)`. `FlStep(timeout)` is
+  `Fl.Wait(timeout / 1000)`, or `Fl.Wait(1.0D20)` for no limit.
+- After the step returns, the prototype polls without waiting. That
+  poll collects ready descriptors and drains the self-pipe.
+
+It has three parts:
+- **A:** a ticker task sets a label every 20 ms (250 ticks). The
+  button's callback posts an event that a task awaits (40 clicks). An
+  FLTK timer's action posts every 10 ms (200 posts).
+- **B:** 1000 SIGINTs, whose handler posts.
+- **C:** a pipe that a child writes 50 lines to, 10 ms apart, read
+  with `AwaitReadable`.
+
+B and C keep a 1 s heartbeat timer, so a step that never returns still
+ends.
+
+| | Step alone | FLTK also watches the self-pipe (the pipe, in C) |
+|---|---|---|
+| Ticker, worst lateness | 10 ms | 1 ms |
+| Click to task, mean / max | 11 / 20 µs | 11 / 22 µs |
+| Timer action to task, mean / max | 9240 / 10146 µs | 106 / 332 µs |
+| SIGINT to task, mean / max | 1003 µs / 999 ms | 4-5 / 21-64 µs |
+| Pipe: first byte, last byte | 534-539 ms, 1535-1540 ms | 11 ms, 509-511 ms |
+
+- **The window stays live.** Screenshots during and after the run show
+  the label at "tick 16" and at "tick 250". Every click was handled.
+- **A post made inside the step does not end it.** FLTK runs the due
+  timeouts first, then waits. So a timer action's post waits for the
+  next event, here the next 10 ms timer. A click's callback runs after
+  the wait, so its post is prompt.
+- **A signal's post can be lost until something else wakes FLTK.**
+  Mostly `select` returns with EINTR. But in each run, one signal of
+  the 1000 came between the prototype marking itself idle and FLTK
+  entering `select`, and it waited for the 1 s heartbeat. The
+  self-pipe exists for exactly this race, and FLTK was not watching
+  it.
+- **A descriptor that a task awaits is invisible to the step.** The
+  reader ran only when the heartbeat ended `Fl.Wait`.
+- **Watching fixes all three.** Each problem goes away when FLTK
+  watches the descriptors, by `Fl.WatchFd` with an action that does
+  nothing.
+- **The step runs on the stack of whichever task idles,** so any task
+  may run FLTK's event handling, Xlib and drawing.
+  - With 16 KiB and 32 KiB task stacks, the probe died at the guard
+    page (SIGSEGV).
+  - 40 KiB was enough on Xvfb.
+  - `DefaultStackSize` (256 KiB) is fine.
+
+**Proposal for Phase 8.** Amend decision 10:
+1. On POSIX, `Tasks` exports `WakeDescriptor()`, the read end of the
+   self-pipe. A replaced step must return when that descriptor is
+   readable. The guide's pofltk example watches it with `Fl.WatchFd`.
+2. A program with a replaced step that also uses
+   `AwaitReadable`/`AwaitWritable` must have the step watch those
+   descriptors too. The simplest way is FLTK's own watch, with an
+   action that posts an `Event` the task awaits.
+3. The guide says that a replaced step runs on any task's stack, so
+   every task needs room for it: keep `DefaultStackSize`.
+
+Running the step on the main program's stack would also settle item 3,
+but at the cost of two switches per idle step, so it is not proposed.
+
+### 10.5 What Phase 8 has to decide
+
+From 10.1-10.4, beyond `tasks.md`'s decisions as they stand:
+1. **Direct switching stays** (decision 3, 10.2).
+2. **The early poll**: count picks while tasks are ready and descriptors
+   are waited for, and every 256th pick, poll without blocking if 1 ms
+   has passed (10.3).
+3. **`Sleep` waits at least its time.** The guide says that on OpenBSD
+   and NetBSD the wait can be up to two 10 ms clock ticks longer
+   (10.3).
+4. **On VMS, `$SETIMR` with `Tasks`' own request identifier, never
+   `$CANWAK`,** and `$HIBER` returning for no reason of `Tasks`' own is
+   accepted. The guide says to run a `Tasks` program under the
+   debugger only with `DBG$PROCESS NONE` (10.1).
+5. **`AsynchronousTraps`' cost to every switch**: a cheaper guard in
+   `Coroutines.Transfer`, or a rule in the guide (10.3).
+6. **Decision 10 amended**: `WakeDescriptor()`, and the rules for a
+   replaced step's descriptors and stack (10.4).
+7. **The guide says that an override of `Run` is exported** (10.2).
+8. **For Phase 11**: terminal output stalls behind a pending read, and
+   `SYS$INPUT` from a file needs a fallback (10.1).
