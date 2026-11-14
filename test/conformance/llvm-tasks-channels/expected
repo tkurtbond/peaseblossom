@@ -1,0 +1,44 @@
+-- unbuffered
+send 1; send 2; got 1; got 2; send 3; sent all; got 3; closed: NIL
+again: FALSE
+-- buffered, capacity 2
+send 1; send 2; send 3; 
+main receives: 1; 2; 3; send 4; send 5; sent all; 4; 5; 
+-- held after Close
+one; NIL; three; then FALSE
+-- TrySend, TryReceive
+1 sent; 2 refused, full; received 1; nothing more
+unbuffered, no receiver: refused; not yet sent; a waiting sender's: 7
+-- Close wakes a receiver
+closing; woken with FALSE
+-- Select
+2: b first
+0:10 0:11 2:20 2:21 2:22 2:23 0:12 
+all closed: 7 messages, sum 119, m NIL
+closing; 1: 99
+two thousand by Select: 1001000
+-- prime sieve
+2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97 
+== -OC
+-- unbuffered
+send 1; send 2; got 1; got 2; send 3; sent all; got 3; closed: NIL
+again: FALSE
+-- buffered, capacity 2
+send 1; send 2; send 3; 
+main receives: 1; 2; 3; send 4; send 5; sent all; 4; 5; 
+-- held after Close
+one; NIL; three; then FALSE
+-- TrySend, TryReceive
+1 sent; 2 refused, full; received 1; nothing more
+unbuffered, no receiver: refused; not yet sent; a waiting sender's: 7
+-- Close wakes a receiver
+closing; woken with FALSE
+-- Select
+2: b first
+0:10 0:11 2:20 2:21 2:22 2:23 0:12 
+all closed: 7 messages, sum 119, m NIL
+closing; 1: 99
+two thousand by Select: 1001000
+-- prime sieve
+2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97 
+exit=0

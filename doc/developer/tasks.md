@@ -367,6 +367,14 @@ on the guest:
   tasks' stacks survive many collections;
 - `tasks-same-source`: the two `Tasks.Mod` are the same.
 
+Done 2026-11-14. On the guest, `vax-tasks` runs llvm-tasks', -channels'
+and -sync's programs in one fixture (VMS file names ignore case, so the
+modules are renamed: `TaskBasics`, `TaskChannels`, `TaskSync`), with
+2000 short tasks, not 20000, and the deep task given 128 KiB (its 200
+frames do not fit the VAX's 32 KiB default); `vax-tasks-traps` leaves
+out the signal handler's case, since a blocking call in an AST is
+undefined on VMS (decision 13).
+
 ### Phase 10: Time and events
 
 `Sleep`, `After`, `Event`, `Await`, `Post`, `SetIdleStep`, the idle step

@@ -1,0 +1,34 @@
+$ ! vax-tasks-traps (doc/developer/tasks.md, Phase 9): poc's runtime and
+$ ! Coroutines' switch, COROUTINESWITCH.MAR, are assembled; TASKTRAPS.COM,
+$ ! which poc -build wrote, links the program with the switch by its -link
+$ ! line; then the image runs once for each case, 1 to 13, as a foreign
+$ ! command given the case, its SYS$ERROR, where a trap's message goes, a
+$ ! file shown after the run. Everything made is deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN MACRO/OBJECT COROUTINESWITCH.MAR
+$ IF S THEN S = $STATUS
+$ IF S THEN @TASKTRAPS
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ TRAPS = "$" + F$ENVIRONMENT("DEFAULT") + "TASKTRAPS.EXE"
+$ N = 0
+$NEXT_CASE:
+$ N = N + 1
+$ IF N .GT. 13 THEN GOTO CLEAN
+$ WRITE SYS$OUTPUT "== ", N
+$ DEFINE/USER_MODE SYS$ERROR TRAPS.ERR
+$ TRAPS 'N'
+$ WRITE SYS$OUTPUT "status: ", $STATUS
+$ IF F$SEARCH("TRAPS.ERR") .NES. "" THEN TYPE TRAPS.ERR
+$ IF F$SEARCH("TRAPS.ERR") .NES. "" THEN DELETE/NOLOG TRAPS.ERR;*
+$ GOTO NEXT_CASE
+$CLEAN:
+$ DELETE/NOLOG POCRTL.OBJ;*,COROUTINESWITCH.OBJ;*,TASKTRAPS.OBJ;*,TASKS.OBJ;*,TASKWAITING.OBJ;*
+$ DELETE/NOLOG COROUTINES.OBJ;*,GARBAGECOLLECTEDHEAP.OBJ;*,PLATFORM.OBJ;*,MODULES.OBJ;*,OUT.OBJ;*
+$ DELETE/NOLOG LINEOUTPUT.OBJ;*,FORMATTEDOUTPUT.OBJ;*,FORMATTEDTEXT.OBJ;*,REALDIGITS.OBJ;*
+$ IF F$SEARCH("TASKTRAPS.OPT") .NES. "" THEN DELETE/NOLOG TASKTRAPS.OPT;*
+$ IF F$SEARCH("TASKTRAPS.EXE") .NES. "" THEN DELETE/NOLOG TASKTRAPS.EXE;*
+$ EXIT 1

@@ -1,0 +1,61 @@
+== 1
+all tasks are blocked
+finalized 1
+exit=19
+== 2
+all tasks are blocked
+finalized 1
+exit=19
+== 3
+locker holds the mutex
+all tasks are blocked
+finalized 1
+exit=19
+== 4
+all tasks are blocked
+finalized 1
+exit=19
+== 5
+Unlock of a mutex the running task does not hold
+finalized 1
+exit=20
+== 6
+locker holds the mutex
+Unlock of a mutex the running task does not hold
+finalized 1
+exit=20
+== 7
+Join of the running task
+finalized 1
+exit=20
+== 8
+Send on a closed channel
+finalized 1
+exit=20
+== 9
+sender waits
+Send on a closed channel
+finalized 1
+exit=20
+== 10
+Close of a channel already closed
+finalized 1
+exit=20
+== 11
+Start of a task already started
+finalized 1
+exit=20
+== 12
+NewChannel with a negative capacity
+finalized 1
+exit=20
+== 13
+a finalizer yields
+Transfer in a finalizer
+finalized 1
+exit=17
+== 14
+a signal handler yields
+Transfer in a signal handler
+finalized 1
+exit=17

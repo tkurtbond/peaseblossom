@@ -172,3 +172,11 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `COROUTINESWITCH.OBJ`, as `POCRTL` has it. `Transfer` at AST level
   traps (17), and one that may be followed by an AST's `NEW` holds ASTs
   off until the coroutine resumed enables them again.
+- `Tasks.Mod` - cooperative tasks over `Coroutines`
+  (`doc/developer/tasks.md`), the same file as `rtl/llvm/Tasks.Mod`
+  (fixture `tasks-same-source`). It switches with
+  `Coroutines.TransferForTasks`, which leaves out `Transfer`'s check for
+  AST level (decision 13), so a call that blocks in an AST is undefined.
+- `TaskWaiting.Mod` - `Tasks`' system part: so far the traps 19 (all
+  tasks blocked) and 20 (misuse, by case), through `POC_TRAP`, whose
+  texts are in `PocRtl.mar`.

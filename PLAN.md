@@ -1262,6 +1262,17 @@ Those fixed while Phase 18 was current, 8-10, are in
     `:=`, two-dimensional, of a field, of a local, in a set and in a call
     through a procedure variable), also in `test/vax-suite.list`.
 
+19. **`vax-coroutines-asts` depends on how fast the guest runs**. Found
+    2026-11-14, in Tasks Phase 9's gate: with atla busy with `make check`
+    and three hosts' copies, the objects way printed "collections during
+    the run: 2" where the fixture expects "3 or more"; the macro32 way,
+    and the rerun in the same `make check`, passed. The program stops
+    after 200 batches of its 10 ms timer AST, about 2 s of the guest's
+    clock, so how much the coroutines allocate in that time, and so how
+    many collections run, follows from how fast SIMH runs. A likely fix:
+    the main loop goes on until it has both its batches and 3 collections,
+    so the count is a condition of the run's end, not of its speed.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

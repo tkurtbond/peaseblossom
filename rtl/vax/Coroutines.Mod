@@ -198,6 +198,33 @@ MODULE Coroutines;
     END
   END Transfer;
 
+  (* For Tasks (doc/developer/tasks.md, decision 13): Transfer without
+     the check for AST level, whose LIB$AST_IN_PROG is most of a switch's
+     cost in a program that imports AsynchronousTraps; at AST level it is
+     undefined. A copy of Transfer, not a call from it, so that neither
+     pays for a CALLS more. *)
+  PROCEDURE TransferForTasks*(VAR from, to: Coroutine);
+    VAR old, target: Descriptor; wasEnabled: BOOLEAN; status: SYSTEM.INT32;
+  BEGIN
+    IF GarbageCollectedHeap.RunningFinalizer() THEN Misuse(inFinalizer) END;
+    target := to.descriptor;
+    IF target = NIL THEN Misuse(neverInitialized)
+    ELSIF target.state = freed THEN Misuse(transferToFreed)
+    END;
+    old := current;
+    from.descriptor := old;
+    IF target # old THEN
+      wasEnabled := GarbageCollectedHeap.AstsExpected() & (SetAst(0) = wasSet);
+      old.state := suspended;
+      target.state := running;
+      current := target;
+      GarbageCollectedHeap.SetStackBase(target.high);
+      astsWereEnabled := wasEnabled;
+      Switch(old.sp, target.sp);
+      IF astsWereEnabled THEN status := SetAst(1) END
+    END
+  END TransferForTasks;
+
   (* Gives back cor's stack. Nothing if cor was never given to Init or is
      freed already. *)
   PROCEDURE Free*(VAR cor: Coroutine);

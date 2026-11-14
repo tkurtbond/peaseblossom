@@ -1,0 +1,26 @@
+-- a bounded buffer, two producers, two consumers
+x1 x2 x3 x4 x5 x6 y101 y102 y103 y104 y105 y106 
+left: 0
+-- Mesa: a woken task tests again
+thief took one; z waited 2 times; z8 
+-- Signal wakes the longest waiter, Broadcast the rest
+a Signal with no waiter is lost; a waits; b waits; c waits; d waits; 
+a through; 
+b through; c through; d through; 
+-- a mutex held across a Send
+a holds; 11; 12; a unlocks; b holds; 21; 22; b unlocks; c holds; 31; 32; c unlocks; 
+free again
+== -OC
+-- a bounded buffer, two producers, two consumers
+x1 x2 x3 x4 x5 x6 y101 y102 y103 y104 y105 y106 
+left: 0
+-- Mesa: a woken task tests again
+thief took one; z waited 2 times; z8 
+-- Signal wakes the longest waiter, Broadcast the rest
+a Signal with no waiter is lost; a waits; b waits; c waits; d waits; 
+a through; 
+b through; c through; d through; 
+-- a mutex held across a Send
+a holds; 11; 12; a unlocks; b holds; 21; 22; b unlocks; c holds; 31; 32; c unlocks; 
+free again
+exit=0

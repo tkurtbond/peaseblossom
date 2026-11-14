@@ -133,6 +133,13 @@ MODULE Coroutines;
     END
   END Transfer;
 
+  (* For Tasks (doc/developer/tasks.md, decision 13): Transfer, which on
+     VAX/VMS leaves out the check for AST level, and here is the same. *)
+  PROCEDURE TransferForTasks*(VAR from, to: Coroutine);
+  BEGIN
+    Transfer(from, to)
+  END TransferForTasks;
+
   (* Gives back cor's stack. Nothing if cor was never given to Init or is
      freed already. *)
   PROCEDURE Free*(VAR cor: Coroutine);

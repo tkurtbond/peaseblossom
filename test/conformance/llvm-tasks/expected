@@ -1,0 +1,27 @@
+main is a task: yes
+started, none has run: yes
+a1 b1 c1 a2 b2 a3 b3 | c joined b4 | a joined | b joined
+joining a finished task returns at once
+main is current again
+a Yield alone goes on
+parent starts
+x1 y1 z1 x2 y2 z2 
+parent joined its children
+recursed 200
+many short tasks: 200010000
+a hundred at once: 5050
+exit=0
+== -OC
+main is a task: yes
+started, none has run: yes
+a1 b1 c1 a2 b2 a3 b3 | c joined b4 | a joined | b joined
+joining a finished task returns at once
+main is current again
+a Yield alone goes on
+parent starts
+x1 y1 z1 x2 y2 z2 
+parent joined its children
+recursed 200
+many short tasks: 200010000
+a hundred at once: 5050
+exit=0

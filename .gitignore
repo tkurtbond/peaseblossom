@@ -323,6 +323,15 @@ test/conformance/llvm-coroutines-traps/*.exe
 test/conformance/llvm-coroutines-overflow/*.exe
 test/conformance/llvm-coroutines-c-callback/llvm-coroutines-c-callback
 test/conformance/llvm-coroutines-unwind/work/
+test/conformance/llvm-tasks/llvm-tasks
+test/conformance/llvm-tasks/llvm-tasks-oc
+test/conformance/llvm-tasks-channels/llvm-tasks-channels
+test/conformance/llvm-tasks-channels/llvm-tasks-channels-oc
+test/conformance/llvm-tasks-sync/llvm-tasks-sync
+test/conformance/llvm-tasks-sync/llvm-tasks-sync-oc
+test/conformance/llvm-tasks-traps/*.exe
+test/conformance/llvm-tasks-collector/llvm-tasks-collector
+test/conformance/llvm-tasks-collector/*.exe
 # the VAX coroutine fixtures' modules, objects and build procedures
 test/conformance/vax-coroutines/*.mar
 test/conformance/vax-coroutines/*.sym
@@ -361,3 +370,19 @@ test/conformance/vax-coroutines-examples/*.com
 !test/conformance/vax-coroutines-examples/guest-run.com
 test/conformance/vax-coroutines-examples/*.Mod
 test/conformance/vax-coroutines-examples/*.txt
+# the VAX task fixtures' modules, objects and build procedures
+test/conformance/vax-tasks/*.mar
+test/conformance/vax-tasks/*.sym
+test/conformance/vax-tasks/*.obj
+test/conformance/vax-tasks/*.com
+!test/conformance/vax-tasks/guest-run.com
+test/conformance/vax-tasks-traps/*.mar
+test/conformance/vax-tasks-traps/*.sym
+test/conformance/vax-tasks-traps/*.obj
+test/conformance/vax-tasks-traps/*.com
+!test/conformance/vax-tasks-traps/guest-run.com
+test/conformance/vax-tasks-collector/*.mar
+test/conformance/vax-tasks-collector/*.sym
+test/conformance/vax-tasks-collector/*.obj
+test/conformance/vax-tasks-collector/*.com
+!test/conformance/vax-tasks-collector/guest-run.com

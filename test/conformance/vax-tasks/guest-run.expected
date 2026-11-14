@@ -1,0 +1,52 @@
+build status: %X10000001
+== TASKBASICS
+main is a task: yes
+started, none has run: yes
+a1 b1 c1 a2 b2 a3 b3 | c joined b4 | a joined | b joined
+joining a finished task returns at once
+main is current again
+a Yield alone goes on
+parent starts
+x1 y1 z1 x2 y2 z2 
+parent joined its children
+recursed 200
+many short tasks: 2001000
+a hundred at once: 5050
+run status: %X00000001
+== TASKCHANNELS
+-- unbuffered
+send 1; send 2; got 1; got 2; send 3; sent all; got 3; closed: NIL
+again: FALSE
+-- buffered, capacity 2
+send 1; send 2; send 3; 
+main receives: 1; 2; 3; send 4; send 5; sent all; 4; 5; 
+-- held after Close
+one; NIL; three; then FALSE
+-- TrySend, TryReceive
+1 sent; 2 refused, full; received 1; nothing more
+unbuffered, no receiver: refused; not yet sent; a waiting sender's: 7
+-- Close wakes a receiver
+closing; woken with FALSE
+-- Select
+2: b first
+0:10 0:11 2:20 2:21 2:22 2:23 0:12 
+all closed: 7 messages, sum 119, m NIL
+closing; 1: 99
+two thousand by Select: 1001000
+-- prime sieve
+2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97 
+run status: %X00000001
+== TASKSYNC
+-- a bounded buffer, two producers, two consumers
+x1 x2 x3 x4 x5 x6 y101 y102 y103 y104 y105 y106 
+left: 0
+-- Mesa: a woken task tests again
+thief took one; z waited 2 times; z8 
+-- Signal wakes the longest waiter, Broadcast the rest
+a Signal with no waiter is lost; a waits; b waits; c waits; d waits; 
+a through; 
+b through; c through; d through; 
+-- a mutex held across a Send
+a holds; 11; 12; a unlocks; b holds; 21; 22; b unlocks; c holds; 31; 32; c unlocks; 
+free again
+run status: %X00000001

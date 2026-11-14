@@ -1,0 +1,57 @@
+build status: %X10000001
+== 1
+finalized 1
+status: %X1000009A
+all tasks are blocked
+== 2
+finalized 1
+status: %X1000009A
+all tasks are blocked
+== 3
+locker holds the mutex
+finalized 1
+status: %X1000009A
+all tasks are blocked
+== 4
+finalized 1
+status: %X1000009A
+all tasks are blocked
+== 5
+finalized 1
+status: %X100000A2
+Unlock of a mutex the running task does not hold
+== 6
+locker holds the mutex
+finalized 1
+status: %X100000A2
+Unlock of a mutex the running task does not hold
+== 7
+finalized 1
+status: %X100000A2
+Join of the running task
+== 8
+finalized 1
+status: %X100000A2
+Send on a closed channel
+== 9
+sender waits
+finalized 1
+status: %X100000A2
+Send on a closed channel
+== 10
+finalized 1
+status: %X100000A2
+Close of a channel already closed
+== 11
+finalized 1
+status: %X100000A2
+Start of a task already started
+== 12
+finalized 1
+status: %X100000A2
+NewChannel with a negative capacity
+== 13
+a finalizer yields
+finalized 1
+status: %X1000008A
+Transfer in a finalizer

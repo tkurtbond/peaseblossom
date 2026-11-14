@@ -815,8 +815,8 @@ in the last column are `Halt(n)` printed as "Terminated by Halt(n)", exit 256-n)
 No location is reported by default; **`poc -trap-location`** (C7, below) adds
 one to every trap in this table but 16-20, which come from the runtime and not
 from generated code. Each status is pinned by a fixture (16-18's come with
-`Coroutines`, `doc/developer/coroutines.md`, Phases 3 and 4; 19 and 20 will
-come with `Tasks`, `doc/developer/tasks.md`, Phase 9). On VAX/VMS a
+`Coroutines`, `doc/developer/coroutines.md`, Phases 3 and 4; 19 and 20 with
+`Tasks`, `doc/developer/tasks.md`, Phase 9). On VAX/VMS a
 trap's condition value is `%X10000002` plus 8 times the status (16-20 are
 `%X10000082`, `%X1000008A`, `%X10000092`, `%X1000009A`, `%X100000A2`).
 
@@ -837,10 +837,10 @@ trap's condition value is `%X10000002` plus 8 times the status (16-20 are
 | 14 | With `-range-checks` only: `SHORT(x)` of an integer `x` outside the result type, `CHR(x)` of `x` outside 0..255 (`llvm-range-checks`; Phase 12 step 1) | `SHORT argument out of range`, `CHR argument out of range` | `voc -r`: Halt(-8), 248, except `CHR` of a negative value (voc's check compares signed); no switch: truncates |
 | 15 | VAX/VMS only: an AST routine, a CTRL/C handler included, that calls `NEW` (or `GarbageCollectedHeap.Collect` or `RegisterFinalizer`) while the main line is inside the heap, in a program that does not import `AsynchronousTraps` (`vax-asts-heap`; Phase 17 step 6, `vax-macro32-backend.md` section 22.7). With the import the heap disables ASTs while it works and `NEW` at AST level is safe | `heap re-entered at AST level: import AsynchronousTraps` | none: voc has no ASTs |
 | 16 | A coroutine's body returned (Oakwood: "Procedure p must never return"; "Coroutines"; `llvm-coroutines-traps`, `vax-coroutines-traps`) | `coroutine body returned` | none: voc has no `Coroutines` |
-| 17 | Misuse of `Coroutines` ("Coroutines"; the same fixtures): `Transfer` to a record never given to `Init`, or to a freed coroutine; `Free` of the running coroutine or of `main`'s; `Transfer` in a finalizer, in a signal handler (LLVM) or at AST level (VAX, in a program that imports `AsynchronousTraps`) | one text for each case: `Transfer to a coroutine never initialized`, `Transfer to a freed coroutine`, `Free of the running coroutine`, `Free of the main program's coroutine`, `Transfer in a finalizer`, `Transfer in a signal handler`, `Transfer at AST level` | none |
+| 17 | Misuse of `Coroutines` ("Coroutines"; the same fixtures): `Transfer` to a record never given to `Init`, or to a freed coroutine; `Free` of the running coroutine or of `main`'s; `Transfer` in a finalizer, in a signal handler (LLVM) or at AST level (VAX, in a program that imports `AsynchronousTraps`). A `Tasks` call that blocks or yields in a finalizer or a signal handler is the same `Transfer` (`llvm-tasks-traps`, `vax-tasks-traps`); at AST level it is undefined, unchecked ("Tasks") | one text for each case: `Transfer to a coroutine never initialized`, `Transfer to a freed coroutine`, `Free of the running coroutine`, `Free of the main program's coroutine`, `Transfer in a finalizer`, `Transfer in a signal handler`, `Transfer at AST level` | none |
 | 18 | `Coroutines.Init` cannot get memory for the stack, always: unlike `NEW` there is no NIL to test (the same fixtures) | `no memory for a coroutine's stack` | none |
-| 19 | Decided, not yet implemented: a `Tasks` program in which every task is blocked, with no task ready, no timer pending, no task waiting for a descriptor and no task in `Await` ("Tasks"; `llvm-tasks-traps`, `vax-tasks-traps`) | `all tasks are blocked` | none: voc has no `Tasks` |
-| 20 | Decided, not yet implemented: misuse of `Tasks` ("Tasks"; the same fixtures): `Unlock` of a mutex the running task does not hold, `Join` of the running task, `Send` on a closed channel, `Close` of a channel already closed, `Start` of a task already started, `NewChannel` with a negative capacity | one text for each case | none |
+| 19 | A `Tasks` program in which every task is blocked, with no task ready, no timer pending, no task waiting for a descriptor and no task in `Await` ("Tasks"; `llvm-tasks-traps`, `vax-tasks-traps`; `tasks.md` Phase 9, the timers, descriptors and `Await` with Phase 10) | `all tasks are blocked` | none: voc has no `Tasks` |
+| 20 | Misuse of `Tasks` ("Tasks"; the same fixtures; `tasks.md` Phase 9): `Unlock` of a mutex the running task does not hold, `Join` of the running task, `Send` on a closed channel, `Close` of a channel already closed, `Start` of a task already started, `NewChannel` with a negative capacity | one text for each case, the case's own words: `Unlock of a mutex the running task does not hold`, `Join of the running task`, `Send on a closed channel`, `Close of a channel already closed`, `Start of a task already started`, `NewChannel with a negative capacity` | none |
 
 **The library's own failure.** `Files` stops the program with status 99 when
 it meets an error it cannot hand back to the caller - a file that cannot be
@@ -2062,7 +2062,9 @@ channels, in Oberon over `Coroutines`, the same source on both back ends,
 with a way for signals, ASTs, timers and descriptors to wake a task. Option
 C of `doc/research/concurrency-survey.md`; decided with the user 2026-11-14,
 after the probes the survey's section 10 records. `doc/developer/tasks.md`
-has the interface, the fourteen decisions and the plan. Not implemented yet.
+has the interface, the fourteen decisions and the plan. Implemented but for
+time and events (`Sleep`, `After`, `Event`, the idle step and the
+descriptors' waits, Phase 10) and `TaskInput` (Phase 11).
 
 What a program will be able to observe:
 

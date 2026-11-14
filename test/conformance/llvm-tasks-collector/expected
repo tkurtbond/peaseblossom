@@ -1,0 +1,22 @@
+main collected more than twice: yes
+main collected more than twice: yes
+the waiting senders' lists: 0 damaged
+main collected more than twice: yes
+the keepers' lists: 0 damaged
+the held channel's lists: 0 damaged
+== -opt 0
+main collected more than twice: yes
+main collected more than twice: yes
+the waiting senders' lists: 0 damaged
+main collected more than twice: yes
+the keepers' lists: 0 damaged
+the held channel's lists: 0 damaged
+exit=0
+== -lto
+main collected more than twice: yes
+main collected more than twice: yes
+the waiting senders' lists: 0 damaged
+main collected more than twice: yes
+the keepers' lists: 0 damaged
+the held channel's lists: 0 damaged
+exit=0

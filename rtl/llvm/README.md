@@ -127,9 +127,18 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   trampoline for x86-64, i386 and arm64, the stacks, and the traps' texts
   (16-18). `Platform.c` counts the signal handlers running, so that
   `Transfer` in one traps.
+- `Tasks.Mod` - cooperative tasks over `Coroutines`
+  (`doc/developer/tasks.md`): a task is an extension of `TaskDesc` with
+  an exported `Run`; a FIFO run queue, `Yield`, `Join`, Mesa conditions,
+  mutexes, channels of extensible records and a receive-only `Select`.
+  Nothing preempts. The same file as `rtl/vax/Tasks.Mod` (fixture
+  `tasks-same-source`); what differs by system is in `TaskWaiting`.
+- `TaskWaiting.Mod`, `TaskWaiting.c` - `Tasks`' system part: so far the
+  traps' texts, 19 (all tasks blocked) and 20 (misuse, by case).
 
 Written in ordinary Oberon-2 over `SYSTEM.ADDRESS` (no pointer variables),
-except the C parts (`Platform.c`, `Coroutines.c`), so poc compiles them itself; a program picks them up through the import
+except the C parts (`Platform.c`, `Coroutines.c`, `TaskWaiting.c`), so
+poc compiles them itself; a program picks them up through the import
 path - the `llvm-gc-*` fixtures set `POC_IMPORT_PATH=../../../rtl/llvm`.
 Sources use the `.Mod` spelling; `ReadModuleSource` finds either.
 voc compiles five of these for Stage 0 (Phase 11 D11), so that the

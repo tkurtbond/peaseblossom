@@ -332,7 +332,7 @@ writes `:= ..`). `-strict` rejects it.
 ### What traps, and what does not (Phase 11 C9)
 
 The tables of trap statuses 2-20 (15 VAX/VMS only, 16-18 `Coroutines`', 19-20
-`Tasks`', decided, not yet implemented),
+`Tasks`'),
 what ends a program silently, what nothing stops, and what is a
 compile-time error. `poc -trap-location` (C7) prefixes every trap message
 with `file:line:column:` and ends it with the procedure, "(in List.Insert)". Since Phase 12 step 1 (2026-09-27) a function that reaches
@@ -492,9 +492,9 @@ first; nothing may unwind across a switch.
 
 ### Tasks (decided 2026-11-14; Phase 19, candidate 7)
 
-A runtime module over `Coroutines`, the same Oberon on both back ends, not
-implemented yet (`doc/developer/tasks.md`, Phases 9-13; probes in
-`concurrency-survey.md` section 10). A task is a `TaskDesc` extension with an
+A runtime module over `Coroutines`, the same Oberon on both back ends,
+implemented but for time, events and `TaskInput` (`doc/developer/tasks.md`,
+Phase 9 done, 10-13 to come; probes in `concurrency-survey.md` section 10). A task is a `TaskDesc` extension with an
 exported `Run`; nothing preempts; the program ends with the main body,
 abandoning tasks. Mesa conditions, mutexes, channels of extensible records,
 a receive-only `Select`, `After` as a timeout channel. `Post` only sets
