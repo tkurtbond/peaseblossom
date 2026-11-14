@@ -104,6 +104,10 @@ lib/poc/vax-dec-vms/O2/Conditions.sym
 lib/poc/vax-dec-vms/O2/Console.mar
 lib/poc/vax-dec-vms/O2/Console.owner
 lib/poc/vax-dec-vms/O2/Console.sym
+lib/poc/vax-dec-vms/O2/CoroutineSwitch.mar
+lib/poc/vax-dec-vms/O2/Coroutines.mar
+lib/poc/vax-dec-vms/O2/Coroutines.owner
+lib/poc/vax-dec-vms/O2/Coroutines.sym
 lib/poc/vax-dec-vms/O2/DCDEF.mar
 lib/poc/vax-dec-vms/O2/DCDEF.owner
 lib/poc/vax-dec-vms/O2/DCDEF.sym
@@ -966,6 +970,10 @@ lib/poc/vax-dec-vms/OC/Conditions.sym
 lib/poc/vax-dec-vms/OC/Console.mar
 lib/poc/vax-dec-vms/OC/Console.owner
 lib/poc/vax-dec-vms/OC/Console.sym
+lib/poc/vax-dec-vms/OC/CoroutineSwitch.mar
+lib/poc/vax-dec-vms/OC/Coroutines.mar
+lib/poc/vax-dec-vms/OC/Coroutines.owner
+lib/poc/vax-dec-vms/OC/Coroutines.sym
 lib/poc/vax-dec-vms/OC/DCDEF.mar
 lib/poc/vax-dec-vms/OC/DCDEF.owner
 lib/poc/vax-dec-vms/OC/DCDEF.sym

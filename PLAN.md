@@ -683,9 +683,10 @@ A24, moved here 2026-09-26), are Phase 14 now.
    variables, which the main line reads by `SYSTEM.GET` (a plain read in
    a loop was hoisted at `-opt 1` and up, and the loop never ended).
    `language-extensions.md`, "Threads and signal handlers". Documentation
-   only: nothing checks either rule. An Oakwood `Coroutines` module (item
-   2) is planned, its decisions accepted by the user 2026-11-13, in
-   `doc/developer/coroutines.md` ("Ongoing library enhancements", 4).
+   only: nothing checks either rule. Item 2, an Oakwood `Coroutines`
+   module (option B), was **adopted 2026-11-13** and implemented on both
+   back ends the same day (`doc/developer/coroutines.md`; "Ongoing
+   library enhancements", 4; `language-extensions.md`, "Coroutines").
    **Undecided**: a heap re-entry trap on LLVM like the VAX's trap 15,
    and a cooperative tasks library (item 3).
 
@@ -1283,7 +1284,7 @@ Those done while Phase 15 was current, 1 and 2, are in
     inserts.  When the procedures return, `pos` points to the position
     of the new end-of-string null character.
 
-4.  An Oakwood `Coroutines` module on both back ends (the user,
+4.  An Oakwood `Coroutines` module on both back ends [done] (the user,
     2026-11-13; Phase 19's candidate 7, option B of
     `doc/research/concurrency-survey.md`, whose section 8 probed it):
     `Init` and `Transfer`, plus `Free` and `DefaultStackSize`, a hook for
@@ -1292,7 +1293,10 @@ Those done while Phase 15 was current, 1 and 2, are in
     statuses 16-18. No compiler change. The plan, eight decisions
     (accepted by the user 2026-11-13) and six phases, the first of them
     probes (pofltk, debuggers, the VAX's quota), is in
-    `doc/developer/coroutines.md`.
+    `doc/developer/coroutines.md`. Implemented 2026-11-13 in `rtl/llvm`
+    and `rtl/vax` (fixtures `llvm-coroutines-*`, `vax-coroutines-*`),
+    with the User's Guide's chapter 11 and the VAX/VMS Guide's
+    "Coroutines".
 
 ## Ongoing language enhancements
 

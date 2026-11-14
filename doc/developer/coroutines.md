@@ -327,6 +327,8 @@ call, `Transfer` there and back, `swapcontext` there and back, a collection
 with 2 and with 10,002 stacks, shallow and deep, and `Init`'s cost. It is
 run on atla and rackhir, and its figures are compared with 8.2's.
 
+Done 2026-11-13 (`78574b8`); rackhir runs at the plan's end.
+
 ### Phase 4: The VAX module
 
 `Coroutines.Mod`, the `.mar` part, the heap's hook, `PocRtl.mar`'s texts,
@@ -346,6 +348,9 @@ with:
 `make vax-stages` is not affected, since poc does not import the module.
 The kits are checked by `tools/bootstrap/check-vax-kit`.
 
+Done 2026-11-13 (`0298dbd`), with the traceback and AST cases as the
+fixtures `vax-coroutines-traceback` and `vax-coroutines-asts`.
+
 ### Phase 5: Examples
 
 `WordSets` and `Queens` go into `doc/examples/`, the User's Guide section
@@ -357,12 +362,22 @@ inputs, and `Queens` with other sizes too, expecting the same output as on
 Unix: the run that shows the survey's "runs unchanged on Unix and VMS"
 holds.
 
+Done 2026-11-13 (`2631672`).
+
 ### Phase 6: Documents and packaging
 
 `rtl/llvm/README.md`, `tools/rtl-reference update`, the VAX/VMS Guide, the
 PLISTs, and `PLAN.md`'s entry marked `[done]`. The survey records what was
 decided, and Phase 19's candidate 7 records B as adopted.
 
+Done 2026-11-13. Writing the VAX/VMS Guide's section found that Phase 4's
+`Transfer` called `LIB$AST_IN_PROG` in every program, not only in one
+that imports `AsynchronousTraps` as decision 7 says; it now asks
+`GarbageCollectedHeap.AstsExpected()` first.
+
 Phases 3 and 4 can be released apart. The VAX's runtime simply lacks the
 module until Phase 4, and a program that imports it gets poc's usual
 "module not found".
+
+Option C, a `Tasks` module over this one, is planned in
+`doc/developer/tasks.md`, whose phases go on from 7.

@@ -458,7 +458,8 @@ procedure links against it.
     $ @[.VAX-DEC-VMS.O2]SHAPES_BUILD
 
 A `.mar` file named among the modules is a part of the library, assembled
-with them: `POCRTL` is made from `rtl/vax`'s modules and `PocRtl.mar`.
+with them: `POCRTL` is made from `rtl/vax`'s modules, `PocRtl.mar` and
+`CoroutineSwitch.mar`.
 A `.obj` file named there is an object of your own, copied into the
 library's directory, put in its `.OLB` and linked into its `.EXE` after
 the modules' objects, its entry points and procedures made universal
@@ -593,9 +594,14 @@ of traps says what each covers), with one more, 15:
 | 13 | `record assigned to a variable whose dynamic type extends its static type` | `%X1000006A` |
 | 14 | `SHORT argument out of range`, `CHR argument out of range` | `%X10000072` |
 | 15 | `heap re-entered at AST level: import AsynchronousTraps` | `%X1000007A` |
+| 16 | `coroutine body returned` | `%X10000082` |
+| 17 | `Transfer to a coroutine never initialized`, and one text for each other misuse of `Coroutines` | `%X1000008A` |
+| 18 | `no memory for a coroutine's stack` | `%X10000092` |
 
 Trap 15 is the VAX's alone: a program whose asynchronous system traps
-allocate, and which does not import `AsynchronousTraps`, ends so.
+allocate, and which does not import `AsynchronousTraps`, ends so. 16 to
+18 are `Coroutines`' (chapter 6), and 17's `Transfer at AST level` is
+the VAX's own.
 
     $ RUN TRAPS
     index out of range
@@ -699,6 +705,7 @@ has, described at the end of this chapter.
 | `Math`, `MathL` | `MTH$`, `OTS$` | The constants are F_floating's and G_floating's. |
 | `VT100` | `Out.Flush` | Each sequence reaches the terminal as it is sent. |
 | `GarbageCollectedHeap` | `LIB$GET_VM`, `$DCLEXH` | The heap is limited by the paging file quota. |
+| `Coroutines` | `LIB$GET_VM_PAGE`, `$SETPRT`, `COROUTINESWITCH.MAR` | Smaller stacks, counted against the paging file quota whole. |
 
 ### Files
 
@@ -872,6 +879,73 @@ included, so files would then be left unwritten (chapter 8's
 In a program that imports `AsynchronousTraps`, the heap disables ASTs
 while it allocates or collects, so `NEW` is safe at AST level (chapter
 14).
+
+### Coroutines
+
+`Coroutines` has the same interface as on Unix (the *User's Guide*,
+chapter 11), and the same programs run unchanged. What differs is the
+stacks, and what a program built from the runtime's source links.
+
+**Stacks.** `Init` takes a stack from `LIB$GET_VM_PAGE`, rounded up to
+whole 512-byte pages, and makes the page below it inaccessible with
+`$SETPRT`. `DefaultStackSize` is 32 KiB and the least is 8 KiB, an
+eighth of Unix's, because VMS counts every page against the process's
+paging file quota as soon as it is had, used or not. An account with a
+`PGFLQUOTA` of 300000 pages has room for some 4500 stacks of the default
+size, less what the heap and the program take. `Free` gives a stack
+back; `SHOW PROCESS/QUOTAS` shows how much is left. When VMS refuses the
+memory, `Init` ends the program by trap 18, `%X10000092`.
+
+**Running past a stack's end.** A stack does not grow. A coroutine that
+recurses past its end touches the guard page, and the program ends with
+an access violation (`%SYSTEM-F-ACCVIO`, status `%X1000000C`), though its
+exit handlers, finalizers included, still run. There is no traceback
+(chapter 16), only two register dumps: delivering the condition needs
+room on the stack, which has none. The main program's stack does not
+have this problem, since VMS extends it. A stack must be sized for the
+deepest recursion its coroutine makes, with room to spare for an AST and
+a condition's delivery.
+
+**The traceback.** Any other fault in a coroutine lists its routines, newest
+first, down to `Coroutines`' `START` and ends at `POC_COROUTINE_START`,
+the routine that begins every new stack; the main program's frames,
+which are not on that stack, are not listed. The debugger's `SHOW CALLS`
+ends at the same place:
+
+    module name     routine name                     line       rel PC    abs PC
+
+    COROUTINETRACE  INNER                              13      00000026  00002426
+    COROUTINETRACE  MIDDLE                             18      00000006  00002430
+    COROUTINETRACE  BODY                               25      00000054  00002485
+    COROUTINES      START                             138      00000069  00004B69
+    COROUTINESWITCH POC_COROUTINE_START                        00000005  00007DBC
+
+**ASTs.** An AST runs on the stack of whichever coroutine it interrupts,
+which is one reason each stack has room to spare. A wait, I/O included,
+stops every coroutine, but an AST still comes. In a program that imports
+`AsynchronousTraps`, where an AST may call `NEW`, `Transfer` holds ASTs
+off while it switches, so that a collection never sees the stacks
+halfway through, and a `Transfer` at AST level ends the program by trap
+17, `Transfer at AST level`. In a program that does not, `Transfer` costs
+nothing more, and its one possible AST, a CTRL/C handler, must not call
+it.
+
+**Condition handlers.** No handler may unwind across a switch, from one
+coroutine's frames into another's; nothing checks it.
+
+**Building from the runtime's source.** The switch is MACRO-32, in
+`CoroutineSwitch.mar` beside `PocRtl.mar`. A program built against the
+library `POCRTL` gets it from there, linked only into the programs that
+import `Coroutines`. A program built from `rtl/vax`'s source names it to
+the link:
+
+    $ poc -target vax-dec-vms -import-path ~/src/peaseblossom/rtl/vax \
+        -link COROUTINESWITCH.OBJ -build WordSets.Mod
+
+and on VMS it is assembled once, as `POCRTL.OBJ` is:
+
+    $ MACRO/OBJECT COROUTINESWITCH.MAR
+    $ @WORDSETS
 
 ### Three modules VMS alone has
 

@@ -6,7 +6,7 @@ section 15). A program finds these modules as source, `poc -target
 vax-dec-vms -import-path <this directory> -build ...` compiling the ones
 it imports with it, or in the library `POCRTL` (Phase 17 step 1,
 section 18), made by `poc -target vax-dec-vms -library POCRTL
-rtl/vax/*.Mod rtl/vax/PocRtl.mar`. Which of `rtl/llvm`'s modules are to
+rtl/vax/*.Mod rtl/vax/PocRtl.mar rtl/vax/CoroutineSwitch.mar`. Which of `rtl/llvm`'s modules are to
 come, and what each needs, is in `doc/research/vms-module-inventory.md`.
 
 - `PocRtl.mar`, MACRO-32, which a program poc builds for `vax-dec-vms`
@@ -158,3 +158,17 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `NEW` allocates from; `-build` adds it to a program that calls `NEW`.
   Its heap stops at three quarters of the paging file quota left when it
   starts (section 15, proposal 9).
+  `MarkRange`, `StackBase`, `SetStackScanner`, `RunningFinalizer` and
+  `AstsExpected` are exported for `Coroutines` only.
+- `Coroutines.Mod` and `CoroutineSwitch.mar`: Oakwood's `Coroutines`
+  (`Init`, `Transfer`) plus `Free` and `DefaultStackSize`
+  (`doc/developer/coroutines.md`, Phase 4): stacks of their own from
+  `LIB$GET_VM_PAGE`, a no-access guard page below each, scanned by the
+  collector through the heap's stack scanner while suspended. The
+  MACRO-32 part has the switch (`POC_COROUTINE_SWITCH`) and each new
+  stack's first frame (`POC_COROUTINE_FRAME`, `POC_COROUTINE_START`),
+  chained to the main program's so that a traceback stops there; a
+  program that imports `Coroutines` from source links
+  `COROUTINESWITCH.OBJ`, as `POCRTL` has it. `Transfer` at AST level
+  traps (17), and one that may be followed by an AST's `NEW` holds ASTs
+  off until the coroutine resumed enables them again.

@@ -835,7 +835,7 @@ trap's condition value is `%X10000002` plus 8 times the status (16-18 are
 | 13 | `v := e` for records where `v`, a `VAR` parameter (a receiver too) or `p^`, has a dynamic type that extends its static type (Oberon2.pdf 9.1; `llvm-record-assign-trap`; Phase 12 step 1, until then the static type's fields were copied) | `record assigned to a variable whose dynamic type extends its static type` | Halt(-6), 250; not under `voc -t` |
 | 14 | With `-range-checks` only: `SHORT(x)` of an integer `x` outside the result type, `CHR(x)` of `x` outside 0..255 (`llvm-range-checks`; Phase 12 step 1) | `SHORT argument out of range`, `CHR argument out of range` | `voc -r`: Halt(-8), 248, except `CHR` of a negative value (voc's check compares signed); no switch: truncates |
 | 15 | VAX/VMS only: an AST routine, a CTRL/C handler included, that calls `NEW` (or `GarbageCollectedHeap.Collect` or `RegisterFinalizer`) while the main line is inside the heap, in a program that does not import `AsynchronousTraps` (`vax-asts-heap`; Phase 17 step 6, `vax-macro32-backend.md` section 22.7). With the import the heap disables ASTs while it works and `NEW` at AST level is safe | `heap re-entered at AST level: import AsynchronousTraps` | none: voc has no ASTs |
-| 16 | A coroutine's body returned (Oakwood: "Procedure p must never return"; "Coroutines"; `llvm-coroutines-traps`, `vax-coroutines-traps`, planned) | `coroutine body returned` | none: voc has no `Coroutines` |
+| 16 | A coroutine's body returned (Oakwood: "Procedure p must never return"; "Coroutines"; `llvm-coroutines-traps`, `vax-coroutines-traps`) | `coroutine body returned` | none: voc has no `Coroutines` |
 | 17 | Misuse of `Coroutines` ("Coroutines"; the same fixtures): `Transfer` to a record never given to `Init`, or to a freed coroutine; `Free` of the running coroutine or of `main`'s; `Transfer` in a finalizer, in a signal handler (LLVM) or at AST level (VAX, in a program that imports `AsynchronousTraps`) | one text for each case: `Transfer to a coroutine never initialized`, `Transfer to a freed coroutine`, `Free of the running coroutine`, `Free of the main program's coroutine`, `Transfer in a finalizer`, `Transfer in a signal handler`, `Transfer at AST level` | none |
 | 18 | `Coroutines.Init` cannot get memory for the stack, always: unlike `NEW` there is no NIL to test (the same fixtures) | `no memory for a coroutine's stack` | none |
 
@@ -882,7 +882,7 @@ happened; deliberate (C6) where noted.
 | `SYSTEM.GET`/`PUT`/`MOVE` at an address that is not mapped | `SIGSEGV`, status 139 | voc's handler turns it into "NIL access" (Halt(-10), 246). `llvm-no-trap-behavior` case 11 |
 | `HALT(n)` | exit status `n`, silent (C6) | `n` is a constant in **0..255**, anything else is a compile-time error (as voc's err 218): the status keeps only its low 8 bits on every host poc runs on (C `exit(30000)` is 48, `exit(256)` is 0 - success - and `exit(-1)` is 255, checked on Linux, OpenBSD, NetBSD and FreeBSD 2026-09-21), while Windows keeps 32 (a `DWORD`). The report leaves the meaning of `n` to the system. VMS is different again, see `000-todo.org`. voc prints "Terminated by Halt(n)". `llvm-predeclared-halt`, `llvm-no-trap-behavior` |
 | `NEW` the heap cannot satisfy | the pointer is NIL, no message; the next dereference is trap 4 | as in voc, and the default; `-trap-heap-exhausted` makes it trap 11 instead. Which requests "cannot" be satisfied depends on the size model and the machine's limits: `NEW(p, MAX(LONGINT))` of 4-byte elements under `-OC` overflows the address space (trap 7), under `-O2` it asks for 8 GB, which was NIL under a 1.2 GB address-space limit |
-| A stack overflow on a coroutine (`Coroutines`) | LLVM: `SIGSEGV` (or `SIGBUS`), at the guard page below the stack; VAX: an access violation, with two register dumps | stacks are fixed in size and do not grow ("Coroutines"); `llvm-coroutines-overflow`, planned |
+| A stack overflow on a coroutine (`Coroutines`) | LLVM: `SIGSEGV` (or `SIGBUS`), at the guard page below the stack; VAX: an access violation, with two register dumps | stacks are fixed in size and do not grow ("Coroutines"); `llvm-coroutines-overflow` |
 | A C++ exception, a `longjmp` or a VMS `$UNWIND` that crosses a coroutine switch | undefined: it unwinds onto another stack's frames | "Coroutines" |
 
 **What nothing stops.** The program goes on with a value; the second column is
@@ -1977,7 +1977,7 @@ below.
 
 A runtime module `Coroutines` with the interface of Oakwood's optional
 module (Appendix 1.2.8) and two additions, decided with the user 2026-11-13.
-It is being implemented: `doc/developer/coroutines.md` has the decisions and the
+It is implemented on both back ends: `doc/developer/coroutines.md` has the decisions and the
 plan, and `doc/research/concurrency-survey.md`, section 8, the reasons and the
 prototype's measurements.
 

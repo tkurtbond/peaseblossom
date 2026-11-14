@@ -39,10 +39,10 @@ MODULE Coroutines;
      TRAPS. A body that returns traps (16): a body ends by transferring
      away for good. Misuse traps (17): a Transfer to a record never given
      to Init, or to a freed coroutine; a Free of the running coroutine or
-     of the main program's; a Transfer in a finalizer or at AST level. Init
-     traps when VMS refuses the stack's memory (18), always, unlike NEW. A
-     NIL body traps (4) when the coroutine is first resumed, as a call of a
-     NIL procedure value does.
+     of the main program's; a Transfer in a finalizer, or at AST level in a
+     program that imports AsynchronousTraps. Init traps when VMS refuses
+     the stack's memory (18), always, unlike NEW. A NIL body traps (4) when
+     the coroutine is first resumed, as a call of a NIL procedure value does.
 
      RULES the program keeps, which nothing checks:
      - A wait, I/O included, stops every coroutine; an AST still comes, and
@@ -173,7 +173,10 @@ MODULE Coroutines;
     VAR old, target: Descriptor; wasEnabled: BOOLEAN; status: SYSTEM.INT32;
   BEGIN
     IF GarbageCollectedHeap.RunningFinalizer() THEN Misuse(inFinalizer) END;
-    IF AstInProgress() # 0 THEN Misuse(atAstLevel) END;
+    (* only a program that can have ASTs pays for the call (decision 7) *)
+    IF GarbageCollectedHeap.AstsExpected() & (AstInProgress() # 0) THEN
+      Misuse(atAstLevel)
+    END;
     target := to.descriptor;
     IF target = NIL THEN Misuse(neverInitialized)
     ELSIF target.state = freed THEN Misuse(transferToFreed)

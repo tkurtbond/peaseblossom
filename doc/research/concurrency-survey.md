@@ -402,6 +402,12 @@ Findings:
    - whether the collector's stack list belongs in
      `GarbageCollectedHeap` or in the new module;
    - whether the switch saves the floating-point control registers.
+   **Adopted 2026-11-13** and implemented on both back ends the same
+   day (`doc/developer/coroutines.md`, whose eight decisions settle
+   these points: a stack is freed by `Free`; the stack list is
+   `Coroutines`' own, behind a hook in each `GarbageCollectedHeap`;
+   the switch saves the floating-point control registers;
+   `language-extensions.md`, "Coroutines").
 3. **Option C is the natural next step after B** and can wait until
    programs ask for it. It too is a library, not a language change.
    Section 9 sketches one possible interface for it.
@@ -883,9 +889,11 @@ program could do between two calls before, it still can.
 
 Added 2026-11-13, at the user's request: a program written with
 Oakwood's interface that is useful and runs unchanged on Unix and VMS.
-It has not run, since B's `Coroutines` is not in the tree, but it
-type-checks with poc against a stub with Oakwood's interface (8.6). It
-would make a fixture and a guide example once B is built.
+When this was written it had not run, since B's `Coroutines` was not
+yet in the tree; it type-checked with poc against a stub with Oakwood's
+interface (8.6). B was built the same day, and the program now runs on
+Unix and VMS: the *User's Guide*, chapter 11 (checked by
+`doc-users-guide`), and the fixture `vax-coroutines-examples`.
 
 It is the classic coroutine problem, "same fringe" (walk two trees in
 order, in step), made into a word-set comparer: it reads the words of
@@ -1052,8 +1060,10 @@ defaults (`n` = `k` = 8) it is the classic eight queens problem. It is
 written with Oakwood's interface and, like 8.5, runs unchanged on Unix
 and VMS.
 
-**What was checked.** The program has not run with coroutines, since B's
-module is not in the tree. It type-checks with poc against a stub
+**What was checked.** When this was written the program had not run
+with coroutines, since B's module was not yet in the tree; it now runs
+on Unix and VMS, as 8.5's does (the *User's Guide*, chapter 11, and
+`vax-coroutines-examples`). It type-checks with poc against a stub
 `Coroutines` that has only Oakwood's interface, under `-strict` and `-O2`
 as well (and so does 8.5's WordSets). The search, the boards and the
 argument checks ran on atla, in a variant that calls `Show` from `Place`

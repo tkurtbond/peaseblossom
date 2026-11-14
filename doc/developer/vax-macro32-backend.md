@@ -1814,6 +1814,17 @@ message: `CHR`'s code is pushed as `#^X0001000E`, `VAL`'s as
 `#^X0002000E`. `ASSERT`'s *n* can go there too. The debugger stub keeps
 only the low word, so the runs' logs are unchanged.
 
+**`Coroutines`' traps** (2026-11-13, `doc/developer/coroutines.md`,
+Phase 4, decision 9). `rtl/vax/Coroutines.Mod` calls `POC_TRAP` itself,
+with no location, for 16 (`coroutine body returned`, `%X10000082`), 17
+(misuse, `%X1000008A`) and 18 (`no memory for a coroutine's stack`,
+`%X10000092`). 17 has six messages, chosen by the high word as 14's are:
+0 for `Transfer to a coroutine never initialized`, then 1 to 5 for a
+`Transfer` to a freed coroutine, a `Free` of the running coroutine or of
+the main program's, and a `Transfer` in a finalizer or at AST level.
+The table's slots 16 to 18 are the codes', 19 and 20 `CHR`'s and `VAL`'s
+(moved up from 15 and 16), and 21 to 25 17's cases 1 to 5.
+
 **Predeclared `VAL` under `-range-checks`** (2026-11-01,
 `doc/developer/predeclared-unsigned-types.md`, step 4;
 `VaxCodeGenerator.ValRangeCheck`). `SYSTEM.VAL` is never checked, and

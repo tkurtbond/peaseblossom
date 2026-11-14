@@ -479,7 +479,7 @@ up). Documentation only; nothing checks it
 ### Coroutines (decided 2026-11-13; Phase 19, candidate 7)
 
 A runtime module with Oakwood's `Init`/`Transfer`, plus `Free` and
-`DefaultStackSize`; being implemented (`doc/developer/coroutines.md`).
+`DefaultStackSize`; implemented on both back ends (`doc/developer/coroutines.md`).
 Fixed stacks rounded to pages, with a guard page, a floor (LLVM 16 KiB, VAX
 8 KiB) and a recommended size (256 KiB, 32 KiB). The collector scans every
 suspended stack. Traps 16 (a body returned), 17 (misuse: a freed or
