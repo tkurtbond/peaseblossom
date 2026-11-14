@@ -329,6 +329,37 @@ run on atla and rackhir, and its figures are compared with 8.2's.
 
 Done 2026-11-13 (`78574b8`); rackhir runs at the plan's end.
 
+The figures (2026-11-14; rackhir's two runs, at `-opt 2`, with the stage 1
+runtime; atla's collections from one run), against 8.2's for the
+prototype. rackhir is emulated, so only its ratios mean anything:
+
+| | rackhir, prototype | rackhir, module | atla, prototype | atla, module |
+|---|---|---|---|---|
+| Procedure-variable call | 28 ns | 24-25 ns | ~1 ns | |
+| `Transfer` there and back | 410 ns | 294-295 ns | 21-22 ns | |
+| `swapcontext` there and back | 8569 ns | 8116-8236 ns | 256-281 ns | |
+| `Init` | ~27 µs | ~21.5 µs | ~2.5 µs | |
+| First `Transfer` to a new stack | ~533 ns | ~650 ns | ~125 ns | |
+| Collection, 100000 live, no other stacks | 8.2-9.4 ms | 8.5-8.8 ms | 1.20-1.32 ms | 1.10 ms |
+| + 10000 shallow stacks | 14.8-15.5 ms | 18.3-19.1 ms | 1.81-1.85 ms | 1.79 ms |
+| + 10000 stacks 100 frames deep | 111.8-111.9 ms | 232-236 ms | 8.04-8.09 ms | 10.83 ms |
+
+The deep row is not the module's doing, or not most of it. The rewritten
+`Deeper` takes its coroutine as a `VAR` record parameter, with its hidden
+type tag, so a frame is 80 bytes on both machines where the prototype's was
+49-50 (measured from the addresses of the deepest and shallowest frames'
+locals; its array is 32 bytes, `LONGINT` being 4 under `-O2`): some 80 MB
+scanned instead of 50. Taking the cost as so much a suspended stack plus so
+much a byte scanned, atla's module matches the prototype (0.105 ns a byte
+and about 45 ns a stack, against 0.126 ns and 41 ns). rackhir's is about
+1.4 times the prototype's a byte (2.6 ns against 1.8) and twice a stack
+(0.5 µs against 0.2), its stacks' bytes above `Deeper` estimated, not
+measured. A collection with no other stacks costs what it did, so the
+scan's code is not slower; whether FreeBSD arm64 puts the stacks inside the
+heap's address range, so that a saved frame pointer costs a search of the
+chunk table, or the emulator ran at another speed on the prototype's day,
+was not settled: the prototype is gone.
+
 ### Phase 4: The VAX module
 
 `Coroutines.Mod`, the `.mar` part, the heap's hook, `PocRtl.mar`'s texts,
