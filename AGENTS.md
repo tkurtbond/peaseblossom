@@ -621,8 +621,10 @@ and `Tasks`, Debian packages and the examples kit were released as
 waits and the examples' source kit as **0.13.0** the same day, and
 **0.13.1** on 2026-11-16 with one fix (memcheck follows coroutines'
 stacks), and the runtime module `StopRequests` and five fixes as
-**0.14.0** the same day (tags `v0.12.0`, `v0.13.0`, `v0.13.1`,
-`v0.14.0`; the records are in `PLAN.md`). Bugs found by using
+**0.14.0** the same day, and indexing a string constant, `In.Peek`,
+`OutStr`'s `At` twins, `-march=i686` for 32-bit x86 Linux and seven
+fixes as **0.15.0** on 2026-11-20 (tags `v0.12.0`, `v0.13.0`,
+`v0.13.1`, `v0.14.0`, `v0.15.0`; the records are in `PLAN.md`). Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library

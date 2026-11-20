@@ -1269,6 +1269,54 @@ an older poc must be rebuilt. It was made as
   checked as `POC2` (`HELLO.MOD` built and run). The tree held only
   0.13.1.
 
+## Peaseblossom 0.15.0
+
+What `main` had gained since 0.14.0 was released as **Peaseblossom
+0.15.0** on 2026-11-20: language enhancement 6, indexing a string
+constant, on both back ends (`fcf8491`); library enhancements 8,
+`In.Peek` (`2ab53f9`), 3, `OutStr`'s `At` twins (`6f2c778`), and 13,
+memcheck no longer reporting the collector's stack scan (`fc3b145`);
+`-march=i686` for a 32-bit x86 Linux target (`ba38100`); and ongoing
+bug fixing 25-28 and 30-32 (`11884c6`, `feabebc`, `77d80b5`, `4af2776`,
+`5e1c880`, `c65de3f`). Both the compiler and the runtime libraries
+changed, so a library from an older poc must be rebuilt. It was made as
+`doc/developer/DEVELOPER.md` section 7 says:
+
+- **The version** was set in `39d2137` by `make set-version`. The gate
+  passed on cymoril, artos and alerik (557 fixtures, the fixed point,
+  `check-strict`, `check-install` and `check-seed` on each). On atla
+  `vax-asts-heap` counted 2 collections for its "3 or more" and passed
+  run again alone (bug 33); the rest of atla's make check passed, and
+  its `check-opt2` (401, twice), `check-install` and `check-seed`
+  passed run separately. rackhir passed `39d2137`, and `make
+  check-vax-kit CHECK_VAX_KIT_FLAGS=-full` passed on the guest.
+- **The tarball** came from `make distcheck` (SHA-256 `7293db3b...`,
+  14899771 bytes). It is signed, with the signed tag `v0.15.0`, and
+  published as a GitHub release with the kits `POC-0-15-0.COM`,
+  `POC-VMS-0-15-0.COM`, `POC-EXAMPLES-0-15-0.COM` and
+  `POC-EXAMPLES-SOURCE-0-15-0.COM`.
+- **Each package** was made from the published tarball (only the
+  `distinfo` files changed, packing lists unchanged), copied to each
+  host's distfiles from atla, on alerik, rackhir (after its check),
+  cymoril, jherek, artos and yishana, replacing 0.14.0 and checked
+  against the installed poc. sadric (arm64, as `sadricstar`, 23 minutes)
+  and the `debian:trixie` container on atla (amd64) built the Debian
+  packages, which replace 0.14.0 on sadric, checked the same way. The
+  installs on the VMs and sadric went by `ssh root@<host>`, not root
+  panes. `mock` built and checked the RPMs, and on atla 0.15.0 replaces
+  0.14.0, with `peaseblossom-vax`, checked the same way. The package
+  scripts, lost with the 0.14.0 scratch directory, were made again from
+  the 0.12.0 session's.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (25 files; `DEBIAN_HOSTS="atla sadricstar"`;
+  one run stopped at a moment sadricstar did not answer, and gpg timed
+  out waiting for the passphrase, so the user signed `SHA256SUMS`) and
+  attached to the release; every asset's SHA-256 as GitHub reports it
+  matches the local file, and `SHA256SUMS` and its signature check.
+- **The guest's `DUA1:[POC]`** holds 0.15.0, from the published kits,
+  checked as `POC2` (`HELLO.MOD` built and run). The tree held only
+  0.14.0.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
