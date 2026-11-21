@@ -2670,6 +2670,36 @@ Those done while Phase 18 was current, 5-7, are in
       equivalent, where the main program's transfer address plays
       `main`'s part.
 
+16. The collector thrashes at the heap ceiling (the user, 2026-11-20;
+    found in podoc). Not yet decided or started.
+    - **What was seen.** podoc (poc 0.15.0, `-OC`, atla) converting a
+      45 MB file to JSON needs a little more than the default 1 GB
+      heap limit. It ran for 6 min 15 s, nearly all of it user time,
+      before a `NEW` found no memory and the program stopped
+      (`-trap-heap-exhausted`: trap 11, "heap exhausted"). pandoc took
+      34 s and 2.9 GiB for the same file. Earlier, at 12 MB, before
+      podoc's own memory fixes, two of its writers did the same for
+      2 to 4 minutes before ending in a NIL trap.
+    - **Why, from `rtl/llvm/GarbageCollectedHeap.Mod`.** When
+      `TakeBlock` finds nothing, `Allocate` runs a full `Collect`, then
+      `GrowAfterCollection`. At the ceiling `AddChunk` refuses, and the
+      collection frees only what has died since the last one. So
+      collections come every few allocations, and each marks and sweeps
+      the whole of nearly 1 GB of live data. The program creeps forward
+      until one request finds nothing even after a collection.
+    - **What is wanted.** Give up early, so the program stops at once
+      with "heap exhausted" (or NIL), not minutes later. For example,
+      when the heap cannot grow and a collection leaves less than some
+      fraction of the block area free (a few percent), count it, and
+      after a few such collections in a row answer 0. Some collectors do
+      the same (HotSpot's "GC overhead limit exceeded": more than 98% of
+      the time in collection while freeing less than 2% of the heap).
+    - **To decide with the user.** The threshold and how many
+      collections in a row; whether it is on by default or goes with
+      `-trap-heap-exhausted` (15); whether a program can set it, as it
+      can `SetHeapLimit` and `SetChunkSize`; the VAX's collector, which
+      has the same structure.
+
 ## Open design questions
 
 None at present.
