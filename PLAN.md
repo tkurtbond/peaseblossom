@@ -2630,11 +2630,11 @@ Those done while Phase 18 was current, 5-7, are in
       on the VAX, whose object language has no comdat. Bug 32 is fixed
       on its own, under "Ongoing bug fixing".
 
-15. A `NEW` the heap cannot satisfy always traps, with a hook (the
+15. A `NEW` the heap cannot satisfy always traps, with hooks (the
     user, 2026-11-20; found in podoc, `~/Repos/Oberon/podoc`, which is
-    built with `-trap-heap-exhausted`). Replaces the first proposal of
-    the same day, kept below as the alternative considered. Not yet
-    decided in detail or started.
+    built with `-trap-heap-exhausted`). Decided with the user the same
+    day; not yet started. Replaces the first proposal of that day, kept
+    below as the alternative considered.
     - **The need.** `-trap-heap-exhausted` makes the code generated
       after each call to `GarbageCollectedHeap.Allocate` test the result
       and trap 11 at that `NEW`'s line and column
@@ -2651,86 +2651,96 @@ Those done while Phase 18 was current, 5-7, are in
       gave "NIL pointer dereference"; Ropes compiled from source with the
       option gave the message. podoc on a 45 MB input gave the message,
       exit status 11, from one of its own `NEW`s.
-    - **The proposal.** `Allocate` traps 11 itself whenever it finds no
-      memory, in every program, so every `NEW` and `SYSTEM.NEW` is
-      covered whatever its module was compiled with. That includes the
-      early `RETURN 0` for a size below 0 or above `maxObjectSize` (an
-      open array too large for any heap). `GarbageCollectedHeap` gets a
-      hook, a procedure variable that a setter installs; when set, the
-      trap calls it just before it writes the message and exits:
+    - **Decided: `Allocate` always traps.** It traps 11 itself whenever
+      it finds no memory, in every program, so every `NEW` and
+      `SYSTEM.NEW` is covered whatever its module was compiled with.
+      That includes the early `RETURN 0` for a size below 0 or above
+      `maxObjectSize` (an open array too large for any heap). The trap
+      is a procedure of its own in the runtime (say
+      `GarbageCollectedHeap.OutOfMemory`), not inline code, so a
+      debugger can stop in it (see the traceback below).
+    - **Decided: a list of hooks.** A library that keeps a cache can
+      register a hook to free it without knowing what other libraries
+      registered:
       ```
-      TYPE HeapExhausted* = PROCEDURE (size: SYSTEM.ADDRESS): BOOLEAN;
-      PROCEDURE SetHeapExhausted*(hook: HeapExhausted; VAR old: HeapExhausted);
+      TYPE OutOfMemoryHook* = PROCEDURE (size: SYSTEM.ADDRESS): BOOLEAN;
+      PROCEDURE AddOutOfMemoryHook*(hook: OutOfMemoryHook);
+      PROCEDURE RemoveOutOfMemoryHook*(hook: OutOfMemoryHook);
       ```
-      - **Retry.** The hook answers TRUE when it has made room (freed a
-        cache and dropped its pointers, or raised the limit with
-        `SetHeapLimit`); `Allocate` then collects and tries once more,
-        and traps if that fails too. FALSE, or a hook that does not
-        return (one that writes its own message and calls
-        `Platform.Exit`), ends the program as without it.
-      - **The previous hook** comes back in `old`, so a library can
-        chain to the one installed before it.
-      - **The hook must not allocate.** `Allocate` called again while the
-        hook runs traps at once, without calling the hook, rather than
+      - **The table.** The hooks are kept in a small fixed table in
+        `GarbageCollectedHeap` (8 entries, say), since the runtime cannot
+        allocate when the heap is full. Adding to a full table is a
+        `HALT`, with a code of the runtime's (10..20) to be assigned.
+        Adding a hook already there, or removing one that is not, does
+        nothing.
+      - **The call.** When `Allocate` finds no memory after its final
+        collection, it calls the hooks newest added first, passing the
+        size asked for. A hook answers TRUE when it has made room (freed
+        a cache and dropped its pointers, or raised the limit with
+        `SetHeapLimit`); `Allocate` then collects and tries again. If
+        that succeeds, the `NEW` succeeds; if not, the next hook is
+        called. Each hook is called at most once per failing `NEW`. When
+        every hook has answered FALSE, or there are none, the program
+        traps. A hook may also not return: one that writes its own
+        message and calls `Platform.Exit`.
+      - **The hooks must not allocate.** `Allocate` called again while a
+        hook runs traps at once, without calling the hooks, rather than
         recurse.
-      - **Order.** The hook runs after `Allocate`'s final collection (so
-        it sees the heap as full as it is) and before the finalizers,
+      - **Order.** The hooks run after `Allocate`'s final collection (so
+        they see the heap as full as it is) and before the finalizers,
         which run at `exit` (`FinalizeAtExit`), as for every trap.
-      - **`-trap-heap-exhausted` becomes redundant.** It stays accepted,
-        as a no-op, or keeps only its per-site location (see the
-        traceback below), so existing makefiles keep working.
-      - **The documented contract changes.** reference-guide.md:696 says
-        a `NEW` the heap cannot satisfy leaves NIL; that becomes trap 11
-        always. A program that tests for NIL after `NEW` gets the trap
-        instead, and must install a hook to recover. A release-note item.
-      - **With item 16.** Item 16 decides when `Allocate` gives up; this
-        item decides what happens then.
-      - **podoc** would install a hook that writes "podoc: out of memory;
-        set PODOC_HEAP_LIMIT (megabytes) higher" and exits 11, and drop
-        `-trap-heap-exhausted` from its `POCFLAGS`.
-    - **The traceback: where the failing `NEW` is.** A trap raised in
+    - **Decided: `-trap-heap-exhausted` goes away entirely.** poc no
+      longer accepts it (`Poc.Mod`, the two code generators'
+      `trapHeapExhausted` and `EmitHeapCheck`, the users-guide and
+      reference-guide text, the tests). A makefile that passes it fails
+      on the release that removes it, so the release note says so; podoc
+      drops it from its `POCFLAGS` and adds its hook in the same change.
+    - **The documented contract changes.** reference-guide.md:696 says a
+      `NEW` the heap cannot satisfy leaves NIL; that becomes trap 11
+      always. A program that tests for NIL after `NEW` gets the trap
+      instead, and must add a hook to recover. A release-note item.
+    - **With item 16.** Item 16 decides when `Allocate` gives up; this
+      item decides what happens then.
+    - **podoc** will add a hook that writes "podoc: out of memory; set
+      PODOC_HEAP_LIMIT (megabytes) higher" and exits 11.
+    - **Decided: the traceback, ways 1 and 2.** A trap raised in
       `Allocate` is no longer at the `NEW`, so its message cannot name
-      the site as the per-site check does. Today every trap is inline
+      the site as the per-site check did. Today every trap is inline
       `write` and `exit` (`EmitTrapAt`); poc has no stack walking, and
-      emits no `"frame-pointer"` attribute. Ways to name the site, from
-      cheapest (read in the source, none tried):
-      - **Under a debugger, free.** With the trap in a named runtime
-        procedure (say `GarbageCollectedHeap.Exhausted`) and `-g`, which
-        links the runtime with debug information, `break
-        GarbageCollectedHeap.Exhausted` in gdb or lldb gives the whole
-        backtrace with source lines. Wants a paragraph in users-guide §8.
-      - **The caller's address in the message.** `Allocate` takes its
-        return address with `llvm.returnaddress(0)` (declared as the
-        collector already declares `llvm.eh.unwind.init`, if the
-        intrinsic's constant argument passes through a `["C"]` call; to
-        check) and the trap appends it: "heap exhausted: NEW cannot
-        allocate the block (at podoc+0x4a3f10)". Under PIE the address
-        is printed as an offset from the executable's base, found with
-        `dladdr` (in the C library on glibc 2.34 and later and the BSDs,
-        `libdl` before; to check on each). `addr2line -f -e podoc
-        0x4a3f10` then gives the procedure, and with `-g` the line.
-        Costs nothing until the trap. The return address is in the
-        procedure holding the `NEW` only if `NEW` calls `Allocate`
-        directly; a record's `NEW` that goes through a helper would name
-        the helper. To check in the IR.
-      - **The site's message, under `-trap-location`.** Before each call
-        to `Allocate`, the generated code stores a pointer to the site's
-        "file:line:column (in M.P)" text in a global of
-        `GarbageCollectedHeap`, and the trap prints it, as `-trap-location`
-        traps do now. No tools needed, but a store per `NEW`, and only
-        in modules compiled with the option: a `NEW` in another module
-        would leave the last site stored, the wrong one, unless
-        `Allocate` cleared the global on every call. The per-site check's
-        coverage problem again, for the location only.
-      - **A full traceback in the message.** `backtrace` and
-        `backtrace_symbols_fd` (glibc's `execinfo.h`; FreeBSD and NetBSD
-        have `libexecinfo`; OpenBSD to check) print the frames, but name
-        only exported dynamic symbols (`-rdynamic`), so Oberon procedures
-        come out as addresses, and they need unwind tables or frame
-        pointers. Not portable enough for the runtime; a program's hook
-        could do it.
-      Recommended: the debugger paragraph and the caller's address; the
-      site's message only if those prove not enough.
+      emits no `"frame-pointer"` attribute. What follows was read in the
+      source; none of it has been tried.
+      1. **Under a debugger.** With the trap in its own runtime procedure
+         and `-g`, which links the runtime with debug information,
+         `break GarbageCollectedHeap.OutOfMemory` in gdb or lldb gives
+         the whole backtrace with source lines. A paragraph in
+         users-guide §8, and in the reference guide's trap 11.
+      2. **The caller's address in the message.** `Allocate` takes its
+         return address with `llvm.returnaddress(0)` (declared as the
+         collector already declares `llvm.eh.unwind.init`, if the
+         intrinsic's constant argument passes through a `["C"]` call; to
+         check) and the trap appends it: "heap exhausted: NEW cannot
+         allocate the block (at podoc+0x4a3f10)". Under PIE the address
+         is printed as an offset from the executable's base, found with
+         `dladdr` (in the C library on glibc 2.34 and later and the
+         BSDs, `libdl` before; to check on each). `addr2line -f -e podoc
+         0x4a3f10` then gives the procedure, and with `-g` the line. It
+         costs nothing until the trap. The address is in the procedure
+         holding the `NEW` only if `NEW` calls `Allocate` directly; a
+         `NEW` that goes through a helper would name the helper. To check
+         in the IR.
+      Not built: the site's "file:line:column" stored before each call
+      under `-trap-location` (a store per `NEW`, only in modules compiled
+      with the option, and the option it hung off is gone), and a full
+      traceback with `backtrace` (`execinfo.h`; `libexecinfo` on FreeBSD
+      and NetBSD, OpenBSD unknown; Oberon procedures come out as
+      addresses without `-rdynamic`). A program's hook can do the latter
+      if it wants.
+    - **Decided: the VAX too.** `rtl/vax/GarbageCollectedHeap.Mod` has
+      the same `Allocate` structure, so the trap, the hook table and the
+      calls carry over. The caller's address there comes from the
+      caller's call frame (the saved PC), not an LLVM intrinsic, and
+      there is no `addr2line`: mapping the address to a routine (the
+      linker map, or the debugger) is still to be worked out.
     - **The alternative considered** (2cdad0b, the first proposal). When
       the main module is compiled with `-trap-heap-exhausted`, the `main`
       it defines sets a flag in `GarbageCollectedHeap` before any module
@@ -2739,14 +2749,14 @@ Those done while Phase 18 was current, 5-7, are in
       order, the main module's last, and the libraries' bodies allocate
       before it). With the flag set, `Allocate` traps 11 itself; the
       per-site check stays, for the location. Set aside because it keeps
-      NIL as the default, which few programs handle, and because a hook
-      lets a program choose its message and recover, which a flag does
-      not.
-    - **To decide with the user.** The hook's name and whether it
-      retries; whether `-trap-heap-exhausted` becomes a no-op or keeps
-      the per-site location; which of the traceback ways to build; the
-      VAX equivalent (`rtl/vax/GarbageCollectedHeap.Mod`, the same
-      structure).
+      NIL as the default, which few programs handle, and because hooks
+      let a program choose its message and recover, which a flag does
+      not. A single hook with a setter returning the previous one, for
+      chaining, was considered too, and set aside for the list: chaining
+      by hand is easy for a library to get wrong.
+    - **Still open.** The table's size and the `HALT` code; the trap
+      procedure's name; how the VAX maps the caller's address to a
+      routine.
 
 16. The collector thrashes at the heap ceiling (the user, 2026-11-20;
     found in podoc). Not yet decided or started.
