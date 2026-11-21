@@ -2630,6 +2630,46 @@ Those done while Phase 18 was current, 5-7, are in
       on the VAX, whose object language has no comdat. Bug 32 is fixed
       on its own, under "Ongoing bug fixing".
 
+15. `-trap-heap-exhausted` for the whole program (the user, 2026-11-20;
+    found in podoc, `~/Repos/Oberon/podoc`, which is built with the
+    option). Not yet decided or started.
+    - **The need.** The option makes the code generated after each call
+      to `GarbageCollectedHeap.Allocate` test the result and trap 11 at
+      that `NEW`'s line and column (`LLVMCodeGenerator.trapHeapExhausted`,
+      `VaxCodeGenerator.trapHeapExhausted`). So it covers only the
+      modules compiled with it. A `NEW` in an installed library built
+      without it, the runtime's or the user's, still leaves NIL, and the
+      program stops later with "NIL pointer dereference", away from the
+      cause. podoc allocates much of its memory in Ropes, so its clear
+      message depends on where the heap happens to run out.
+    - **Shown with poc 0.15.0 on atla.** A test program with a 4 MB heap
+      limit (`SetHeapLimit`): its own `NEW` gave "heap exhausted: NEW
+      cannot allocate the block"; a `NEW` inside the installed Ropes
+      gave "NIL pointer dereference"; Ropes compiled from source with the
+      option gave the message. podoc on a 45 MB input gave the message,
+      exit status 11, from one of its own `NEW`s.
+    - **The proposal.** When the main module is compiled with the
+      option, the `main` it defines sets a flag in `GarbageCollectedHeap`
+      before any module body runs, as it already calls `Modules.Init`
+      and records the stack base there. Not in the main module's body:
+      bodies run in import order, the main module's last, and the
+      libraries' bodies allocate before it. With the flag set,
+      `Allocate` itself traps 11 when it finds no memory, so every `NEW`
+      and `SYSTEM.NEW` in the program is covered, whatever its library
+      was compiled with.
+    - **Keep the per-site check.** A trap raised in `Allocate` cannot
+      name the `NEW` that failed; the per-site check gives its module,
+      line and column. With both, a module compiled with the option traps
+      at its `NEW`, with the location, and library code traps in
+      `Allocate`, with the message but no location.
+    - **To decide with the user.** Whether the option given at link time
+      (the main module's compilation) should alone set the flag, or a
+      separate option; a library written to handle NIL from `NEW` (to
+      free a cache and retry, say) would lose that handling, which is the
+      program author's choice and wants documenting; the VAX
+      equivalent, where the main program's transfer address plays
+      `main`'s part.
+
 ## Open design questions
 
 None at present.
