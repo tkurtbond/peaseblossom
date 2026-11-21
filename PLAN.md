@@ -2656,10 +2656,12 @@ Those done while Phase 18 was current, 5-7, are in
       `SYSTEM.NEW` is covered whatever its module was compiled with.
       That includes the early `RETURN 0` for a size below 0 or above
       `maxObjectSize` (an open array too large for any heap). The trap
-      is a procedure of its own in the runtime (say
-      `GarbageCollectedHeap.OutOfMemory`), not inline code, so a
-      debugger can stop in it (see the traceback below).
-    - **Decided: a list of hooks.** A library that keeps a cache can
+      is a procedure of its own in the runtime,
+      `GarbageCollectedHeap.OutOfMemory` (the user, 2026-11-20), not
+      inline code, so a debugger can stop in it (see the traceback
+      below).
+    - **Decided: a list of hooks**, added with `AddOutOfMemoryHook` (the
+      name the user chose, 2026-11-20). A library that keeps a cache can
       register a hook to free it without knowing what other libraries
       registered:
       ```
@@ -2667,12 +2669,14 @@ Those done while Phase 18 was current, 5-7, are in
       PROCEDURE AddOutOfMemoryHook*(hook: OutOfMemoryHook);
       PROCEDURE RemoveOutOfMemoryHook*(hook: OutOfMemoryHook);
       ```
-      - **The table.** The hooks are kept in a small fixed table in
-        `GarbageCollectedHeap` (8 entries, say), since the runtime cannot
-        allocate when the heap is full. Adding to a full table is a
-        `HALT`, with a code of the runtime's (10..20) to be assigned.
-        Adding a hook already there, or removing one that is not, does
-        nothing.
+      - **The table.** The hooks are kept in a fixed table of 16
+        entries (the user, 2026-11-20) in `GarbageCollectedHeap`, since
+        the runtime cannot allocate when the heap is full. Adding to a
+        full table is trap 15, the smallest status no trap has (the
+        user, 2026-11-20; traps use 2 to 14, reference-guide.md's
+        table), with a message such as "AddOutOfMemoryHook: the table
+        of hooks is full", since a bare `HALT` prints nothing. Adding a
+        hook already there, or removing one that is not, does nothing.
       - **The call.** When `Allocate` finds no memory after its final
         collection, it calls the hooks newest added first, passing the
         size asked for. A hook answers TRUE when it has made room (freed
@@ -2737,10 +2741,30 @@ Those done while Phase 18 was current, 5-7, are in
       if it wants.
     - **Decided: the VAX too.** `rtl/vax/GarbageCollectedHeap.Mod` has
       the same `Allocate` structure, so the trap, the hook table and the
-      calls carry over. The caller's address there comes from the
-      caller's call frame (the saved PC), not an LLVM intrinsic, and
-      there is no `addr2line`: mapping the address to a routine (the
-      linker map, or the debugger) is still to be worked out.
+      calls carry over. The failing `NEW`'s site comes from VMS's own
+      symbolic traceback (the user, 2026-11-20). What follows was read
+      in vax-vms-guide.md ("A fault and its traceback") and
+      reference-guide.md's VAX/VMS trap paragraph, not tried.
+      - **VMS prints a symbolic traceback itself.** A severe condition
+        that no handler takes reaches VMS's last-chance handler, which
+        prints the message and the calls newest first: module, routine,
+        line and PC. poc's objects carry the traceback records (TBT
+        DSTs) for this with no `/DEBUG`; a program built from MACRO-32
+        gives poc's VAX symbols and no line. Better than Unix's address
+        and `addr2line`, with no saved PC or link map needed.
+      - **But traps don't signal today.** A poc trap on VMS writes its
+        message and `$EXIT`s with `%X10000000 + 8*c + 2` (severity
+        error, DCL's message suppressed), so no traceback is printed.
+      - **So on VMS `OutOfMemory` calls `LIB$STOP`**, which prints the
+        message and the traceback and ends the program; exit handlers,
+        and so the finalizers, still run. The condition is
+        `POC$_HEAPEXH`, from poc's own message file (item 17): VMS then
+        prints "%POC-F-HEAPEXH, heap exhausted: NEW cannot allocate the
+        block". Until item 17 is done, `LIB$_INSVIRMEM` ("insufficient
+        virtual memory"), a system condition with a real message; poc's
+        own number without a message file would print a "NOMSG" message.
+        Either way the status is not the trap convention's
+        `%X1000005A`: `LIB$STOP` makes the severity fatal.
     - **The alternative considered** (2cdad0b, the first proposal). When
       the main module is compiled with `-trap-heap-exhausted`, the `main`
       it defines sets a flag in `GarbageCollectedHeap` before any module
@@ -2754,9 +2778,13 @@ Those done while Phase 18 was current, 5-7, are in
       not. A single hook with a setter returning the previous one, for
       chaining, was considered too, and set aside for the list: chaining
       by hand is easy for a library to get wrong.
-    - **Still open.** The table's size and the `HALT` code; the trap
-      procedure's name; how the VAX maps the caller's address to a
-      routine.
+    - **Still open.**
+      - On the VAX, the details of the message file (item 17).
+      - To check before building way 2: whether `llvm.returnaddress`'s
+        constant argument passes through a `["C"]` declaration; where
+        `dladdr` lives on each platform (glibc before 2.34, the BSDs);
+        whether every `NEW` calls `Allocate` directly, or some go
+        through a helper that would be named instead.
 
 16. The collector thrashes at the heap ceiling (the user, 2026-11-20;
     found in podoc). Not yet decided or started.
@@ -2783,10 +2811,77 @@ Those done while Phase 18 was current, 5-7, are in
       the same (HotSpot's "GC overhead limit exceeded": more than 98% of
       the time in collection while freeing less than 2% of the heap).
     - **To decide with the user.** The threshold and how many
-      collections in a row; whether it is on by default or goes with
-      `-trap-heap-exhausted` (15); whether a program can set it, as it
-      can `SetHeapLimit` and `SetChunkSize`; the VAX's collector, which
-      has the same structure.
+      collections in a row; whether it is on by default (item 15
+      removes `-trap-heap-exhausted`, which it might have gone with);
+      whether a program can set it, as it can `SetHeapLimit` and
+      `SetChunkSize`; the VAX's collector, which has the same
+      structure.
+
+17. A VMS message file for poc's traps (the user, 2026-11-20; from item
+    15). Decided in outline; the open points below are not, and nothing
+    is started. What follows was read in poc's VMS docs and recalled
+    from the VMS message utility, not tried on VMS.
+    - **The need.** On VMS a poc trap writes its message and `$EXIT`s
+      with `%X10000000 + 8*c + 2`: facility 0 (`SYSTEM`), message
+      number *c*, severity error, DCL's message suppressed (bit 28).
+      Facility 0 is VMS's own, so `$GETMSG`, `Conditions.Message` and
+      `HELP/MESSAGE` give a system message, or none, for *c*, not
+      poc's; and a trap that signals (item 15's out-of-memory trap,
+      `LIB$STOP`) has no message of poc's to print.
+    - **The proposal.** A message source, `POCMSG.MSG`, gives every
+      trap a message in a facility of poc's own, `POC`, with *c* kept
+      as the message number:
+      ```
+              .TITLE      POCMSG  poc run-time traps
+              .FACILITY   POC, <number> /PREFIX=POC$_
+              .SEVERITY   ERROR
+              .BASE       2
+      INDEX   <index out of range>
+      NOCASE  <no matching CASE label>
+      NILREF  <NIL pointer dereference>
+      ...
+      HEAPEXH <heap exhausted: NEW cannot allocate the block>
+      ...
+      HOOKFULL <AddOutOfMemoryHook: the table of hooks is full>
+              .END
+      ```
+      The names are placeholders; the texts are reference-guide.md's
+      trap table's. The condition value is then: severity in bits 0-2
+      (error, or fatal after `LIB$STOP`); *c* in bits 3-14; bit 15, the
+      facility-specific bit, and bit 27, customer-defined, both set by
+      `MESSAGE`; poc's facility number in bits 16-26; bit 28 set as now
+      for a trap that `$EXIT`s, so DCL does not repeat poc's message.
+    - **Where it is built.** poc's VMS runtime is always built on VMS:
+      `@BUILD` runs `POCRTL_BUILD.COM`, which assembles the modules'
+      `.MAR` and makes `POCRTL.OLB` and `POCRTL.EXE`
+      (vax-vms-guide.md's table of the kit). It would run `MESSAGE` on
+      `POCMSG.MSG` and put the object in both, cross-compiled programs
+      (`-vax-objects`) included. The trap code refers to the message
+      symbols (`POC$_HEAPEXH`), so `LINK` takes the module in by itself.
+    - **What it gives.** Every trap's status has poc's message:
+      `$GETMSG`, `Conditions.Message`, `SET MESSAGE`. Item 15's
+      out-of-memory trap `LIB$STOP`s with `POC$_HEAPEXH`, and VMS prints
+      "%POC-F-HEAPEXH, ..." and its traceback. Other traps could later
+      signal too, for their tracebacks; not part of this item.
+    - **What changes.** The statuses: a DCL procedure's
+      `($STATUS .AND. %XFFF8) / 8` (reference-guide.md) gives *c* + 4096
+      with bit 15 set, and becomes `.AND. %X7FF8`; reference-guide.md,
+      vax-vms-guide.md and the VAX tests that check statuses change with
+      it. A release-note item.
+    - **To decide with the user.**
+      - The facility number. Customer facilities are not registered, so
+        a clash with other local software is possible, if unlikely.
+      - `HALT(c)`, which shares the traps' encoding today (so `HALT(4)`
+        looks like a NIL trap): stay in facility 0, or move to `POC`
+        with numbers that have no message.
+      - `-trap-location`'s per-site text, which a fixed message cannot
+        hold: poc keeps writing its own line first, or the message
+        takes an `!AS` argument when signalled.
+      - The messages' names.
+    - **To check on VMS.** That `$PUTMSG` and the last-chance handler
+      find a message section linked into the shareable `POCRTL.EXE`, and
+      into a program linked with `POCRTL.OLB`; that `MESSAGE` sets bits
+      15 and 27 as above; that `.BASE` gives the numbers wanted.
 
 ## Open design questions
 
