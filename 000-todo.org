@@ -1,4 +1,6 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
+* Bugs to be added
+** TODO poc reports an import cycle as "unknown imported module", not as a cycle.
 * General Improvements
 ** TODO pocdef
 ** DONE SHORTCARD, CARDINAL, LONGCARD, HUGECARD types that are not in system.
