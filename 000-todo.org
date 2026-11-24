@@ -3,6 +3,7 @@
 ** TODO poc reports an import cycle as "unknown imported module", not as a cycle.
 ** TODO NEW of a zero length array stops with an error?
 * General Improvements
+** TODO Have poc accept .obn and .ob2 as oberon source.
 ** TODO pocdef
 ** DONE SHORTCARD, CARDINAL, LONGCARD, HUGECARD types that are not in system.
 These are unsigned types with the same number of bits in each size modle as
