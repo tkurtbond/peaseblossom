@@ -3,7 +3,9 @@
 ** TODO poc reports an import cycle as "unknown imported module", not as a cycle.
 ** TODO NEW of a zero length array stops with an error?
 * General Improvements
-** TODO Have poc accept .obn and .ob2 as oberon source.
+** TODO -verbose makes poc print files it is working on.
+** TODO Should poc continue to assume every file given on the command line is Oberon-2 source?
+Escept for when it doesn't, like .CLD when using the VAX/VMS backend.
 ** TODO pocdef
 ** DONE SHORTCARD, CARDINAL, LONGCARD, HUGECARD types that are not in system.
 These are unsigned types with the same number of bits in each size modle as
